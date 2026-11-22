@@ -13,6 +13,8 @@ export const API_HOSTS = [
   'https://uamanga.com',
   'https://back.animesvit.com',
   'https://dgmanga.app',
+  'https://runi.ink',
+  'https://api.smakolykytl.site',
 ] as const;
 
 /** Хости, яким потрібен заголовок X-Requested-With (AJAX-ендпоінти DLE). */
