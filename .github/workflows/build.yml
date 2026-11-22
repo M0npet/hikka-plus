@@ -7,6 +7,8 @@ on:
     branches: [main]
     tags: ['v*']
   pull_request:
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -51,7 +53,11 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
+        # Реліз можна створити і тегом із ПК, і кнопкою/API на GitHub — архіви додаються в обох випадках.
         run: |
-          gh release create "$GITHUB_REF_NAME" .output/*-chrome.zip .output/*-firefox.zip .output/*-sources.zip \
-            --title "Hikka Plus $GITHUB_REF_NAME" \
-            --generate-notes
+          FILES=(.output/*-chrome.zip .output/*-firefox.zip .output/*-sources.zip)
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${FILES[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${FILES[@]}" --title "Hikka Plus $GITHUB_REF_NAME" --generate-notes
+          fi
