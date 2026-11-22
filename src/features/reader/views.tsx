@@ -16,7 +16,7 @@ export function NovelView({ html, title, s }: { html: string; title: string; s: 
       DOMPurify.sanitize(html, {
         FORBID_TAGS: ['style', 'script', 'iframe', 'form', 'input'],
         FORBID_ATTR: ['style', 'class', 'id'],
-      }),
+      }).replace(/<img /g, '<img referrerpolicy="no-referrer" loading="lazy" '),
     [html],
   );
   const cls = ['hp-novel', s.indent && 'hp-novel--indent', s.justify && 'hp-novel--justify'].filter(Boolean).join(' ');
@@ -56,6 +56,7 @@ export function StripView({ content, s }: { content: Images; s: ReaderSettings['
           src={p.url(s.quality)}
           alt={`Сторінка ${i + 1}`}
           loading={i < 3 ? 'eager' : 'lazy'}
+          referrerPolicy="no-referrer"
           decoding="async"
           data-page={i}
           style={s.fit === 'original' ? { width: 'auto', maxWidth: '100vw' } : undefined}
@@ -84,6 +85,7 @@ export function PagedView({
   useEffect(() => {
     for (const p of content.pages.slice(page + 1, page + 4)) {
       const img = new Image();
+      img.referrerPolicy = 'no-referrer';
       img.src = p.url(s.quality);
     }
   }, [content, page, s.quality]);
@@ -108,6 +110,7 @@ export function PagedView({
           key={cur.id}
           src={cur.url(s.quality)}
           alt={`Сторінка ${page + 1}`}
+          referrerPolicy="no-referrer"
           style={s.fit === 'width' ? { maxWidth: s.width } : undefined}
           onClick={
             s.clickArea === 'image'

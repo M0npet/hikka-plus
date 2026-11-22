@@ -5,6 +5,7 @@ import { parseTitlePage } from '@/src/core/page';
 import { ChaptersBlock } from '@/src/features/chapters-block';
 import { ReadButton } from '@/src/features/read-button';
 import { Reader } from '@/src/features/reader/reader';
+import { initReaderUrl } from '@/src/features/reader-url';
 import { loadTitle, readerStore, resetTitle } from '@/src/features/title-state';
 
 export default defineContentScript({
@@ -42,6 +43,10 @@ export default defineContentScript({
       },
     ]);
 
+    initReaderUrl((cb) => {
+      ctx.addEventListener(window, 'popstate', cb);
+      ctx.addEventListener(window, 'hashchange', cb);
+    });
     syncPage();
     mounter.start();
     ctx.addEventListener(window, 'wxt:locationchange', () => {

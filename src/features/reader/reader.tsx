@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getProgress, patchProgress, useSettings } from '../../core/store';
+import { chapterKey, getProgress, updateProgress, useSettings } from '../../core/store';
+import { getSource } from '../../sources/registry';
 import { chapterLabel, type Chapter, type ChapterContent, type ContentFormat } from '../../sources/types';
 import { IconClose, IconExpand, IconExternal, IconLeft, IconList, IconRight, IconSettings } from '../../ui/icons';
-import { closeReader, useReaderRequest, useTitleState } from '../title-state';
+import { closeReader, moveReader } from '../reader-url';
+import { contentFormat, neighbor, titleProgress, useReaderRequest, useTitleState } from '../title-state';
 import { SettingsPanel } from './settings-panel';
 import { NovelView, PagedView, StripView } from './views';
 
@@ -12,38 +14,42 @@ type Load =
   | { status: 'ready'; content: ChapterContent };
 
 const SAVE_DELAY = 600;
+/** Позиція, з якої вважаємо розділ дочитаним. */
+const DONE_AT = 0.985;
 
 export function Reader() {
   const s = useTitleState();
   const req = useReaderRequest();
   const settings = useSettings();
 
-  const [chapterId, setChapterId] = useState(req?.chapterId ?? '');
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [panel, setPanel] = useState<'none' | 'chapters' | 'settings'>('none');
   const [barsHidden, setBarsHidden] = useState(false);
   const [page, setPage] = useState(0);
+  const [pos, setPos] = useState(0); // прогрес поточного розділу 0..1
   const [pageInfo, setPageInfo] = useState('');
-  const [finished, setFinished] = useState(false);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const restoreRef = useRef<number | null>(null); // позиція для відновлення
-  const firstOpen = useRef(true);
+  const restoreRef = useRef<number | null>(null);
+  const finishedRef = useRef(false);
   const saveTimer = useRef<number | undefined>(undefined);
   const lastTop = useRef(0);
 
-  const chapters = s?.chapters ?? [];
-  const idx = chapters.findIndex((c) => c.id === chapterId);
-  const chapter: Chapter | undefined = chapters[idx];
-  const prev = idx > 0 ? chapters[idx - 1] : undefined;
-  const next = idx >= 0 && idx + 1 < chapters.length ? chapters[idx + 1] : undefined;
+  const sourceId = req?.sourceId ?? '';
+  const source = getSource(sourceId);
+  const srcState = s?.sources[sourceId];
+  const team = s?.teams[sourceId] ?? '';
+  const all = srcState?.chapters ?? [];
+  const list = team ? all.filter((c) => c.team === team) : all;
+  const chapter: Chapter | undefined = all.find((c) => c.id === req?.chapterId);
+  const prev = chapter ? neighbor(list.length ? list : all, chapter, -1) : undefined;
+  const next = chapter ? neighbor(list.length ? list : all, chapter, 1) : undefined;
 
   const format: ContentFormat =
-    load.status === 'ready' && load.content.type === 'text' ? 'novel' : (s?.remote?.format ?? 'webtoon');
+    load.status === 'ready' && load.content.type === 'text' ? 'novel' : s ? contentFormat(s) : 'manga';
   const isNovel = format === 'novel';
-  const mangaMode = format === 'manga' ? settings.manga.modeManga : settings.manga.modeWebtoon;
-  const paged = !isNovel && mangaMode === 'paged';
+  const paged = !isNovel && (format === 'manga' ? settings.manga.modeManga : settings.manga.modeWebtoon) === 'paged';
   const pageCount = load.status === 'ready' && load.content.type === 'images' ? load.content.pages.length : 0;
 
   // Блокуємо прокрутку сторінки під оверлеєм.
@@ -58,76 +64,74 @@ export function Reader() {
     };
   }, []);
 
-  useEffect(() => {
-    if (req && req.chapterId !== chapterId) setChapterId(req.chapterId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [req]);
-
+  /** Зберегти позицію в розділі (і «прочитано», якщо дочитали). */
   const save = useCallback(
-    (patch: { position?: number; read?: boolean }) => {
-      if (!s?.source || !s.remote || !chapter) return;
-      const { kind, slug } = s.page;
-      const base = { sourceId: s.source.id, remoteId: s.remote.id };
-      void (async () => {
-        const cur = await getProgress(kind, slug);
-        const sameTitle = cur?.sourceId === base.sourceId && cur?.remoteId === base.remoteId;
-        const read = new Set(sameTitle ? cur!.read : []);
-        if (patch.read) read.add(chapter.id);
-        await patchProgress(kind, slug, {
-          ...base,
-          chapterId: chapter.id,
-          chapterLabel: chapterLabel(chapter),
-          position: patch.position ?? (sameTitle && cur!.chapterId === chapter.id ? cur!.position : 0),
-          read: [...read],
-        });
-      })();
+    (p: number, forceRead = false) => {
+      if (!s || !chapter || !source) return;
+      const key = chapterKey(chapter.number);
+      const done = forceRead || p >= DONE_AT;
+      void updateProgress(s.page.kind, s.page.slug, (pr) => {
+        const prevCh = pr.chapters[key];
+        return {
+          ...pr,
+          last: { key, label: chapterLabel(chapter), sourceId: source.id, chapterId: chapter.id },
+          chapters: {
+            ...pr.chapters,
+            [key]: { pos: Math.max(0, Math.min(1, p)), read: done || !!prevCh?.read, at: Date.now() },
+          },
+        };
+      });
     },
-    [s, chapter],
+    [s, chapter, source],
   );
 
   // Завантаження розділу.
   useEffect(() => {
-    if (!s?.source || !chapter) return;
+    if (!s || !source || !chapter) return;
     let alive = true;
     setLoad({ status: 'loading' });
-    setFinished(false);
+    setPos(0);
     setPageInfo('');
-
-    const resume = firstOpen.current && !!req?.resume;
-    firstOpen.current = false;
+    finishedRef.current = false;
+    scrollRef.current?.scrollTo({ top: 0 });
 
     (async () => {
-      const prog = resume ? await getProgress(s.page.kind, s.page.slug) : null;
-      restoreRef.current = prog?.chapterId === chapter.id ? prog.position : null;
+      // Відновлюємо місце, якщо розділ почали, але не дочитали.
+      const pr = await getProgress(s.page.kind, s.page.slug);
+      const cp = pr.chapters[chapterKey(chapter.number)];
+      restoreRef.current = cp && !cp.read && cp.pos > 0.01 && cp.pos < DONE_AT ? cp.pos : null;
       try {
-        const content = await s.source!.getContent(chapter);
+        const content = await source.getContent(chapter);
         if (!alive) return;
-        setPage(restoreRef.current != null && content.type === 'images' ? Math.round(restoreRef.current) : 0);
+        const r = restoreRef.current;
+        if (content.type === 'images') {
+          const p = r != null ? Math.round(r * Math.max(0, content.pages.length - 1)) : 0;
+          setPage(p);
+        }
+        setPos(r ?? 0);
         setLoad({ status: 'ready', content });
-        save({ position: restoreRef.current ?? 0 });
+        save(r ?? 0);
       } catch (e) {
         if (alive) setLoad({ status: 'error', error: String(e instanceof Error ? e.message : e) });
       }
     })();
-
-    scrollRef.current?.scrollTo({ top: 0 });
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapter?.id, s?.source?.id]);
+  }, [chapter?.id, source?.id]);
 
   // Відновлення позиції прокрутки (картинки догружаються — пробуємо кілька разів).
   useEffect(() => {
     if (load.status !== 'ready' || paged) return;
     const ratio = restoreRef.current;
-    if (ratio == null || ratio <= 0) return;
     const el = scrollRef.current;
-    if (!el) return;
+    if (ratio == null || !el) return;
     let userMoved = false;
     const mark = () => (userMoved = true);
     el.addEventListener('wheel', mark, { once: true });
     el.addEventListener('touchstart', mark, { once: true });
+    el.addEventListener('keydown', mark, { once: true });
     const apply = () => {
       if (!userMoved) el.scrollTop = ratio * (el.scrollHeight - el.clientHeight);
     };
@@ -136,37 +140,40 @@ export function Reader() {
       timers.forEach(clearTimeout);
       el.removeEventListener('wheel', mark);
       el.removeEventListener('touchstart', mark);
+      el.removeEventListener('keydown', mark);
     };
   }, [load, paged]);
 
-  const goChapter = useCallback((c?: Chapter) => {
-    if (!c) return;
-    restoreRef.current = null;
-    setPanel('none');
-    setChapterId(c.id);
-  }, []);
+  const goChapter = useCallback(
+    (c?: Chapter) => {
+      if (!c) return;
+      restoreRef.current = null;
+      setPanel('none');
+      moveReader({ sourceId, chapterId: c.id });
+    },
+    [sourceId],
+  );
 
-  const finish = useCallback(() => {
-    if (finished) return;
-    setFinished(true);
-    save({ read: true });
-  }, [finished, save]);
+  const setPageAndSave = useCallback(
+    (p: number) => {
+      setPage(p);
+      const ratio = pageCount > 1 ? p / (pageCount - 1) : 1;
+      setPos(ratio);
+      save(ratio, p >= pageCount - 1);
+    },
+    [pageCount, save],
+  );
 
   const goPage = useCallback(
     (dir: -1 | 1) => {
       if (dir === 1) {
-        if (page + 1 < pageCount) {
-          setPage(page + 1);
-          save({ position: page + 1 });
-          if (page + 2 >= pageCount) finish();
-        } else if (next) goChapter(next);
-      } else if (page > 0) {
-        setPage(page - 1);
-        save({ position: page - 1 });
-      } else if (prev) goChapter(prev);
+        if (page + 1 < pageCount) setPageAndSave(page + 1);
+        else goChapter(next);
+      } else if (page > 0) setPageAndSave(page - 1);
+      else goChapter(prev);
       scrollRef.current?.scrollTo({ top: 0 });
     },
-    [page, pageCount, next, prev, goChapter, save, finish],
+    [page, pageCount, next, prev, goChapter, setPageAndSave],
   );
 
   // Прокрутка: ховаємо панелі, зберігаємо позицію, відмічаємо прочитане.
@@ -176,6 +183,7 @@ export function Reader() {
     const top = el.scrollTop;
     const max = Math.max(1, el.scrollHeight - el.clientHeight);
     const ratio = Math.min(1, top / max);
+    setPos(ratio);
 
     if (settings.autoHideBars && panel === 'none') {
       if (top - lastTop.current > 12 && top > 80) setBarsHidden(true);
@@ -191,9 +199,13 @@ export function Reader() {
       setPageInfo(`${cur + 1} / ${imgs.length}`);
     }
 
-    if (ratio > 0.985 || max - top < 40) finish();
+    if ((ratio >= DONE_AT || max - top < 40) && !finishedRef.current) {
+      finishedRef.current = true;
+      save(1, true);
+      return;
+    }
     window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => save({ position: ratio }), SAVE_DELAY);
+    saveTimer.current = window.setTimeout(() => save(ratio), SAVE_DELAY);
   };
 
   const toggleFullscreen = useCallback(() => {
@@ -247,8 +259,10 @@ export function Reader() {
   if (!s || !req) return null;
 
   const themeCls = isNovel && settings.novel.theme !== 'site' ? `hp-theme-${settings.novel.theme}` : '';
-  const title = s.hikka?.title_ua || s.hikka?.title_en || s.remote?.title || '';
+  const title = s.hikka?.title_ua || s.hikka?.title_en || srcState?.remote?.title || '';
   const label = chapter ? chapterLabel(chapter) : '';
+  const idx = chapter ? [...new Set(list.map((c) => chapterKey(c.number)))].indexOf(chapterKey(chapter.number)) : -1;
+  const total = new Set(list.map((c) => chapterKey(c.number))).size;
 
   return (
     <div
@@ -258,6 +272,11 @@ export function Reader() {
       aria-modal="true"
       aria-label={`Читалка: ${title}`}
     >
+      {/* Прогрес розділу — видно завжди, навіть коли панелі сховані */}
+      <div className="hp-chbar" aria-hidden="true">
+        <div style={{ width: `${Math.round(pos * 100)}%` }} />
+      </div>
+
       {/* Верхня панель */}
       <header className="hp-bar hp-bar--top">
         <button type="button" className="hp-btn hp-btn--ghost hp-btn--icon" title="Закрити (Esc)" onClick={closeReader}>
@@ -268,15 +287,19 @@ export function Reader() {
           <span className="hp-ellipsis">
             {label}
             {chapter?.team ? ` · ${chapter.team}` : ''}
+            {source ? ` · ${source.name}` : ''}
           </span>
         </div>
+        <span className="hp-small hp-muted" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {Math.round(pos * 100)}%
+        </span>
         {chapter && (
           <a
             className="hp-btn hp-btn--ghost hp-btn--icon"
             href={chapter.url}
             target="_blank"
             rel="noreferrer"
-            title={`Відкрити на ${s.source?.name}`}
+            title={`Відкрити на ${source?.name}`}
           >
             <IconExternal />
           </a>
@@ -293,20 +316,19 @@ export function Reader() {
         tabIndex={-1}
         onScroll={onScroll}
         onClick={(e) => {
-          if (paged || e.target !== e.currentTarget && (e.target as HTMLElement).closest('a,button')) return;
+          if (paged || (e.target as HTMLElement).closest('a,button')) return;
           if (panel !== 'none') setPanel('none');
-          else setBarsHidden((v) => !v);
+          else if (!window.getSelection()?.toString()) setBarsHidden((v) => !v);
         }}
       >
-        {load.status === 'loading' && <div className="hp-error">Завантаження…</div>}
-        {load.status === 'error' && (
+        {!chapter && <div className="hp-error">Розділ не знайдено у списку джерела.</div>}
+        {chapter && load.status === 'loading' && <div className="hp-error">Завантаження…</div>}
+        {chapter && load.status === 'error' && (
           <div className="hp-error">
             <div>{load.error}</div>
-            {chapter && (
-              <a className="hp-btn" href={chapter.url} target="_blank" rel="noreferrer">
-                Відкрити на {s.source?.name}
-              </a>
-            )}
+            <a className="hp-btn" href={chapter.url} target="_blank" rel="noreferrer">
+              Відкрити на {source?.name}
+            </a>
           </div>
         )}
         {load.status === 'ready' && load.content.type === 'text' && (
@@ -325,7 +347,7 @@ export function Reader() {
         )}
         {load.status === 'ready' && !paged && (
           <div className="hp-end">
-            <div className="hp-muted hp-small">Кінець розділу</div>
+            <div className="hp-muted hp-small">Кінець розділу{chapter?.team ? ` · переклад: ${chapter.team}` : ''}</div>
             {next ? (
               <button type="button" className="hp-btn hp-btn--primary" onClick={() => goChapter(next)}>
                 Далі: {chapterLabel(next)}
@@ -368,7 +390,7 @@ export function Reader() {
           <IconList />
         </button>
         <span className="hp-small hp-muted" style={{ padding: '0 6px', whiteSpace: 'nowrap' }}>
-          {idx + 1} / {chapters.length}
+          {idx + 1} / {total}
         </span>
         <button
           type="button"
@@ -389,18 +411,13 @@ export function Reader() {
         </button>
       </nav>
 
-      {panel === 'settings' && (
-        <SettingsPanel settings={settings} format={format} onClose={() => setPanel('none')} />
-      )}
+      {panel === 'settings' && <SettingsPanel settings={settings} format={format} onClose={() => setPanel('none')} />}
       {panel === 'chapters' && (
         <ChaptersPanel
-          chapters={chapters}
-          currentId={chapterId}
-          readIds={
-            s.progress && s.progress.sourceId === s.source?.id && s.progress.remoteId === s.remote?.id
-              ? s.progress.read
-              : []
-          }
+          chapters={list}
+          currentId={chapter?.id ?? ''}
+          progress={s.progress.chapters}
+          summary={titleProgress(s)}
           onPick={goChapter}
           onClose={() => setPanel('none')}
         />
@@ -412,13 +429,14 @@ export function Reader() {
 function ChaptersPanel(props: {
   chapters: Chapter[];
   currentId: string;
-  readIds: string[];
+  progress: Record<string, { pos: number; read: boolean }>;
+  summary: { read: number; total: number };
   onPick: (c: Chapter) => void;
   onClose: () => void;
 }) {
   const curRef = useRef<HTMLButtonElement>(null);
-  const read = new Set(props.readIds);
   useEffect(() => curRef.current?.scrollIntoView({ block: 'center' }), []);
+  const pct = props.summary.total ? Math.round((props.summary.read / props.summary.total) * 100) : 0;
   return (
     <aside className="hp-panel hp-panel--left" aria-label="Розділи">
       <div className="hp-panel__head">
@@ -427,18 +445,29 @@ function ChaptersPanel(props: {
           <IconClose />
         </button>
       </div>
+      <div style={{ padding: '0 16px 8px' }}>
+        <div className="hp-small hp-muted">
+          Прочитано {props.summary.read} з {props.summary.total} · {pct}%
+        </div>
+        <div className="hp-progress" style={{ marginTop: 6 }}>
+          <div style={{ width: `${pct}%` }} />
+        </div>
+      </div>
       <div className="hp-panel__body" style={{ padding: '0 8px 16px' }}>
         {props.chapters.map((c) => {
           const cur = c.id === props.currentId;
+          const p = props.progress[chapterKey(c.number)];
           return (
             <button
               key={c.id}
               ref={cur ? curRef : undefined}
               type="button"
-              className={`hp-ch ${cur ? 'hp-ch--current' : read.has(c.id) ? 'hp-ch--read' : ''}`}
+              className={`hp-ch ${cur ? 'hp-ch--current' : p?.read ? 'hp-ch--read' : ''}`}
               onClick={() => props.onPick(c)}
             >
               <span className="hp-grow hp-ellipsis hp-ch__title">{chapterLabel(c)}</span>
+              {p && !p.read && p.pos > 0.01 && <span className="hp-ch__meta">{Math.round(p.pos * 100)}%</span>}
+              {p?.read && <span className="hp-ch__meta">✓</span>}
             </button>
           );
         })}

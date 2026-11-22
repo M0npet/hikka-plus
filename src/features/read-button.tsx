@@ -1,36 +1,48 @@
-import { chapterLabel } from '../sources/types';
+import { chapterKey } from '../core/store';
 import { IconBook } from '../ui/icons';
-import { continueTarget, openReader, useTitleState } from './title-state';
+import { openReader } from './reader-url';
+import { continueTarget, overallStatus, titleProgress, useTitleState } from './title-state';
 
-/** Кнопка в лівій колонці під «Додати у список». */
+/** Кнопка в лівій колонці під «Додати у список» + смужка прогресу тайтлу. */
 export function ReadButton() {
   const s = useTitleState();
   if (!s) return null;
 
-  const target = s.status === 'ready' ? continueTarget(s) : null;
-  const isContinue = !!target && (target.resume || target.chapter.id !== s.chapters[0]?.id);
+  const status = overallStatus(s);
+  const target = status === 'ready' ? continueTarget(s) : null;
+  const { read, total } = titleProgress(s);
+  const started = !!s.progress.last || read > 0;
+  const pos = target ? (s.progress.chapters[chapterKey(target.number)]?.pos ?? 0) : 0;
 
   let label = 'Читати';
   let sub: string | null = null;
-  if (s.status === 'loading') sub = 'шукаю розділи…';
-  else if (s.status === 'not-found') sub = 'не знайдено на джерелах';
-  else if (s.status === 'error') sub = 'помилка завантаження';
+  if (status === 'loading') sub = 'шукаю розділи…';
+  else if (status === 'not-found') sub = 'не знайдено';
+  else if (status === 'error') sub = 'помилка';
   else if (target) {
-    label = isContinue ? 'Продовжити' : 'Читати';
-    sub = chapterLabel({ ...target.chapter, name: undefined });
+    label = started ? 'Продовжити' : 'Читати';
+    sub = `Розділ ${target.number}${pos > 0.01 && pos < 0.985 ? ` · ${Math.round(pos * 100)}%` : ''}`;
   }
 
   return (
-    <button
-      type="button"
-      className="hp-btn hp-btn--lg hp-btn--primary hp-read"
-      disabled={!target}
-      title={s.source ? `Джерело: ${s.source.name}` : undefined}
-      onClick={() => target && openReader(target.chapter.id, target.resume)}
-    >
-      <IconBook />
-      <span>{label}</span>
-      {sub && <span className="hp-read__sub">· {sub}</span>}
-    </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <button
+        type="button"
+        className="hp-btn hp-btn--lg hp-btn--primary hp-read"
+        disabled={!target}
+        onClick={() => target && s.activeId && openReader({ sourceId: s.activeId, chapterId: target.id })}
+      >
+        <IconBook />
+        <span>{label}</span>
+        {sub && <span className="hp-read__sub">· {sub}</span>}
+      </button>
+      {status === 'ready' && total > 0 && read > 0 && (
+        <div title={`Прочитано ${read} з ${total}`}>
+          <div className="hp-progress">
+            <div style={{ width: `${Math.round((read / total) * 100)}%` }} />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

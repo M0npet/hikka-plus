@@ -2,35 +2,46 @@ import { useSyncExternalStore } from 'react';
 import { fetchHikkaTitle, type HikkaTitle } from '../core/hikka';
 import type { TitlePage } from '../core/page';
 import {
+  chapterKey,
   getBinding,
   getProgress,
-  setBinding,
+  patchBinding,
+  updateProgress,
   watchProgress,
   type Progress,
 } from '../core/store';
 import { getSource, sourcesFor } from '../sources/registry';
-import type { Chapter, ReadSource, RemoteTitle } from '../sources/types';
+import type { Chapter, ContentFormat, ReadSource, RemoteTitle } from '../sources/types';
 
 /**
  * Спільний стан поточного тайтлу: його читають кнопка «Читати»,
  * блок «Розділи» і читалка (усі живуть в одному content script).
  */
-export interface TitleState {
-  page: TitlePage;
-  status: 'loading' | 'ready' | 'not-found' | 'error';
-  hikka?: HikkaTitle;
-  source?: ReadSource;
+export interface SourceState {
+  status: 'searching' | 'loading' | 'ready' | 'not-found' | 'error';
   remote?: RemoteTitle;
   manual?: boolean;
   chapters: Chapter[];
-  progress: Progress | null;
   error?: string;
 }
 
+export interface TitleState {
+  page: TitlePage;
+  hikka?: HikkaTitle;
+  hikkaError?: string;
+  sources: Record<string, SourceState>;
+  /** Активне джерело (обране користувачем або перше знайдене). */
+  activeId: string | null;
+  /** Чи обирав користувач джерело сам. */
+  activeChosen: boolean;
+  /** Обрана команда для кожного джерела ('' — усі). */
+  teams: Record<string, string>;
+  progress: Progress;
+}
+
 export interface ReaderRequest {
+  sourceId: string;
   chapterId: string;
-  /** Відкрити з позиції збереженого прогресу. */
-  resume: boolean;
 }
 
 type Listener = () => void;
@@ -55,27 +66,120 @@ export const readerStore = new Store<ReaderRequest | null>(null);
 export const useTitleState = () => useSyncExternalStore(titleStore.subscribe, titleStore.get);
 export const useReaderRequest = () => useSyncExternalStore(readerStore.subscribe, readerStore.get);
 
-export const openReader = (chapterId: string, resume = false) =>
-  readerStore.set({ chapterId, resume });
-export const closeReader = () => readerStore.set(null);
+// ---------- Похідні значення ----------
 
-let loadToken = 0;
-let unwatchProgress: (() => void) | null = null;
+export const activeSource = (s: TitleState): ReadSource | undefined =>
+  s.activeId ? getSource(s.activeId) : undefined;
+export const activeState = (s: TitleState): SourceState | undefined =>
+  s.activeId ? s.sources[s.activeId] : undefined;
+export const activeTeam = (s: TitleState) => (s.activeId ? (s.teams[s.activeId] ?? '') : '');
 
-function patch(token: number, p: Partial<TitleState>) {
-  const cur = titleStore.get();
-  if (token !== loadToken || !cur) return;
-  titleStore.set({ ...cur, ...p });
+/** Розділи активного джерела з урахуванням обраної команди. */
+export function visibleChapters(s: TitleState): Chapter[] {
+  const all = activeState(s)?.chapters ?? [];
+  const team = activeTeam(s);
+  return team ? all.filter((c) => c.team === team) : all;
 }
 
+/** Загальний статус для кнопки/блоку. */
+export function overallStatus(s: TitleState): 'loading' | 'ready' | 'not-found' | 'error' {
+  if (s.hikkaError) return 'error';
+  const act = activeState(s);
+  if (act && act.status !== 'not-found') return act.status === 'ready' ? 'ready' : act.status === 'error' ? 'error' : 'loading';
+  const all = Object.values(s.sources);
+  if (!s.hikka || all.some((x) => x.status === 'searching' || x.status === 'loading')) return 'loading';
+  return 'not-found';
+}
+
+/** Формат читалки: за типом тайтлу на Hikka, інакше — за джерелом. */
+export function contentFormat(s: TitleState): ContentFormat {
+  if (s.page.kind === 'novel') return 'novel';
+  const t = s.hikka?.media_type ?? '';
+  if (/manhwa|manhua/.test(t)) return 'webtoon';
+  if (t) return 'manga';
+  return activeState(s)?.remote?.format ?? 'manga';
+}
+
+export function chapterProgress(p: Progress, c: Chapter) {
+  return p.chapters[chapterKey(c.number)];
+}
+
+/** Прогрес тайтлу: скільки унікальних номерів розділів прочитано. */
+export function titleProgress(s: TitleState) {
+  const keys = new Set(visibleChapters(s).map((c) => chapterKey(c.number)));
+  let read = 0;
+  for (const k of keys) if (s.progress.chapters[k]?.read) read++;
+  return { read, total: keys.size };
+}
+
+/** Сусідній розділ за номером (з тієї ж команди, якщо можна). */
+export function neighbor(list: Chapter[], cur: Chapter, dir: -1 | 1): Chapter | undefined {
+  const keys = [...new Set(list.map((c) => chapterKey(c.number)))];
+  const i = keys.indexOf(chapterKey(cur.number));
+  const key = keys[i + dir];
+  if (i < 0 || key === undefined) return undefined;
+  const same = list.filter((c) => chapterKey(c.number) === key);
+  return same.find((c) => c.team === cur.team) ?? same[0];
+}
+
+/** Розділ для «Продовжити»: незакінчений останній, інакше наступний за ним, інакше перший. */
+export function continueTarget(s: TitleState): Chapter | null {
+  const list = visibleChapters(s);
+  const first = list[0];
+  if (!first) return null;
+  const last = s.progress.last;
+  if (last) {
+    const cur =
+      list.find((c) => c.id === last.chapterId) ?? list.find((c) => chapterKey(c.number) === last.key);
+    if (cur) {
+      if (!s.progress.chapters[last.key]?.read) return cur;
+      return neighbor(list, cur, 1) ?? cur;
+    }
+  }
+  return list.find((c) => !s.progress.chapters[chapterKey(c.number)]?.read) ?? first;
+}
+
+// ---------- Завантаження ----------
+
+const MISS_TTL = 3 * 24 * 3600 * 1000; // «не знайдено» перевіряємо знову через 3 дні
+
+let loadToken = 0;
+let unwatch: (() => void) | null = null;
+
+function patch(token: number, fn: (s: TitleState) => TitleState) {
+  const cur = titleStore.get();
+  if (token !== loadToken || !cur) return;
+  titleStore.set(fn(cur));
+}
+
+const setSource = (token: number, id: string, p: Partial<SourceState>) =>
+  patch(token, (s) => ({
+    ...s,
+    sources: { ...s.sources, [id]: { ...(s.sources[id] ?? { status: 'searching', chapters: [] }), ...p } },
+  }));
+
 async function loadChapters(token: number, source: ReadSource, remote: RemoteTitle, manual: boolean) {
-  patch(token, { status: 'loading', source, remote, manual, chapters: [] });
+  setSource(token, source.id, { status: 'loading', remote, manual, chapters: [], error: undefined });
   try {
     const chapters = await source.getChapters(remote.id);
-    patch(token, { status: 'ready', chapters });
+    setSource(token, source.id, { status: 'ready', chapters });
   } catch (e) {
-    patch(token, { status: 'error', error: `Не вдалося завантажити розділи: ${String(e)}` });
+    setSource(token, source.id, { status: 'error', error: `Не вдалося завантажити розділи: ${String(e)}` });
   }
+}
+
+/** Якщо користувач не обирав джерело — активним стає найпріоритетніше знайдене. */
+function pickActive(token: number) {
+  patch(token, (s) => {
+    if (s.activeChosen && s.activeId && s.sources[s.activeId]?.status !== 'not-found') return s;
+    const order = sourcesFor(s.page.kind).map((x) => x.id);
+    for (const id of order) {
+      const st = s.sources[id];
+      if (!st || st.status === 'searching') return s; // чекаємо пріоритетніше джерело
+      if (st.status !== 'not-found') return s.activeId === id ? s : { ...s, activeId: id };
+    }
+    return s;
+  });
 }
 
 /** Завантажити все для сторінки тайтлу (викликається при кожному переході). */
@@ -84,84 +188,119 @@ export async function loadTitle(page: TitlePage) {
   if (cur && cur.page.kind === page.kind && cur.page.slug === page.slug) return;
 
   const token = ++loadToken;
-  unwatchProgress?.();
-  closeReader();
-  titleStore.set({ page, status: 'loading', chapters: [], progress: null });
+  unwatch?.();
+  readerStore.set(null);
+  const { kind, slug } = page;
+  const binding = await getBinding(kind, slug);
+  if (token !== loadToken) return;
 
-  unwatchProgress = watchProgress(page.kind, page.slug, (p) => patch(token, { progress: p }));
-  getProgress(page.kind, page.slug).then((p) => patch(token, { progress: p }));
-
-  try {
-    const hikka = await fetchHikkaTitle(page.kind, page.slug);
-    patch(token, { hikka });
-
-    const binding = await getBinding(page.kind, page.slug);
-    const bound = binding && getSource(binding.sourceId);
-    if (binding && bound) {
-      const remote = await bound.getTitle(binding.remoteId).catch(
-        (): RemoteTitle => ({
-          id: binding.remoteId,
-          title: binding.title,
-          altTitles: [],
-          format: page.kind === 'novel' ? 'novel' : 'manga',
-          url: '',
-        }),
-      );
-      return loadChapters(token, bound, remote, binding.manual);
-    }
-
-    for (const source of sourcesFor(page.kind)) {
-      const remote = await source.autoMatch(hikka).catch(() => null);
-      if (remote) {
-        await setBinding(page.kind, page.slug, {
-          sourceId: source.id,
-          remoteId: remote.id,
-          title: remote.title,
-          manual: false,
-        });
-        return loadChapters(token, source, remote, false);
-      }
-    }
-    patch(token, { status: 'not-found' });
-  } catch (e) {
-    patch(token, { status: 'error', error: String(e) });
-  }
-}
-
-/** Ручна прив'язка до знайденого тайтлу. */
-export async function bindManually(source: ReadSource, remote: RemoteTitle) {
-  const cur = titleStore.get();
-  if (!cur) return;
-  await setBinding(cur.page.kind, cur.page.slug, {
-    sourceId: source.id,
-    remoteId: remote.id,
-    title: remote.title,
-    manual: true,
+  titleStore.set({
+    page,
+    sources: {},
+    activeId: binding.active,
+    activeChosen: !!binding.active,
+    teams: binding.teams,
+    progress: await getProgress(kind, slug),
   });
-  await loadChapters(loadToken, source, remote, true);
+  unwatch = watchProgress(kind, slug, (progress) => patch(token, (s) => ({ ...s, progress })));
+
+  let hikka: HikkaTitle;
+  try {
+    hikka = await fetchHikkaTitle(kind, slug);
+  } catch (e) {
+    patch(token, (s) => ({ ...s, hikkaError: String(e) }));
+    return;
+  }
+  patch(token, (s) => ({ ...s, hikka }));
+
+  await Promise.all(
+    sourcesFor(kind).map(async (source) => {
+      const link = binding.links[source.id];
+      if (link) {
+        const remote: RemoteTitle = {
+          id: link.remoteId,
+          title: link.title,
+          altTitles: [],
+          format: kind === 'novel' ? 'novel' : 'manga',
+          url: link.url ?? '',
+        };
+        pickActive(token);
+        return loadChapters(token, source, remote, link.manual);
+      }
+      if (link === null && Date.now() - (binding.misses[source.id] ?? 0) < MISS_TTL) {
+        setSource(token, source.id, { status: 'not-found', chapters: [] });
+        pickActive(token);
+        return;
+      }
+      setSource(token, source.id, { status: 'searching', chapters: [] });
+      const remote = await source.autoMatch(hikka).catch(() => null);
+      if (token !== loadToken) return;
+      await patchBinding(kind, slug, (b) => ({
+        ...b,
+        links: {
+          ...b.links,
+          [source.id]: remote ? { remoteId: remote.id, title: remote.title, url: remote.url, manual: false } : null,
+        },
+        misses: { ...b.misses, [source.id]: remote ? 0 : Date.now() },
+      }));
+      if (!remote) {
+        setSource(token, source.id, { status: 'not-found', chapters: [] });
+        pickActive(token);
+        return;
+      }
+      pickActive(token);
+      await loadChapters(token, source, remote, false);
+      pickActive(token);
+    }),
+  );
 }
 
 export function resetTitle() {
   loadToken++;
-  unwatchProgress?.();
-  unwatchProgress = null;
-  closeReader();
+  unwatch?.();
+  unwatch = null;
+  readerStore.set(null);
   titleStore.set(null);
 }
 
-/** Розділ, з якого «Продовжити»: останній відкритий або наступний за прочитаним. */
-export function continueTarget(s: TitleState): { chapter: Chapter; resume: boolean } | null {
-  const first = s.chapters[0];
-  if (!first) return null;
-  const p = s.progress;
-  if (p && p.sourceId === s.source?.id && p.remoteId === s.remote?.id && p.chapterId) {
-    const i = s.chapters.findIndex((c) => c.id === p.chapterId);
-    const cur = s.chapters[i];
-    if (cur) {
-      if (!p.read.includes(cur.id)) return { chapter: cur, resume: true };
-      const after = s.chapters[i + 1];
-      return after ? { chapter: after, resume: false } : { chapter: cur, resume: true };
-    }
-  }
-  return { chapter: first, resume: false };
+// ---------- Дії користувача ----------
+
+export async function setActiveSource(id: string) {
+  const s = titleStore.get();
+  if (!s) return;
+  titleStore.set({ ...s, activeId: id, activeChosen: true });
+  await patchBinding(s.page.kind, s.page.slug, (b) => ({ ...b, active: id }));
+}
+
+export async function setTeam(team: string) {
+  const s = titleStore.get();
+  if (!s?.activeId) return;
+  const teams = { ...s.teams, [s.activeId]: team };
+  titleStore.set({ ...s, teams });
+  await patchBinding(s.page.kind, s.page.slug, (b) => ({ ...b, teams }));
+}
+
+/** Ручна прив'язка до знайденого тайтлу; джерело стає активним. */
+export async function bindManually(source: ReadSource, remote: RemoteTitle) {
+  const s = titleStore.get();
+  if (!s) return;
+  const { kind, slug } = s.page;
+  await patchBinding(kind, slug, (b) => ({
+    ...b,
+    active: source.id,
+    links: { ...b.links, [source.id]: { remoteId: remote.id, title: remote.title, url: remote.url, manual: true } },
+  }));
+  titleStore.set({ ...s, activeId: source.id, activeChosen: true });
+  await loadChapters(loadToken, source, remote, true);
+}
+
+/** Відмітити розділ прочитаним / непрочитаним вручну. */
+export function setChapterRead(c: Chapter, read: boolean) {
+  const s = titleStore.get();
+  if (!s) return;
+  const key = chapterKey(c.number);
+  return updateProgress(s.page.kind, s.page.slug, (p) => ({
+    ...p,
+    chapters: { ...p.chapters, [key]: { pos: read ? 1 : 0, read, at: Date.now() } },
+  }));
 }

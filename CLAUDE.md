@@ -6,7 +6,7 @@
 
 ## Рішення MK (не порушувати)
 - Усе вбудовано в сайт і в його стилі; блок розділів і кнопка — на сторінці тайтлу, читалка — оверлей.
-- Джерела — **тільки українські** (зараз Zenko; далі manga.in.ua, baka.in.ua). Senkuro — лише зразок UX.
+- Джерела — **тільки українські** (Zenko, manga.in.ua, baka.in.ua). Senkuro — лише зразок UX.
 - Без власного сервера. Віддалено можна оновлювати лише дані (JSON), не код (політики AMO/CWS).
 - Не заважати Hikka Features і Hikka Forge: тільки свій Shadow DOM з тегами `hikka-plus-*`,
   класи `hp-*`, чужий DOM не змінювати, клавіші перехоплювати лише при відкритій читалці.
@@ -18,7 +18,10 @@
 - `entrypoints/content/` — монтування блоків (`src/core/mount.ts`, self-healing для SPA), стилі `style.css`.
 - `src/features/title-state.ts` — спільний стан тайтлу (кнопка, блок, читалка).
 - `src/sources/` — джерела (`ReadSource`), автопідбір (`match.ts`).
-- `src/core/store.ts` — налаштування, прив'язки, прогрес (`storage.local`, ключі `hp:*`).
+- `src/core/store.ts` — налаштування, прив'язки (`hp:bind2:*`, по кожному джерелу + команди), прогрес
+  (`hp:progress2:*`, ключ — номер розділу, щоб не губився при зміні джерела/команди).
+- `src/features/reader-url.ts` — відкритий розділ у `#read=джерело:id` (Hikka — SPA на TanStack Router, pushState безпечний).
+- Картинки з manga.in.ua мають hotlink-захист — завжди `referrerPolicy="no-referrer"`.
 
 ## Перевірка перед комітом
 ```bash

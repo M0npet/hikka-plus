@@ -589,3 +589,107 @@ input[type='range'] {
   border: 1px solid var(--hp-border);
   font-size: 13px;
 }
+
+/* ---------- Прогрес ---------- */
+
+.hp-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--hp-secondary);
+  overflow: hidden;
+}
+.hp-progress > div {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--hp-primary-fg);
+  transition: width 0.3s ease;
+}
+.hp-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+}
+.hp-chbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  height: 3px;
+  background: transparent;
+  pointer-events: none;
+}
+.hp-chbar > div {
+  height: 100%;
+  background: var(--hp-primary-fg);
+  transition: width 0.15s linear;
+}
+/* Стан розділу у списку: кружечок-прогрес */
+.hp-status {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  color: var(--hp-muted-fg);
+}
+.hp-status:hover {
+  color: var(--hp-fg);
+}
+.hp-status svg {
+  width: 20px;
+  height: 20px;
+}
+.hp-status--read {
+  color: var(--hp-primary-fg);
+}
+.hp-ch__pct {
+  font-size: 12px;
+  color: var(--hp-primary-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Перемикач джерел ---------- */
+
+.hp-sources {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.hp-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--hp-border);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.hp-src:hover {
+  background: var(--hp-accent);
+}
+.hp-src[aria-pressed='true'] {
+  background: var(--hp-primary);
+  color: var(--hp-primary-fg);
+  border-color: transparent;
+}
+.hp-src--off {
+  color: var(--hp-muted-fg);
+}
+.hp-src small {
+  font-size: 12px;
+  opacity: 0.75;
+  font-weight: 400;
+}

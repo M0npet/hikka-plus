@@ -99,56 +99,92 @@ export function useSettings(): ReaderSettings {
   return s;
 }
 
-// ---------- Прив'язка тайтлу Hikka до тайтлу на джерелі ----------
+// ---------- Прив'язка тайтлу Hikka до тайтлів на джерелах ----------
 
-export interface Binding {
-  sourceId: string;
+export interface SourceLink {
   remoteId: string;
   title: string;
+  url?: string;
   /** true — користувач обрав вручну (автопідбір більше не чіпає). */
   manual: boolean;
 }
 
-const bindKey = (kind: ReadKind, slug: string) => `local:hp:bind:${kind}:${slug}` as const;
+export interface Binding {
+  /** Обране джерело (null — ще не обирали, беремо перше знайдене). */
+  active: string | null;
+  /** Знайдені/прив'язані тайтли на кожному джерелі; null — шукали й не знайшли. */
+  links: Record<string, SourceLink | null>;
+  /** Обрана команда перекладу для кожного джерела ('' — усі). */
+  teams: Record<string, string>;
+  /** Коли джерело востаннє шукали й не знайшли (ms). */
+  misses: Record<string, number>;
+}
 
-export const getBinding = (kind: ReadKind, slug: string) =>
-  storage.getItem<Binding>(bindKey(kind, slug));
-export const setBinding = (kind: ReadKind, slug: string, b: Binding | null) =>
-  b ? storage.setItem(bindKey(kind, slug), b) : storage.removeItem(bindKey(kind, slug));
+const bindKey = (kind: ReadKind, slug: string) => `local:hp:bind2:${kind}:${slug}` as const;
+const EMPTY_BINDING: Binding = { active: null, links: {}, teams: {}, misses: {} };
+
+export async function getBinding(kind: ReadKind, slug: string): Promise<Binding> {
+  const b = await storage.getItem<Binding>(bindKey(kind, slug));
+  return { ...EMPTY_BINDING, ...b, links: { ...b?.links }, teams: { ...b?.teams }, misses: { ...b?.misses } };
+}
+
+let bindQueue: Promise<unknown> = Promise.resolve();
+
+/** Записи йдуть по черзі: кілька джерел шукаються паралельно й не мають перетирати одне одного. */
+export function patchBinding(kind: ReadKind, slug: string, fn: (b: Binding) => Binding) {
+  bindQueue = bindQueue
+    .then(async () => storage.setItem(bindKey(kind, slug), fn(await getBinding(kind, slug))))
+    .catch(() => {});
+  return bindQueue;
+}
 
 // ---------- Прогрес читання ----------
+// Прогрес прив'язаний до НОМЕРА розділу, а не до id на сайті, тож він
+// зберігається при перемиканні джерела чи команди.
+
+export interface ChapterProgress {
+  /** Позиція в розділі 0..1 (частка прокрутки або сторінок). */
+  pos: number;
+  read: boolean;
+  at: number;
+}
 
 export interface Progress {
-  sourceId: string;
-  remoteId: string;
   /** Останній відкритий розділ. */
-  chapterId: string;
-  chapterLabel: string;
-  /** Позиція в розділі: 0..1 для стрічки/тексту або номер сторінки (з 0). */
-  position: number;
-  /** Прочитані розділи (id на джерелі). */
-  read: string[];
+  last: { key: string; label: string; sourceId: string; chapterId: string } | null;
+  chapters: Record<string, ChapterProgress>;
   updatedAt: number;
 }
 
-const progressKey = (kind: ReadKind, slug: string) => `local:hp:progress:${kind}:${slug}` as const;
-
-export const getProgress = (kind: ReadKind, slug: string) =>
-  storage.getItem<Progress>(progressKey(kind, slug));
-
-export async function patchProgress(
-  kind: ReadKind,
-  slug: string,
-  patch: Partial<Progress> & Pick<Progress, 'sourceId' | 'remoteId'>,
-) {
-  const cur = await getProgress(kind, slug);
-  const base: Progress =
-    cur && cur.sourceId === patch.sourceId && cur.remoteId === patch.remoteId
-      ? cur
-      : { ...patch, chapterId: '', chapterLabel: '', position: 0, read: [], updatedAt: 0 };
-  await storage.setItem(progressKey(kind, slug), { ...base, ...patch, updatedAt: Date.now() });
+/** Ключ розділу для прогресу: номер без зайвих нулів («012» → «12», «12,5» → «12.5»). */
+export function chapterKey(number: string): string {
+  const n = Number.parseFloat(number.replace(',', '.'));
+  return Number.isFinite(n) ? String(n) : number.trim().toLowerCase();
 }
 
-export function watchProgress(kind: ReadKind, slug: string, cb: (p: Progress | null) => void) {
-  return storage.watch<Progress>(progressKey(kind, slug), (v) => cb(v ?? null));
+const progressKey = (kind: ReadKind, slug: string) => `local:hp:progress2:${kind}:${slug}` as const;
+const EMPTY_PROGRESS: Progress = { last: null, chapters: {}, updatedAt: 0 };
+
+export async function getProgress(kind: ReadKind, slug: string): Promise<Progress> {
+  const p = await storage.getItem<Progress>(progressKey(kind, slug));
+  return { ...EMPTY_PROGRESS, ...p, chapters: { ...p?.chapters } };
+}
+
+// Записи йдуть по черзі, щоб швидкі оновлення позиції не перетирали одне одного.
+let queue: Promise<unknown> = Promise.resolve();
+
+export function updateProgress(kind: ReadKind, slug: string, fn: (p: Progress) => Progress) {
+  queue = queue
+    .then(async () => {
+      const next = fn(await getProgress(kind, slug));
+      await storage.setItem(progressKey(kind, slug), { ...next, updatedAt: Date.now() });
+    })
+    .catch(() => {});
+  return queue;
+}
+
+export function watchProgress(kind: ReadKind, slug: string, cb: (p: Progress) => void) {
+  return storage.watch<Progress>(progressKey(kind, slug), (v) =>
+    cb({ ...EMPTY_PROGRESS, ...v, chapters: { ...v?.chapters } }),
+  );
 }
