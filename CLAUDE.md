@@ -26,6 +26,7 @@
 - `src/core/store.ts` — налаштування, прив'язки (`hp:bind2:*`, по кожному джерелу + команди), прогрес
   (`hp:progress2:*`, ключ — номер розділу, щоб не губився при зміні джерела/команди).
 - `src/features/reader-url.ts` — відкритий розділ у `#read=джерело:id` (Hikka — SPA на TanStack Router, pushState безпечний).
+- CI (`.github/workflows/build.yml`): на тегу — реліз; якщо є секрети `AMO_API_KEY`/`AMO_API_SECRET` — `web-ext sign --channel unlisted` + `.xpi` у реліз. Архів вихідників без `.env*` і `CLAUDE.md` (`zip.excludeSources`).
 - Картинки з manga.in.ua мають hotlink-захист — завжди `referrerPolicy="no-referrer"`.
 
 ## Перевірка перед комітом

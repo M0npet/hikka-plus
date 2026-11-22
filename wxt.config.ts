@@ -20,6 +20,10 @@ export default defineConfig({
       },
     }),
   }),
+  zip: {
+    // Архів вихідного коду йде рецензентам AMO — локальні секрети й нотатки туди не потрібні.
+    excludeSources: ['.env*', 'CLAUDE.md'],
+  },
   webExt: {
     startUrls: ['https://hikka.io/novel'],
   },
