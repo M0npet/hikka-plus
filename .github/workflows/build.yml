@@ -52,13 +52,15 @@ jobs:
           npm run zip
           npm run zip:firefox
 
+      # Сховище артефактів спільне на всі приватні репо акаунта (500 MB безкоштовно) — якщо воно повне,
+      # збірка не червоніє: на тегу файли все одно йдуть у реліз.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: hikka-plus-${{ github.sha }}
           path: .output/*.zip
           # .output — прихована тека (з крапкою); upload-artifact v4.4+ без цього нічого не вивантажує.
           include-hidden-files: true
-          if-no-files-found: error
           # Тестові збірки довго не тримаємо — бережемо безкоштовні 500 MB сховища.
           retention-days: 14
 
