@@ -19,6 +19,8 @@ export function NovelView({ html, title, s }: { html: string; title: string; s: 
       }).replace(/<img /g, '<img referrerpolicy="no-referrer" loading="lazy" '),
     [html],
   );
+  // Якщо розділ сам починається із заголовка — свій не дублюємо.
+  const ownHeading = /^\s*<h[1-4][\s>]/i.test(clean);
   const cls = ['hp-novel', s.indent && 'hp-novel--indent', s.justify && 'hp-novel--justify'].filter(Boolean).join(' ');
   return (
     <article
@@ -32,7 +34,7 @@ export function NovelView({ html, title, s }: { html: string; title: string; s: 
         ['--hp-pgap' as string]: `${s.paragraphGap}em`,
       }}
     >
-      <h1 className="hp-novel__head">{title}</h1>
+      {!ownHeading && <h1 className="hp-novel__head">{title}</h1>}
       <div className="hp-novel__text" dangerouslySetInnerHTML={{ __html: clean }} />
     </article>
   );

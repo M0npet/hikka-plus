@@ -23,7 +23,8 @@
   all: initial;
   display: block;
   color: var(--hp-fg);
-  font-family: inherit;
+  /* Шрифт сайту (Geist); @font-face сторінки діє і в Shadow DOM. */
+  font-family: 'Geist Variable', Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 16px;
   line-height: 1.5;
 }
@@ -305,6 +306,8 @@ select {
 .hp-reader {
   position: fixed;
   inset: 0;
+  /* Вище за шапку Hikka і панелі інших розширень. */
+  z-index: 2147483000;
   display: flex;
   flex-direction: column;
   background: var(--hp-bg);

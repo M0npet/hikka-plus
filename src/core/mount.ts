@@ -70,6 +70,9 @@ export class Mounter {
       const ui = await createShadowRootUi<Root>(this.ctx, {
         name: f.name,
         position: 'inline',
+        // Без скидання WXT (:host{all:initial !important}): воно ламає успадкування шрифту
+        // і перебиває z-index/position, які WXT ставить хосту. Свій скид — у style.css.
+        inheritStyles: true,
         anchor: anchor.selector,
         append: anchor.append,
         onMount: (container) => {
@@ -92,6 +95,7 @@ export async function mountOverlay(ctx: ContentScriptContext, node: ReactNode) {
   const ui = await createShadowRootUi<Root>(ctx, {
     name: 'hikka-plus-reader',
     position: 'modal',
+    inheritStyles: true,
     zIndex: 2147483000,
     anchor: 'body',
     append: 'last',
