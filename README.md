@@ -60,3 +60,19 @@ npm run compile         # перевірка типів
 ## Ліцензія
 
 MIT
+
+## Релізи
+
+Збирає GitHub Actions (`.github/workflows/build.yml`):
+
+- кожен пуш у `main` — перевірка типів і zip-архіви в артефактах запуску (вкладка **Actions**);
+- тег `vX.Y.Z` — реліз у **Releases** з архівами для Firefox, Chrome і вихідним кодом (для AMO).
+
+Випустити нову версію:
+
+```bash
+npm version patch --no-git-tag-version   # або minor / major — оновить package.json
+git commit -am "v$(node -p "require('./package.json').version")"
+git tag "v$(node -p "require('./package.json').version")"
+git push && git push --tags
+```
