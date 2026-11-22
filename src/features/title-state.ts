@@ -4,6 +4,7 @@ import type { TitlePage } from '../core/page';
 import {
   chapterKey,
   getBinding,
+  getBindingSynced,
   getProgress,
   patchBinding,
   syncProgress,
@@ -208,7 +209,8 @@ export async function loadTitle(page: TitlePage) {
 
   let binding: Awaited<ReturnType<typeof getBinding>>;
   try {
-    binding = await getBinding(kind, slug);
+    // Вибір джерела/команди з інших пристроїв (storage.sync), якщо новіший.
+    binding = await getBindingSynced(kind, slug);
     // Спершу — прогрес з інших пристроїв (storage.sync), якщо він новіший.
     const unsync = await syncProgress(kind, slug).catch(() => () => {});
     if (token !== loadToken) return unsync();

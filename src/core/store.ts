@@ -2,6 +2,7 @@ import { storage } from '#imports';
 import { useEffect, useState } from 'react';
 import type { ReadKind } from './page';
 import { pullProgress, schedulePush, watchSynced } from './progress-sync';
+import { pullBind, pullSettings, pushBind, pushSettings, type BindRecord } from './prefs-sync';
 
 // ---------- Налаштування читалки ----------
 
@@ -78,12 +79,33 @@ function mergeSettings(s: Partial<ReaderSettings> | null | undefined): ReaderSet
   };
 }
 
+/** Коли налаштування востаннє змінювали на ЦЬОМУ пристрої (для «перемагає новіший»). */
+const settingsTimeItem = storage.defineItem<number>('local:hp:settings-u', { fallback: 0 });
+let settingsPulled: Promise<void> | null = null;
+
+/** Раз на сторінку: підтягнути налаштування з інших пристроїв, якщо вони новіші. */
+function pullSettingsOnce() {
+  settingsPulled ??= (async () => {
+    const rec = await pullSettings<ReaderSettings>();
+    if (rec && rec.u > (await settingsTimeItem.getValue())) {
+      await settingsItem.setValue(mergeSettings(rec.s));
+      await settingsTimeItem.setValue(rec.u);
+    }
+  })().catch(() => {});
+  return settingsPulled;
+}
+
 export async function getSettings(): Promise<ReaderSettings> {
+  await pullSettingsOnce();
   return mergeSettings(await settingsItem.getValue());
 }
 
 export async function updateSettings(fn: (s: ReaderSettings) => ReaderSettings) {
-  await settingsItem.setValue(fn(await getSettings()));
+  const next = fn(await getSettings());
+  const u = Date.now();
+  await settingsItem.setValue(next);
+  await settingsTimeItem.setValue(u);
+  pushSettings({ s: next, u });
 }
 
 export function useSettings(): ReaderSettings {
@@ -121,6 +143,8 @@ export interface Binding {
   misses: Record<string, number>;
   /** Пропозицію «відмітити 1–N за даними Hikka» відхилено для цього N. */
   hikkaDismissed?: number;
+  /** Коли користувач востаннє сам змінював вибір (джерело/ручна прив'язка/команда) — для синхронізації. */
+  u?: number;
 }
 
 const bindKey = (kind: ReadKind, slug: string) => `local:hp:bind2:${kind}:${slug}` as const;
@@ -133,10 +157,63 @@ export async function getBinding(kind: ReadKind, slug: string): Promise<Binding>
 
 let bindQueue: Promise<unknown> = Promise.resolve();
 
+/** Те, що синхронізується між пристроями: лише вибір користувача, не автопідбір. */
+function toBindRecord(b: Binding): BindRecord | null {
+  const m: NonNullable<BindRecord['m']> = {};
+  for (const [src, l] of Object.entries(b.links)) {
+    if (l?.manual) m[src] = l.url ? [l.remoteId, l.title, l.url] : [l.remoteId, l.title];
+  }
+  const t = Object.fromEntries(Object.entries(b.teams).filter(([, v]) => v));
+  if (!b.active && !Object.keys(m).length && !Object.keys(t).length) return null;
+  const rec: BindRecord = { u: b.u ?? 0 };
+  if (b.active) rec.a = b.active;
+  if (Object.keys(m).length) rec.m = m;
+  if (Object.keys(t).length) rec.t = t;
+  return rec;
+}
+
+const choiceDigest = (b: Binding) => JSON.stringify({ ...toBindRecord(b), u: 0 });
+
+/** Накласти новіший вибір з іншого пристрою на локальну прив'язку. */
+function applyBindRecord(b: Binding, rec: BindRecord): Binding {
+  const links: Binding['links'] = {};
+  // Автопідбір лишаємо, ручні прив'язки — як на іншому пристрої.
+  for (const [src, l] of Object.entries(b.links)) if (!l?.manual) links[src] = l;
+  for (const [src, [remoteId, title, url]] of Object.entries(rec.m ?? {})) {
+    links[src] = { remoteId, title, url, manual: true };
+  }
+  return { ...b, active: rec.a ?? null, links, teams: { ...rec.t }, u: rec.u };
+}
+
+/** Прив'язка з урахуванням вибору на інших пристроях (для відкриття тайтлу). */
+export async function getBindingSynced(kind: ReadKind, slug: string): Promise<Binding> {
+  const rec = await pullBind(kind, slug);
+  if (rec && rec.u > ((await getBinding(kind, slug)).u ?? 0)) {
+    await patchBinding(kind, slug, (b) => applyBindRecord(b, rec), { fromSync: true });
+  } else if (!rec) {
+    // Вибір зроблено до появи синхронізації — відправити його.
+    const local = await getBinding(kind, slug);
+    if (toBindRecord(local)) pushBind(kind, slug, async () => toBindRecord(await getBinding(kind, slug)));
+  }
+  return getBinding(kind, slug);
+}
+
 /** Записи йдуть по черзі: кілька джерел шукаються паралельно й не мають перетирати одне одного. */
-export function patchBinding(kind: ReadKind, slug: string, fn: (b: Binding) => Binding) {
+export function patchBinding(
+  kind: ReadKind,
+  slug: string,
+  fn: (b: Binding) => Binding,
+  opts?: { fromSync?: boolean },
+) {
   bindQueue = bindQueue
-    .then(async () => storage.setItem(bindKey(kind, slug), fn(await getBinding(kind, slug))))
+    .then(async () => {
+      const prev = await getBinding(kind, slug);
+      let next = fn(prev);
+      const changed = !opts?.fromSync && choiceDigest(prev) !== choiceDigest(next);
+      if (changed) next = { ...next, u: Date.now() };
+      await storage.setItem(bindKey(kind, slug), next);
+      if (changed) pushBind(kind, slug, async () => toBindRecord(await getBinding(kind, slug)));
+    })
     .catch(() => {});
   return bindQueue;
 }

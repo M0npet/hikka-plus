@@ -21,6 +21,7 @@
 - `src/sources/` — джерела (`ReadSource`), автопідбір (`match.ts`, `autoMatchBy` — спільний для нових джерел).
 - `src/core/hikka-auth.ts` + `hikka-api.ts` (лише background) — OAuth Hikka і PUT /read; `src/features/hikka-sync.ts`, `hikka-bar.tsx` — синхронізація лічильника.
 - `src/core/progress-sync.ts` — прогрес між пристроями через storage.sync (стисло, новіший перемагає).
+- `src/core/prefs-sync.ts` — вибір користувача між пристроями: прив'язки (`sync:hp:b:*` — активне джерело, ручні прив'язки, команди; автопідбір НЕ синхронізується, до 80 тайтлів) і налаштування читалки (`sync:hp:settings`). Поле `Binding.u` — час останнього вибору.
 - Збірка з клієнтом Hikka: `WXT_HIKKA_CLIENT_REFERENCE`/`WXT_HIKKA_CLIENT_SECRET` (`.env.local`, у CI — секрети репо `HIKKA_CLIENT_*`).
 - `src/core/store.ts` — налаштування, прив'язки (`hp:bind2:*`, по кожному джерелу + команди), прогрес
   (`hp:progress2:*`, ключ — номер розділу, щоб не губився при зміні джерела/команди).
