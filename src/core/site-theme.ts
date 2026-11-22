@@ -26,6 +26,8 @@ const VARS = [
   '--surface-inset',
   '--radius',
   '--destructive',
+  '--destructive-foreground',
+  '--destructive-border',
 ];
 
 export interface SiteTheme {

@@ -6,7 +6,9 @@ import { storage } from '#imports';
 import { syncOn } from '../core/sync-flag';
 
 /** Локальні ключі, яких не буває в копії: токен входу й службові стани. */
-const PRIVATE = new Set(['hp:hikkaToken', 'hp:authReturn', 'hp:hikkaError', 'hp:siteTheme']);
+const PRIVATE = new Set(['hp:hikkaToken', 'hp:authReturn', 'hp:hikkaError', 'hp:siteTheme', 'hp:hikkaSeen']);
+/** Які числа Hikka вже звіряли (автовідмітка 1–N) — скидається разом із прогресом, щоб Hikka знову відмітила. */
+const HIKKA_SEEN = 'local:hp:hikkaSeen' as const;
 const isOurs = (k: string) => k.startsWith('hp:') && !PRIVATE.has(k);
 
 const PROGRESS = { local: 'hp:progress2:', sync: 'hp:p:' };
@@ -79,7 +81,10 @@ async function removeByPrefix(p: { local: string; sync: string }) {
   await storage.removeItems(sync.map((k) => `sync:${k}` as const)).catch(() => {});
 }
 
-export const resetProgress = () => removeByPrefix(PROGRESS);
+export const resetProgress = async () => {
+  await removeByPrefix(PROGRESS);
+  await storage.removeItem(HIKKA_SEEN);
+};
 export const resetBindings = () => removeByPrefix(BINDINGS);
 
 /** Усе, крім входу в Hikka. */
@@ -88,4 +93,5 @@ export async function resetAll() {
   const sync = Object.keys(await snap('sync')).filter(isOurs);
   await storage.removeItems(local.map((k) => `local:${k}` as const));
   await storage.removeItems(sync.map((k) => `sync:${k}` as const)).catch(() => {});
+  await storage.removeItem(HIKKA_SEEN);
 }

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { storage } from '#imports';
 import { logoutHikka, authErrorItem } from '../core/hikka-auth';
 import { chapterKey } from '../core/store';
 import {
@@ -9,7 +10,7 @@ import {
   useHikkaAuth,
   useRemoteRead,
 } from './hikka-sync';
-import { markReadUpTo, maxReadLocal, type TitleState } from './title-state';
+import { markReadUpTo, maxReadLocal, titleStore, type TitleState } from './title-state';
 import { Button, Switch } from '../ui/kit';
 
 const STATUS: Record<string, string> = {
@@ -20,8 +21,25 @@ const STATUS: Record<string, string> = {
   dropped: 'Закинуто',
 };
 
-/** Числа Hikka, які вже звіряли з прогресом тут (`kind:slug:N`). */
-const seenHikkaN = new Set<string>();
+/**
+ * Яке число Hikka вже звіряли з прогресом тут (`kind:slug` → N). Зберігається, а не лише в пам'яті:
+ * інакше після F5 знята галочка повернулася б, якщо Hikka не зменшилась (вимкнене «Авто»).
+ */
+export const hikkaSeenItem = storage.defineItem<Record<string, number>>('local:hp:hikkaSeen', { fallback: {} });
+const SEEN_MAX = 500;
+
+/** Перший раз бачимо це число Hikka для тайтлу? Одразу запам'ятовує. */
+async function firstSeen(id: string, n: number): Promise<boolean> {
+  const seen = await hikkaSeenItem.getValue();
+  if (seen[id] === n) return false;
+  const next = { ...seen };
+  delete next[id];
+  next[id] = n; // в кінець — найсвіжіші; найстаріші відрізаємо
+  const keys = Object.keys(next);
+  for (const k of keys.slice(0, Math.max(0, keys.length - SEEN_MAX))) delete next[k];
+  await hikkaSeenItem.setValue(next);
+  return true;
+}
 
 /** Рядок синхронізації зі списком Hikka під прогресом тайтлу. */
 export function HikkaSyncBar({ state: s }: { state: TitleState }) {
@@ -50,10 +68,11 @@ export function HikkaSyncBar({ state: s }: { state: TitleState }) {
   // (а Hikka ще не встигла зменшитись), не повертаємо її.
   useEffect(() => {
     if (hikkaN <= 0) return;
-    const key = `${kind}:${slug}:${hikkaN}`;
-    if (seenHikkaN.has(key)) return;
-    seenHikkaN.add(key);
-    if (behind) void markReadUpTo(hikkaN);
+    void firstSeen(`${kind}:${slug}`, hikkaN).then((first) => {
+      // Поки читали сховище, користувач міг перейти на інший тайтл — відмічаємо лише той самий.
+      const cur = titleStore.get()?.page;
+      if (first && behind && cur?.kind === kind && cur.slug === slug) void markReadUpTo(hikkaN);
+    });
   }, [behind, kind, slug, hikkaN]);
 
   if (!auth.configured) return null;

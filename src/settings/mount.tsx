@@ -18,13 +18,15 @@ const THEME = `
 --secondary:oklch(96.7% .001 286);--secondary-foreground:oklch(21% .006 286);--muted:oklch(96.7% .001 286);
 --muted-foreground:oklch(55.2% .016 286);--accent:oklch(96.7% .001 286);--border:oklch(92% .004 286);--input:oklch(92% .004 286);
 --ring:oklch(70.5% .015 286);--surface:oklch(100% 0 0);
---primary:oklch(95% .034 343);--primary-foreground:oklch(50% .18 343);--primary-border:oklch(90% .063 343)}
+--primary:oklch(95% .034 343);--primary-foreground:oklch(50% .18 343);--primary-border:oklch(90% .063 343);
+--destructive:oklch(93% .055 16);--destructive-foreground:oklch(58.5% .21 27);--destructive-border:oklch(88.5% .09 17)}
 :root.dark{color-scheme:dark;
 --background:oklch(0% 0 0);--foreground:oklch(98.5% 0 0);--card:oklch(17% .006 286);--popover:oklch(14.2% .004 286);
 --secondary:oklch(27.5% .006 286);--secondary-foreground:oklch(98.5% 0 0);--muted:oklch(27.5% .006 286);
 --muted-foreground:oklch(71.3% .013 286);--accent:oklch(27.5% .006 286);--border:oklch(21.2% .004 286);--input:oklch(21.2% .004 286);
 --ring:oklch(55.6% .006 286);--surface:oklch(18.7% .006 286 / .45);
---primary:oklch(15.6% .007 343);--primary-foreground:oklch(72.2% .18 343);--primary-border:oklch(27.7% .068 343)}
+--primary:oklch(15.6% .007 343);--primary-foreground:oklch(72.2% .18 343);--primary-border:oklch(27.7% .068 343);
+--destructive:oklch(19.9% .064 23);--destructive-foreground:oklch(79.9% .116 18);--destructive-border:oklch(27% .103 26)}
 html,body{margin:0;background:var(--background)}`;
 
 export function mountSettings(mode: SettingsMode) {

@@ -87,7 +87,7 @@
   gap: 8px;
 }
 .hp-set__error {
-  color: var(--destructive, oklch(63.7% 0.237 25.3));
+  color: var(--hp-destructive);
   margin: 0;
 }
 .hp-set__msg {

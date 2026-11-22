@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { chapterKey, getProgress, posText, updateProgress, useSettings, type ChapterProgress } from '../../core/store';
 import { getSource } from '../../sources/registry';
 import { chapterLabel, type Chapter, type ChapterContent, type ContentFormat } from '../../sources/types';
-import { IconCheck, IconClose, IconExpand, IconExternal, IconLeft, IconList, IconRight, IconSettings } from '../../ui/icons';
+import { IconClose, IconExpand, IconExternal, IconLeft, IconList, IconRight, IconSettings } from '../../ui/icons';
 import { closeReader, moveReader } from '../reader-url';
-import { contentFormat, neighbor, setTeam, teamCounts, titleProgress, useReaderRequest, useTitleState } from '../title-state';
+import { contentFormat, neighbor, setChapterRead, setTeam, teamCounts, titleProgress, useReaderRequest, useTitleState } from '../title-state';
 import { SettingsPanel } from './settings-panel';
 import { Button, btn, Progress, Select } from '../../ui/kit';
 import { NovelView, PagedView, StripView } from './views';
+import { StatusRing } from '../../ui/status-ring';
 
 type Load =
   | { status: 'loading' }
@@ -513,7 +514,7 @@ function ChaptersPanel(props: {
   onPick: (c: Chapter) => void;
   onClose: () => void;
 }) {
-  const curRef = useRef<HTMLButtonElement>(null);
+  const curRef = useRef<HTMLDivElement>(null);
   useEffect(() => curRef.current?.scrollIntoView({ block: 'center' }), []);
   const pct = props.summary.total ? Math.round((props.summary.read / props.summary.total) * 100) : 0;
   return (
@@ -537,20 +538,34 @@ function ChaptersPanel(props: {
         {props.chapters.map((c) => {
           const cur = c.id === props.currentId;
           const p = props.progress[chapterKey(c.number)];
+          const read = !!p?.read;
+          const pos = p?.pos ?? 0;
+          // Як у блоці «Розділи»: кружечок ліворуч — відмітити прочитаним/непрочитаним, решта рядка — відкрити.
           return (
-            <button
+            <div
               key={c.id}
               ref={cur ? curRef : undefined}
-              type="button"
-              className={`hp-ch ${cur ? 'hp-ch--current' : p?.read ? 'hp-ch--read' : ''}`}
+              role="button"
+              tabIndex={0}
+              className={['hp-ch', read && 'hp-ch--read', cur && 'hp-ch--current'].filter(Boolean).join(' ')}
               aria-current={cur || undefined}
               onClick={() => props.onPick(c)}
+              onKeyDown={(e) => e.key === 'Enter' && props.onPick(c)}
             >
+              <button
+                type="button"
+                className={`hp-status ${read ? 'hp-status--read' : ''}`}
+                title={read ? 'Позначити непрочитаним' : 'Позначити прочитаним'}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void setChapterRead(c, !read);
+                }}
+              >
+                <StatusRing pos={pos} read={read} />
+              </button>
               <span className="hp-ellipsis hp-ch__title">{chapterLabel(c)}</span>
-              {p && !p.read && p.pos > 0.01 && <span className="hp-ch__pct">{posText(p)}</span>}
-              <span className="hp-grow" />
-              {p?.read && <IconCheck className="hp-icon hp-ch__done" />}
-            </button>
+              {!read && p && pos > 0.01 && <span className="hp-ch__pct">{posText(p)}</span>}
+            </div>
           );
         })}
       </div>
