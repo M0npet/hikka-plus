@@ -15,9 +15,11 @@ import {
   bindManually,
   continueTarget,
   overallStatus,
+  rejectNear,
   setActiveSource,
   setChapterRead,
   setTeam,
+  teamCounts,
   titleProgress,
   useTitleState,
   visibleChapters,
@@ -65,7 +67,9 @@ export function ChaptersBlock() {
       </Header>
 
       <div className="hp-card">
-        <SourceSwitcher state={s} searchFor={searchFor} onSearch={(id) => setBinding(id)} />
+        <SourceSwitcher state={s} searchFor={searchFor} onSearch={(id) => setBinding(id)} onCancel={() => setBinding(null)} />
+
+        <NearHints state={s} onBound={() => setBinding(null)} />
 
         {searchFor && <BindSearch key={searchFor} state={s} sourceId={searchFor} onDone={() => setBinding(null)} />}
 
@@ -86,16 +90,71 @@ export function ChaptersBlock() {
   );
 }
 
+/**
+ * «Схоже»: автопідбір не дотягнув до порогу, але є схожий тайтл (інша назва перекладу тощо).
+ * Прив'язується лише по кліку; «Ні» запам'ятовується для тайтлу.
+ */
+function NearHints({ state: s, onBound }: { state: TitleState; onBound: () => void }) {
+  const [all, setAll] = useState(false);
+  const list = sourcesFor(s.page.kind).flatMap((src) => {
+    const st = s.sources[src.id];
+    return st?.status === 'not-found' && st.near ? [{ src, near: st.near }] : [];
+  });
+  if (!list.length) return null;
+  const shown = all ? list : list.slice(0, 1);
+  return (
+    <div className="hp-col hp-near">
+      {shown.map(({ src, near }) => (
+        <div key={src.id} className="hp-hikka hp-hikka--offer">
+          <span className="hp-grow hp-small">
+            Схоже: {src.name} — «
+            {near.url ? (
+              <a className="hp-near__link" href={near.url} target="_blank" rel="noreferrer" title="Відкрити на сайті">
+                {near.title}
+              </a>
+            ) : (
+              near.title
+            )}
+            »
+          </span>
+          <Button
+            variant="default"
+            size="sm"
+            title={`Читати «${near.title}» з ${src.name} для цього тайтлу`}
+            onClick={() => {
+              onBound();
+              void bindManually(src, near);
+            }}
+          >
+            Прив'язати
+          </Button>
+          <Button variant="ghost" size="sm" title="Це інший тайтл — більше не пропонувати" onClick={() => void rejectNear(src.id)}>
+            Ні
+          </Button>
+        </div>
+      ))}
+      {list.length > 1 && (
+        <Button variant="ghost" size="sm" className="hp-near__more" onClick={() => setAll(!all)}>
+          {all ? 'Згорнути' : `ще ${list.length - 1}`}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 /** Перемикач джерел: назва + кількість розділів або статус пошуку. */
 function SourceSwitcher({
   state: s,
   searchFor,
   onSearch,
+  onCancel,
 }: {
   state: TitleState;
   /** Режим ручного пошуку: плашки обирають, ДЕ шукати (замість окремого списку). */
   searchFor: string | null;
   onSearch: (id: string) => void;
+  /** Вийти з ручного пошуку. */
+  onCancel: () => void;
 }) {
   const all = sourcesFor(s.page.kind);
   const isFound = (id: string) => {
@@ -142,8 +201,10 @@ function SourceSwitcher({
       onPick={(id) => {
         const st = s.sources[id];
         const found = st && st.status !== 'not-found' && st.status !== 'searching';
-        if (searchFor || !found) onSearch(id);
-        else void setActiveSource(id);
+        // Знайдене джерело — завжди до його розділів (і з ручного пошуку теж); ненайдене — шукати вручну.
+        if (!found) return onSearch(id);
+        onCancel();
+        if (id !== s.activeId) void setActiveSource(id);
       }}
       options={list.map((src) => {
         const st = s.sources[src.id];
@@ -164,10 +225,10 @@ function SourceSwitcher({
           label: src.name,
           count,
           off: !found,
-          title: searchFor
-            ? `Шукати на ${src.name}`
-            : found
-              ? `Читати з ${src.name}`
+          title: found
+            ? `Читати з ${src.name}`
+            : searchFor
+              ? `Шукати на ${src.name}`
               : `Не знайдено на ${src.name} — шукати вручну`,
         };
       })}
@@ -182,10 +243,9 @@ function ChapterList({ state: s }: { state: TitleState }) {
   const team = activeTeam(s);
   const chapters = visibleChapters(s);
 
-  const teams = useMemo(
-    () => [...new Set(all.map((c) => c.team).filter((t): t is string => !!t))],
-    [all],
-  );
+  // Команди й скільки розділів переклала кожна.
+  const counts = useMemo(() => teamCounts(all), [all]);
+  const teams = [...counts.keys()];
 
   const shown = useMemo(() => {
     const q = query.trim().replace(',', '.').toLowerCase();
@@ -255,8 +315,8 @@ function ChapterList({ state: s }: { state: TitleState }) {
             value={team}
             onChange={(v) => void setTeam(v)}
             options={[
-              { value: '', label: 'Усі команди', hint: String(teams.length) },
-              ...teams.map((t) => ({ value: t, label: t })),
+              { value: '', label: 'Усі команди', hint: String(new Set(all.map((c) => chapterKey(c.number))).size) },
+              ...teams.map((t) => ({ value: t, label: t, hint: String(counts.get(t)) })),
             ]}
           />
         )}

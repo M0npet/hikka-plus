@@ -10,6 +10,7 @@ import { loadTitle, readerStore, resetTitle } from '@/src/features/title-state';
 import { AUTH_PATH } from '@/src/core/hikka-auth';
 import { finishHikkaLogin } from '@/src/features/hikka-sync';
 import { initSourcePrefs, watchSourcePrefs } from '@/src/core/source-prefs';
+import { trackSiteTheme } from '@/src/core/site-theme';
 
 export default defineContentScript({
   matches: ['https://hikka.io/*'],
@@ -25,6 +26,8 @@ export default defineContentScript({
       await finishHikkaLogin();
       return;
     }
+    // Тема й акцент Hikka — щоб вікно налаштувань розширення виглядало так само.
+    trackSiteTheme((fn) => ctx.onInvalidated(fn));
     // Увімкнені джерела та їх порядок (вікно налаштувань розширення).
     await initSourcePrefs();
     // Стан тайтлу береться з поточного шляху. Перевіряємо його ідемпотентно з кількох місць:

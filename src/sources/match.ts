@@ -36,6 +36,40 @@ export function bestSimilarity(a: string[], b: string[]): number {
   return Math.min(best, 1);
 }
 
+/** Поріг автопідбору й нижня межа для підказки «Схоже». */
+export const MATCH_MIN = 0.8;
+export const NEAR_MIN = 0.45;
+
+// Найкращий кандидат, що не дотягнув до автопідбору: джерело → тайтл Hikka → кандидат.
+const nearMisses = new WeakMap<object, Map<string, RemoteTitle>>();
+
+/**
+ * Підсумок автопідбору: ≥ `min` — знайдено; інакше кандидат ≥ NEAR_MIN запам'ятовується
+ * для підказки «Схоже» (забрати — `takeNearMiss`). Прив'язується він лише по кліку.
+ */
+export function settleMatch(
+  src: object,
+  title: HikkaTitle,
+  best: { t: RemoteTitle; score: number } | null,
+  min = MATCH_MIN,
+): RemoteTitle | null {
+  if (best && best.score >= min) return best.t;
+  if (best && best.score >= NEAR_MIN) {
+    let m = nearMisses.get(src);
+    if (!m) nearMisses.set(src, (m = new Map()));
+    m.set(`${title.kind}:${title.slug}`, best.t);
+  }
+  return null;
+}
+
+export function takeNearMiss(src: object, title: HikkaTitle): RemoteTitle | null {
+  const m = nearMisses.get(src);
+  const key = `${title.kind}:${title.slug}`;
+  const t = m?.get(key) ?? null;
+  m?.delete(key);
+  return t;
+}
+
 /**
  * Типовий автопідбір: спершу посилання на джерело в блоці «Читати» на Hikka,
  * потім пошук за кількома назвами й вибір найсхожішої (≥ 0.8).
@@ -61,8 +95,13 @@ export async function autoMatchBy(
     }
   }
   const names = titleNames(title);
+  // Укр. сайти шукають переважно за українською назвою, а вона в Hikka буває й лише в синонімах
+  // («Коли я переродився слизом» при основній «Про моє переродження в слиз») — тож спершу всі
+  // кириличні назви (до 3), потім англійська й оригінальна.
+  const cyr = names.filter((n) => /[а-яіїєґ]/i.test(n));
+  const queries = [...cyr.slice(0, 3), ...names.filter((n) => !cyr.includes(n)).slice(0, 2)];
   let best: { t: RemoteTitle; score: number } | null = null;
-  for (const q of names.slice(0, 3)) {
+  for (const q of queries) {
     let found: RemoteTitle[];
     // Без розділових знаків: пошук деяких сайтів (Honey) нічого не знаходить за «I'm the …».
     const query = q.replace(/[^\p{L}\p{N}]+/gu, ' ').trim() || q;
@@ -78,7 +117,7 @@ export async function autoMatchBy(
     }
     if (best && best.score >= 0.98) break;
   }
-  return best && best.score >= 0.8 ? best.t : null;
+  return settleMatch(src, title, best);
 }
 
 /** Номер розділу для сортування. */

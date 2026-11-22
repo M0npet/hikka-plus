@@ -6,7 +6,7 @@ import { storage } from '#imports';
 import { syncOn } from '../core/sync-flag';
 
 /** Локальні ключі, яких не буває в копії: токен входу й службові стани. */
-const PRIVATE = new Set(['hp:hikkaToken', 'hp:authReturn', 'hp:hikkaError']);
+const PRIVATE = new Set(['hp:hikkaToken', 'hp:authReturn', 'hp:hikkaError', 'hp:siteTheme']);
 const isOurs = (k: string) => k.startsWith('hp:') && !PRIVATE.has(k);
 
 const PROGRESS = { local: 'hp:progress2:', sync: 'hp:p:' };

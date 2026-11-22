@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { chapterKey, getProgress, posText, updateProgress, useSettings, type ChapterProgress } from '../../core/store';
 import { getSource } from '../../sources/registry';
 import { chapterLabel, type Chapter, type ChapterContent, type ContentFormat } from '../../sources/types';
 import { IconCheck, IconClose, IconExpand, IconExternal, IconLeft, IconList, IconRight, IconSettings } from '../../ui/icons';
 import { closeReader, moveReader } from '../reader-url';
-import { contentFormat, neighbor, setTeam, titleProgress, useReaderRequest, useTitleState } from '../title-state';
+import { contentFormat, neighbor, setTeam, teamCounts, titleProgress, useReaderRequest, useTitleState } from '../title-state';
 import { SettingsPanel } from './settings-panel';
 import { Button, btn, Progress, Select } from '../../ui/kit';
 import { NovelView, PagedView, StripView } from './views';
@@ -52,6 +52,8 @@ export function Reader() {
   // Той самий розділ від інших команд — для вибору, у кого читати.
   const versions = chapter ? all.filter((c) => chapterKey(c.number) === chapterKey(chapter.number) && c.team) : [];
   const teamChoice = new Set(versions.map((c) => c.team)).size > 1;
+  // Скільки розділів у кожної команди — підказка у виборі «у кого читати».
+  const counts = useMemo(() => teamCounts(all), [all]);
   const pickTeam = (t: string) => {
     const c = versions.find((v) => v.team === t);
     if (!c || c.id === chapter?.id) return;
@@ -349,7 +351,7 @@ export function Reader() {
             title="Команда перекладу цього розділу"
             value={chapter.team}
             onChange={pickTeam}
-            options={versions.map((v) => ({ value: v.team!, label: v.team! }))}
+            options={[...new Set(versions.map((v) => v.team!))].map((t) => ({ value: t, label: t, hint: String(counts.get(t) ?? '') }))}
           />
         )}
         <span className="hp-small hp-muted hp-tnum hp-bar__pct">

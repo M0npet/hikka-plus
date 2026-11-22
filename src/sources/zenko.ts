@@ -2,7 +2,7 @@ import type { HikkaTitle } from '../core/hikka';
 import { titleNames } from '../core/hikka';
 import { getJson } from '../core/net';
 import type { ReadKind } from '../core/page';
-import { bestSimilarity } from './match';
+import { bestSimilarity, settleMatch } from './match';
 import type {
   Chapter,
   ChapterContent,
@@ -127,7 +127,7 @@ export const zenko: ReadSource = {
       }
       if (best && best.score >= 0.98) break;
     }
-    return best && best.score >= 0.8 ? best.t : null;
+    return settleMatch(this, title, best);
   },
 
   async getTitle(id) {

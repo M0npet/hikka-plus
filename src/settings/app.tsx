@@ -366,12 +366,14 @@ function DataSection({ mode }: { mode: SettingsMode }) {
           <Button
             variant="secondary"
             size="sm"
+            title="Відкриється у вкладці: з маленького вікна браузер не дає вибрати файл"
             onClick={() => {
               void browser.tabs.create({ url: `${browser.runtime.getURL('/options.html')}#data` });
               window.close();
             }}
           >
-            Відновити з файлу…
+            Відновити з файлу
+            <IconExternal />
           </Button>
         )}
       </div>

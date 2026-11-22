@@ -154,6 +154,45 @@ export async function setHikkaChapters(kind: ReadKind, slug: string, n: number, 
   }
 }
 
+/**
+ * Зменшити лічильник у Hikka до `n` (ручне зняття «прочитано»). Лише вниз і лише якщо тайтл уже
+ * у списку; «Прочитано» стає «Читаю». Скидання прогресу в налаштуваннях Hikka НЕ чіпає.
+ */
+export async function lowerHikkaChapters(kind: ReadKind, slug: string, n: number) {
+  n = Math.max(0, Math.floor(n));
+  if (!(await autoSyncItem.getValue()) || !(await tokenItem.getValue())) return;
+  // Відмітка «прочитано» ще чекала в черзі — вона застаріла.
+  const key = `${kind}:${slug}`;
+  const prev = pending.get(key);
+  if (prev) {
+    clearTimeout(prev.timer);
+    pending.delete(key);
+  }
+  const cur = await getRead(kind, slug);
+  if (!cur.ok) {
+    if (cur.error === 'auth') await authErrorItem.setValue('Вхід у Hikka закінчився — увійди ще раз.');
+    return;
+  }
+  const base = cur.data as HikkaRead;
+  if (base.chapters <= n) return;
+  const wasDone = base.status === 'completed';
+  const next: HikkaRead = {
+    ...base,
+    chapters: n,
+    status: wasDone ? 'reading' : base.status,
+    end_date: wasDone ? null : base.end_date,
+  };
+  const res = await putRead(kind, slug, next);
+  if (res.ok) {
+    if (isCur(kind, slug)) setRemote({ kind, slug, status: 'ok', read: res.data as HikkaRead });
+    notifyHikkaReadChanged(slug);
+  } else {
+    await authErrorItem.setValue(
+      res.error === 'auth' ? 'Вхід у Hikka закінчився — увійди ще раз.' : `Не вдалося оновити Hikka: ${res.message}`,
+    );
+  }
+}
+
 // Дочитування кількох розділів поспіль зводимо в один запит.
 const pending = new Map<string, { n: number; total: number | null; timer: ReturnType<typeof setTimeout> }>();
 

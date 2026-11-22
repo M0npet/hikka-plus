@@ -7,14 +7,16 @@ import {
   getBindingSynced,
   getProgress,
   patchBinding,
+  type SourceLink,
   syncProgress,
   updateProgress,
   watchProgress,
   type Progress,
 } from '../core/store';
 import { getSource, sourcesFor } from '../sources/registry';
+import { takeNearMiss } from '../sources/match';
 import { renumberByVolume, type Chapter, type ContentFormat, type ReadSource, type RemoteTitle } from '../sources/types';
-import { loadRemoteRead, queueHikkaChapters, resetRemoteRead } from './hikka-sync';
+import { loadRemoteRead, lowerHikkaChapters, queueHikkaChapters, resetRemoteRead } from './hikka-sync';
 
 /**
  * Спільний стан поточного тайтлу: його читають кнопка «Читати»,
@@ -26,6 +28,8 @@ export interface SourceState {
   manual?: boolean;
   chapters: Chapter[];
   error?: string;
+  /** Не знайдено, але є схожий тайтл — підказка «Схоже» (прив'язка лише по кліку). */
+  near?: RemoteTitle;
 }
 
 export interface TitleState {
@@ -82,6 +86,21 @@ export function visibleChapters(s: TitleState): Chapter[] {
   const all = activeState(s)?.chapters ?? [];
   const team = activeTeam(s);
   return team ? all.filter((c) => c.team === team) : all;
+}
+
+/**
+ * Скільки розділів у кожної команди перекладу (унікальні номери — частини розділу не рахуються
+ * двічі). Порядок — як команди трапляються у списку.
+ */
+export function teamCounts(list: Chapter[]): Map<string, number> {
+  const sets = new Map<string, Set<string>>();
+  for (const c of list) {
+    if (!c.team) continue;
+    let set = sets.get(c.team);
+    if (!set) sets.set(c.team, (set = new Set()));
+    set.add(chapterKey(c.number));
+  }
+  return new Map([...sets].map(([t, set]) => [t, set.size]));
 }
 
 /** Загальний статус для кнопки/блоку. */
@@ -156,6 +175,14 @@ function patch(token: number, fn: (s: TitleState) => TitleState) {
   titleStore.set(fn(cur));
 }
 
+const linkToRemote = (l: SourceLink, kind: TitlePage['kind']): RemoteTitle => ({
+  id: l.remoteId,
+  title: l.title,
+  altTitles: [],
+  format: kind === 'novel' ? 'novel' : 'manga',
+  url: l.url ?? '',
+});
+
 const setSource = (token: number, id: string, p: Partial<SourceState>) =>
   patch(token, (s) => ({
     ...s,
@@ -163,7 +190,7 @@ const setSource = (token: number, id: string, p: Partial<SourceState>) =>
   }));
 
 async function loadChapters(token: number, source: ReadSource, remote: RemoteTitle, manual: boolean) {
-  setSource(token, source.id, { status: 'loading', remote, manual, chapters: [], error: undefined });
+  setSource(token, source.id, { status: 'loading', remote, manual, chapters: [], error: undefined, near: undefined });
   try {
     const chapters = renumberByVolume(await source.getChapters(remote.id));
     setSource(token, source.id, { status: 'ready', chapters });
@@ -254,23 +281,20 @@ export async function loadTitle(page: TitlePage) {
     sourcesFor(kind).map(async (source) => {
       const link = binding.links[source.id];
       if (link) {
-        const remote: RemoteTitle = {
-          id: link.remoteId,
-          title: link.title,
-          altTitles: [],
-          format: kind === 'novel' ? 'novel' : 'manga',
-          url: link.url ?? '',
-        };
         pickActive(token);
-        return loadChapters(token, source, remote, link.manual);
+        return loadChapters(token, source, linkToRemote(link, kind), link.manual);
       }
-      if (link === null && Date.now() - (binding.misses[source.id] ?? 0) < MISS_TTL) {
-        setSource(token, source.id, { status: 'not-found', chapters: [] });
+      // binding.near ще немає — «не знайдено» записане до підказки «Схоже» (до 0.4.4): шукаємо знову.
+      if (link === null && binding.near && Date.now() - (binding.misses[source.id] ?? 0) < MISS_TTL) {
+        const near = binding.near?.[source.id];
+        setSource(token, source.id, { status: 'not-found', chapters: [], near: near ? linkToRemote(near, kind) : undefined });
         pickActive(token);
         return;
       }
       setSource(token, source.id, { status: 'searching', chapters: [] });
       const remote = await source.autoMatch(hikka).catch(() => null);
+      let near = remote ? null : takeNearMiss(source, hikka);
+      if (near && near.id === binding.nearNo?.[source.id]) near = null;
       if (token !== loadToken) return;
       await patchBinding(kind, slug, (b) => ({
         ...b,
@@ -279,9 +303,10 @@ export async function loadTitle(page: TitlePage) {
           [source.id]: remote ? { remoteId: remote.id, title: remote.title, url: remote.url, manual: false } : null,
         },
         misses: { ...b.misses, [source.id]: remote ? 0 : Date.now() },
+        near: withNear(b.near, source.id, near),
       }));
       if (!remote) {
-        setSource(token, source.id, { status: 'not-found', chapters: [] });
+        setSource(token, source.id, { status: 'not-found', chapters: [], near: near ?? undefined });
         pickActive(token);
         return;
       }
@@ -320,6 +345,13 @@ export async function setTeam(team: string) {
   await patchBinding(s.page.kind, s.page.slug, (b) => ({ ...b, teams }));
 }
 
+function withNear(cur: Record<string, SourceLink> | undefined, id: string, t: RemoteTitle | null) {
+  const next = { ...cur };
+  if (t) next[id] = { remoteId: t.id, title: t.title, url: t.url, manual: false };
+  else delete next[id];
+  return next;
+}
+
 /** Ручна прив'язка до знайденого тайтлу; джерело стає активним. */
 export async function bindManually(source: ReadSource, remote: RemoteTitle) {
   const s = titleStore.get();
@@ -329,20 +361,54 @@ export async function bindManually(source: ReadSource, remote: RemoteTitle) {
     ...b,
     active: source.id,
     links: { ...b.links, [source.id]: { remoteId: remote.id, title: remote.title, url: remote.url, manual: true } },
+    near: withNear(b.near, source.id, null),
   }));
   titleStore.set({ ...s, activeId: source.id, activeChosen: true });
   await loadChapters(loadToken, source, remote, true);
 }
 
+/** Підказка «Схоже» → «Ні»: прибрати й більше не пропонувати цей тайтл для цього джерела. */
+export async function rejectNear(sourceId: string) {
+  const s = titleStore.get();
+  const st = s?.sources[sourceId];
+  const near = st?.near;
+  if (!s || !st || !near) return;
+  titleStore.set({ ...s, sources: { ...s.sources, [sourceId]: { ...st, near: undefined } } });
+  await patchBinding(s.page.kind, s.page.slug, (b) => ({
+    ...b,
+    near: withNear(b.near, sourceId, null),
+    nearNo: { ...b.nearNo, [sourceId]: near.id },
+  }));
+}
+
 /** Відмітити розділ прочитаним / непрочитаним вручну. */
-export function setChapterRead(c: Chapter, read: boolean) {
+export async function setChapterRead(c: Chapter, read: boolean) {
   const s = titleStore.get();
   if (!s) return;
+  const { kind, slug } = s.page;
   const key = chapterKey(c.number);
-  return updateProgress(s.page.kind, s.page.slug, (p) => ({
-    ...p,
-    chapters: { ...p.chapters, [key]: { pos: read ? 1 : 0, read, at: Date.now() } },
-  }));
+  let next: Progress | null = null;
+  await updateProgress(kind, slug, (p) => {
+    next = { ...p, chapters: { ...p.chapters, [key]: { pos: read ? 1 : 0, read, at: Date.now() } } };
+    return next;
+  });
+  // Зняв галочку → у Hikka номер останнього розділу, прочитаного поспіль від початку.
+  if (!read && next) {
+    const n = readRunBefore(next, Number.parseFloat(key));
+    if (n !== null) void lowerHikkaChapters(kind, slug, n);
+  }
+}
+
+/**
+ * Скільки розділів прочитано поспіль до непрочитаного `num` (ціле; додаткові «5.5» лічильник Hikka
+ * не рахує — null). Ідемо вниз, поки розділ тут явно непрочитаний; розділ без запису вважаємо
+ * прочитаним (його могли прочитати деінде) — інакше одна зняла галочка обнулила б Hikka.
+ */
+function readRunBefore(p: Progress, num: number): number | null {
+  if (!Number.isInteger(num) || num < 1) return null;
+  let n = num - 1;
+  while (n > 0 && p.chapters[String(n)]?.read === false) n--;
+  return n;
 }
 
 /** Найбільший номер розділу, який став прочитаним у `next` порівняно з `prev` (0 — нічого). */

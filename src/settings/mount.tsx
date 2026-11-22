@@ -1,12 +1,14 @@
 import { createRoot } from 'react-dom/client';
 import baseCss from '@/entrypoints/content/style.css?inline';
+import { siteThemeItem, type SiteTheme } from '../core/site-theme';
 import { ThemeRoot } from '../ui/kit';
 import { SettingsApp, type SettingsMode } from './app';
 import setCss from './settings.css?inline';
 
 /**
  * Вікно налаштувань малюємо в Shadow DOM з тими самими стилями, що й на сайті (:host + hp-*),
- * щоб не дублювати CSS. Темна/світла — за системною темою (сторінки Hikka тут немає);
+ * щоб не дублювати CSS. Тема й кольори — як на Hikka у користувача (запам'ятовує content script,
+ * `core/site-theme.ts`); поки hikka.io не відкривали — системна тема з палітрою Hikka за замовчуванням.
  * ThemeRoot стежить за класом dark на <html>, як і на сайті.
  */
 // Палітра Hikka за замовчуванням (на сайті ці змінні задає сама Hikka; тут сторінки Hikka немає).
@@ -29,10 +31,22 @@ export function mountSettings(mode: SettingsMode) {
   const vars = document.createElement('style');
   vars.textContent = THEME;
   document.head.append(vars);
+  const html = document.documentElement;
   const mq = matchMedia('(prefers-color-scheme: light)');
-  const applyTheme = () => document.documentElement.classList.toggle('dark', !mq.matches);
+  let site: SiteTheme | null = null;
+  const applyTheme = () => {
+    html.classList.toggle('dark', site ? site.dark : !mq.matches);
+    html.removeAttribute('style');
+    for (const [k, v] of Object.entries(site?.vars ?? {})) html.style.setProperty(k, v);
+  };
   applyTheme();
   mq.addEventListener('change', applyTheme);
+  const useSite = (t: SiteTheme | null) => {
+    site = t && typeof t === 'object' && t.vars ? t : null;
+    applyTheme();
+  };
+  void siteThemeItem.getValue().then(useSite);
+  siteThemeItem.watch(useSite);
 
   const host = document.getElementById('app')!;
   const shadow = host.attachShadow({ mode: 'open' });

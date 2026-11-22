@@ -1016,6 +1016,18 @@ select {
   background: var(--hp-tint-bg);
 }
 
+.hp-near {
+  gap: 8px;
+}
+.hp-near__link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.hp-near__more {
+  align-self: flex-start;
+}
+
 /* ---------- «Також є на …» ---------- */
 
 .hp-links {
