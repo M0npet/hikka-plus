@@ -64,7 +64,7 @@ export function ChaptersBlock() {
         </button>
       </div>
 
-      <SourceSwitcher state={s} onSearch={(id) => setBinding(id)} />
+      <SourceSwitcher state={s} searchFor={searchFor} onSearch={(id) => setBinding(id)} />
 
       {searchFor && <BindSearch key={searchFor} state={s} sourceId={searchFor} onDone={() => setBinding(null)} />}
 
@@ -85,10 +85,19 @@ export function ChaptersBlock() {
 }
 
 /** Перемикач джерел: назва + кількість розділів або статус пошуку. */
-function SourceSwitcher({ state: s, onSearch }: { state: TitleState; onSearch: (id: string) => void }) {
+function SourceSwitcher({
+  state: s,
+  searchFor,
+  onSearch,
+}: {
+  state: TitleState;
+  /** Режим ручного пошуку: плашки обирають, ДЕ шукати (замість окремого списку). */
+  searchFor: string | null;
+  onSearch: (id: string) => void;
+}) {
   const list = sourcesFor(s.page.kind);
   return (
-    <div className="hp-sources" role="group" aria-label="Джерело">
+    <div className="hp-sources" role="group" aria-label={searchFor ? 'Де шукати' : 'Джерело'}>
       {list.map((src) => {
         const st = s.sources[src.id];
         const found = st && st.status !== 'not-found' && st.status !== 'searching';
@@ -108,9 +117,15 @@ function SourceSwitcher({ state: s, onSearch }: { state: TitleState; onSearch: (
             key={src.id}
             type="button"
             className={`hp-src ${found ? '' : 'hp-src--off'}`}
-            aria-pressed={s.activeId === src.id}
-            title={found ? `Читати з ${src.name}` : `Шукати на ${src.name} вручну`}
-            onClick={() => (found ? void setActiveSource(src.id) : onSearch(src.id))}
+            aria-pressed={searchFor ? searchFor === src.id : s.activeId === src.id}
+            title={
+              searchFor
+                ? `Шукати на ${src.name}`
+                : found
+                  ? `Читати з ${src.name}`
+                  : `Не знайдено на ${src.name} — шукати вручну`
+            }
+            onClick={() => (searchFor || !found ? onSearch(src.id) : void setActiveSource(src.id))}
           >
             {src.name}
             {info && <small>{info}</small>}
@@ -302,8 +317,7 @@ function ChapterRow(props: {
 }
 
 function BindSearch({ state: s, sourceId, onDone }: { state: TitleState; sourceId: string; onDone: () => void }) {
-  const sources = sourcesFor(s.page.kind);
-  const [srcId, setSrcId] = useState(sourceId);
+  const srcId = sourceId;
   const [query, setQuery] = useState(() => (s.hikka ? (titleNames(s.hikka)[0] ?? '') : ''));
   const [results, setResults] = useState<RemoteTitle[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -337,6 +351,9 @@ function BindSearch({ state: s, sourceId, onDone }: { state: TitleState; sourceI
           Автоматично не знайшов цей тайтл на українських джерелах. Знайди його вручну — прив'язка запам'ятається.
         </p>
       )}
+      <p className="hp-small hp-muted" style={{ margin: '0 0 10px' }}>
+        Шукаю на <b className="hp-fg">{source?.name}</b>. Інше джерело — обери плашкою вище.
+      </p>
       <form
         className="hp-row"
         onSubmit={(e) => {
@@ -344,14 +361,13 @@ function BindSearch({ state: s, sourceId, onDone }: { state: TitleState; sourceI
           void run();
         }}
       >
-        <select className="hp-select" value={srcId} onChange={(e) => setSrcId(e.target.value)}>
-          {sources.map((x) => (
-            <option key={x.id} value={x.id}>
-              {x.name}
-            </option>
-          ))}
-        </select>
-        <input className="hp-input hp-grow" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input
+          className="hp-input hp-grow"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={`Назва на ${source?.name ?? 'джерелі'}`}
+          aria-label={`Пошук на ${source?.name ?? 'джерелі'}`}
+        />
         <button type="submit" className="hp-btn" disabled={busy}>
           {busy ? 'Шукаю…' : 'Шукати'}
         </button>

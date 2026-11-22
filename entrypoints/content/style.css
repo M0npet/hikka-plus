@@ -696,6 +696,15 @@ input[type='range'] {
 }
 .hp-src--off {
   color: var(--hp-muted-fg);
+  /* «немає»: пунктир — видно, що тут не читаємо, але можна шукати вручну. */
+  border-style: dashed;
+}
+.hp-src--off[aria-pressed='true'] {
+  border-style: solid;
+}
+.hp-fg {
+  color: var(--hp-fg);
+  font-weight: 500;
 }
 .hp-src small {
   font-size: 12px;
