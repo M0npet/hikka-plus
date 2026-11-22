@@ -65,13 +65,17 @@ jobs:
       - name: Підпис Firefox (AMO unlisted)
         if: startsWith(github.ref, 'refs/tags/v') && env.AMO_API_KEY != ''
         run: |
+          # Зайві пробіли/переноси при копіюванні ключів ламають підпис JWT («Error decoding signature»).
+          KEY="$(printf '%s' "$AMO_API_KEY" | tr -d '[:space:]')"
+          SECRET="$(printf '%s' "$AMO_API_SECRET" | tr -d '[:space:]')"
+          echo "Довжина ключа: ${#KEY} (має бути на кшталт user:12345678:123), секрету: ${#SECRET} (зазвичай 64)"
           npx --yes web-ext@10 sign \
             --source-dir .output/firefox-mv2 \
             --artifacts-dir .output/signed \
             --channel unlisted \
             --upload-source-code "$(ls .output/*-sources.zip)" \
-            --api-key "$AMO_API_KEY" \
-            --api-secret "$AMO_API_SECRET" \
+            --api-key "$KEY" \
+            --api-secret "$SECRET" \
             --approval-timeout 900000
           ls -l .output/signed
 
