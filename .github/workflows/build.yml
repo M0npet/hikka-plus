@@ -40,6 +40,10 @@ jobs:
           fi
 
       - name: Збірка й архіви
+        env:
+          # Клієнт OAuth Hikka (Налаштування → Застосунки на hikka.io). Без них синхронізація з Hikka просто прихована.
+          WXT_HIKKA_CLIENT_REFERENCE: ${{ secrets.HIKKA_CLIENT_REFERENCE }}
+          WXT_HIKKA_CLIENT_SECRET: ${{ secrets.HIKKA_CLIENT_SECRET }}
         run: |
           npm run zip
           npm run zip:firefox

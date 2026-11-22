@@ -7,6 +7,8 @@ import { ReadButton } from '@/src/features/read-button';
 import { Reader } from '@/src/features/reader/reader';
 import { initReaderUrl } from '@/src/features/reader-url';
 import { loadTitle, readerStore, resetTitle } from '@/src/features/title-state';
+import { AUTH_PATH } from '@/src/core/hikka-auth';
+import { finishHikkaLogin } from '@/src/features/hikka-sync';
 
 export default defineContentScript({
   matches: ['https://hikka.io/*'],
@@ -15,6 +17,11 @@ export default defineContentScript({
 
   async main(ctx) {
     console.info('[Hikka Plus] content script запущено', browser.runtime.getManifest().version);
+    // Повернення з підтвердження входу на Hikka.
+    if (location.pathname === AUTH_PATH) {
+      await finishHikkaLogin();
+      return;
+    }
     const syncPage = () => {
       const page = parseTitlePage();
       if (page) void loadTitle(page);

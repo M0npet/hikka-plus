@@ -5,6 +5,7 @@ import { getSource, sourcesFor } from '../sources/registry';
 import type { Chapter, ReadSource, RemoteTitle } from '../sources/types';
 import { IconExternal, IconLink, IconSearch, IconSort } from '../ui/icons';
 import { openReader } from './reader-url';
+import { HikkaSyncBar } from './hikka-bar';
 import {
   activeSource,
   activeState,
@@ -165,6 +166,7 @@ function ChapterList({ state: s }: { state: TitleState }) {
         <div className="hp-progress">
           <div style={{ width: `${pct}%` }} />
         </div>
+        <HikkaSyncBar state={s} />
       </div>
 
       <div className="hp-toolbar">

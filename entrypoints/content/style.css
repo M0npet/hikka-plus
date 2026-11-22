@@ -11,12 +11,17 @@
   --hp-popover: var(--popover, oklch(14.2% 0.004 286));
   --hp-primary: var(--primary, oklch(30% 0.05 343));
   --hp-primary-fg: var(--primary-foreground, oklch(72% 0.18 343));
+  --hp-primary-border: var(--primary-border, var(--hp-primary));
   --hp-secondary: var(--secondary, oklch(27.5% 0.006 286));
   --hp-secondary-fg: var(--secondary-foreground, oklch(98.5% 0 0));
   --hp-muted: var(--muted, oklch(27.5% 0.006 286));
   --hp-muted-fg: var(--muted-foreground, oklch(71.3% 0.013 286));
   --hp-accent: var(--accent, oklch(27.5% 0.006 286));
   --hp-border: var(--border, oklch(21.2% 0.004 286));
+  --hp-input: var(--input, var(--hp-border));
+  /* Поверхня карток Hikka (залежить від теми й кастомізації користувача). */
+  --hp-surface: var(--surface, color-mix(in oklch, var(--hp-card) 45%, transparent));
+  --hp-surface-inset: var(--surface-inset, var(--hp-muted));
   --hp-ring: var(--ring, oklch(55.6% 0.006 286));
   --hp-radius: var(--radius, 0.625rem);
 
@@ -24,7 +29,7 @@
   display: block;
   color: var(--hp-fg);
   /* Шрифт сайту (Geist); @font-face сторінки діє і в Shadow DOM. */
-  font-family: 'Geist Variable', Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font-geist, 'Geist Variable', Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);
   font-size: 16px;
   line-height: 1.5;
 }
@@ -80,6 +85,7 @@ select {
 .hp-btn--primary {
   background: var(--hp-primary);
   color: var(--hp-primary-fg);
+  box-shadow: inset 0 0 0 1px var(--hp-primary-border);
 }
 .hp-btn--primary:hover {
   background: color-mix(in oklch, var(--hp-primary) 85%, var(--hp-primary-fg) 15%);
@@ -103,7 +109,7 @@ select {
 .hp-select {
   height: 36px;
   padding: 0 10px;
-  border: 1px solid var(--hp-border);
+  border: 1px solid var(--hp-input);
   border-radius: var(--hp-radius);
   background: transparent;
   font-size: 14px;
@@ -194,7 +200,7 @@ select {
 .hp-card {
   border: 1px solid var(--hp-border);
   border-radius: var(--hp-radius);
-  background: color-mix(in oklch, var(--hp-card) 45%, transparent);
+  background: var(--hp-surface);
 }
 .hp-list {
   display: flex;
@@ -695,4 +701,27 @@ input[type='range'] {
   font-size: 12px;
   opacity: 0.75;
   font-weight: 400;
+}
+
+/* ---------- Синхронізація з Hikka ---------- */
+.hp-hikka {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.hp-hikka .hp-btn {
+  height: 30px;
+  padding: 0 10px;
+}
+.hp-hikka--offer {
+  padding: 8px 10px;
+  border-radius: var(--hp-radius);
+  background: var(--hp-primary);
+  color: var(--hp-primary-fg);
+  box-shadow: inset 0 0 0 1px var(--hp-primary-border);
+}
+.hp-hikka input[type='checkbox'] {
+  accent-color: var(--hp-primary-fg);
 }

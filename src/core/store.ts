@@ -1,6 +1,7 @@
 import { storage } from '#imports';
 import { useEffect, useState } from 'react';
 import type { ReadKind } from './page';
+import { pullProgress, schedulePush, watchSynced } from './progress-sync';
 
 // ---------- Налаштування читалки ----------
 
@@ -118,6 +119,8 @@ export interface Binding {
   teams: Record<string, string>;
   /** Коли джерело востаннє шукали й не знайшли (ms). */
   misses: Record<string, number>;
+  /** Пропозицію «відмітити 1–N за даними Hikka» відхилено для цього N. */
+  hikkaDismissed?: number;
 }
 
 const bindKey = (kind: ReadKind, slug: string) => `local:hp:bind2:${kind}:${slug}` as const;
@@ -178,9 +181,28 @@ export function updateProgress(kind: ReadKind, slug: string, fn: (p: Progress) =
     .then(async () => {
       const next = fn(await getProgress(kind, slug));
       await storage.setItem(progressKey(kind, slug), { ...next, updatedAt: Date.now() });
+      schedulePush(kind, slug, syncIo(kind, slug));
     })
     .catch(() => {});
   return queue;
+}
+
+/** Доступ до локального прогресу для синхронізації між пристроями. */
+function syncIo(kind: ReadKind, slug: string) {
+  return {
+    get: () => getProgress(kind, slug),
+    setRaw: (p: Progress) => {
+      queue = queue.then(() => storage.setItem(progressKey(kind, slug), p)).catch(() => {});
+      return queue as Promise<void>;
+    },
+  };
+}
+
+/** Підтягнути прогрес з інших пристроїв і стежити за ним (повертає функцію відписки). */
+export async function syncProgress(kind: ReadKind, slug: string): Promise<() => void> {
+  const io = syncIo(kind, slug);
+  await pullProgress(kind, slug, io);
+  return watchSynced(kind, slug, io);
 }
 
 export function watchProgress(kind: ReadKind, slug: string, cb: (p: Progress) => void) {

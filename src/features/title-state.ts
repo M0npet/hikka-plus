@@ -6,12 +6,14 @@ import {
   getBinding,
   getProgress,
   patchBinding,
+  syncProgress,
   updateProgress,
   watchProgress,
   type Progress,
 } from '../core/store';
 import { getSource, sourcesFor } from '../sources/registry';
 import type { Chapter, ContentFormat, ReadSource, RemoteTitle } from '../sources/types';
+import { loadRemoteRead, queueHikkaChapters, resetRemoteRead } from './hikka-sync';
 
 /**
  * Спільний стан поточного тайтлу: його читають кнопка «Читати»,
@@ -145,6 +147,7 @@ const MISS_TTL = 3 * 24 * 3600 * 1000; // «не знайдено» переві
 
 let loadToken = 0;
 let unwatch: (() => void) | null = null;
+let unwatchSync: (() => void) | null = null;
 
 function patch(token: number, fn: (s: TitleState) => TitleState) {
   const cur = titleStore.get();
@@ -189,6 +192,8 @@ export async function loadTitle(page: TitlePage) {
 
   const token = ++loadToken;
   unwatch?.();
+  unwatchSync?.();
+  unwatchSync = null;
   readerStore.set(null);
   const { kind, slug } = page;
   // Стан з'являється одразу, щоб блоки на сторінці показалися навіть до завантаження.
@@ -204,6 +209,10 @@ export async function loadTitle(page: TitlePage) {
   let binding: Awaited<ReturnType<typeof getBinding>>;
   try {
     binding = await getBinding(kind, slug);
+    // Спершу — прогрес з інших пристроїв (storage.sync), якщо він новіший.
+    const unsync = await syncProgress(kind, slug).catch(() => () => {});
+    if (token !== loadToken) return unsync();
+    unwatchSync = unsync;
     const progress = await getProgress(kind, slug);
     patch(token, (s) => ({
       ...s,
@@ -217,7 +226,15 @@ export async function loadTitle(page: TitlePage) {
     patch(token, (s) => ({ ...s, hikkaError: `Помилка сховища розширення: ${String(e)}` }));
     return;
   }
-  unwatch = watchProgress(kind, slug, (progress) => patch(token, (s) => ({ ...s, progress })));
+  unwatch = watchProgress(kind, slug, (progress) => {
+    const prev = titleStore.get();
+    if (token !== loadToken || !prev) return;
+    // Нові прочитані розділи → лічильник у списку Hikka.
+    const newly = maxReadNumber(progress, prev.progress);
+    if (newly > 0) void queueHikkaChapters(kind, slug, newly, prev.hikka?.chapters ?? null);
+    patch(token, (s) => ({ ...s, progress }));
+  });
+  void loadRemoteRead(kind, slug);
 
   let hikka: HikkaTitle;
   try {
@@ -272,9 +289,12 @@ export async function loadTitle(page: TitlePage) {
 }
 
 export function resetTitle() {
+  resetRemoteRead();
   loadToken++;
   unwatch?.();
   unwatch = null;
+  unwatchSync?.();
+  unwatchSync = null;
   readerStore.set(null);
   titleStore.set(null);
 }
@@ -319,4 +339,39 @@ export function setChapterRead(c: Chapter, read: boolean) {
     ...p,
     chapters: { ...p.chapters, [key]: { pos: read ? 1 : 0, read, at: Date.now() } },
   }));
+}
+
+/** Найбільший номер розділу, який став прочитаним у `next` порівняно з `prev` (0 — нічого). */
+function maxReadNumber(next: Progress, prev: Progress): number {
+  let max = 0;
+  for (const [k, c] of Object.entries(next.chapters)) {
+    if (!c.read || prev.chapters[k]?.read) continue;
+    const n = Number.parseFloat(k);
+    if (Number.isFinite(n)) max = Math.max(max, Math.floor(n));
+  }
+  return max;
+}
+
+/** Найбільший прочитаний номер розділу (для «Записати в Hikka»). */
+export function maxReadLocal(p: Progress): number {
+  return maxReadNumber(p, { last: null, chapters: {}, updatedAt: 0 });
+}
+
+/** Відмітити прочитаними всі розділи з номером ≤ n (з усіх знайдених джерел). */
+export function markReadUpTo(n: number) {
+  const s = titleStore.get();
+  if (!s) return;
+  const keys = new Set<string>();
+  for (const st of Object.values(s.sources))
+    for (const c of st.chapters) {
+      const num = Number.parseFloat(c.number.replace(',', '.'));
+      if (Number.isFinite(num) && num <= n) keys.add(chapterKey(c.number));
+    }
+  for (let i = 1; i <= n; i++) keys.add(String(i));
+  const at = Date.now();
+  return updateProgress(s.page.kind, s.page.slug, (p) => {
+    const chapters = { ...p.chapters };
+    for (const k of keys) if (!chapters[k]?.read) chapters[k] = { pos: 1, read: true, at };
+    return { ...p, chapters };
+  });
 }
