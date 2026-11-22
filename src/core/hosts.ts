@@ -8,6 +8,11 @@ export const API_HOSTS = [
   'https://api.zenko.online',
   'https://manga.in.ua',
   'https://baka.in.ua',
+  'https://data.api.honey-manga.com.ua',
+  'https://search.api.honey-manga.com.ua',
+  'https://uamanga.com',
+  'https://back.animesvit.com',
+  'https://dgmanga.app',
 ] as const;
 
 /** Хости, яким потрібен заголовок X-Requested-With (AJAX-ендпоінти DLE). */

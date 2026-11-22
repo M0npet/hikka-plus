@@ -1,3 +1,5 @@
+import { titleNames, type HikkaTitle } from '../core/hikka';
+import type { RemoteTitle } from './types';
 /** Нормалізація назви для порівняння: нижній регістр, лише літери й цифри. */
 export function normalize(s: string): string {
   return s
@@ -33,3 +35,50 @@ export function bestSimilarity(a: string[], b: string[]): number {
   for (const x of a) for (const y of b) best = Math.max(best, similarity(x, y));
   return Math.min(best, 1);
 }
+
+/**
+ * Типовий автопідбір: спершу посилання на джерело в блоці «Читати» на Hikka,
+ * потім пошук за кількома назвами й вибір найсхожішої (≥ 0.8).
+ */
+export async function autoMatchBy(
+  src: {
+    search(q: string, kind: HikkaTitle['kind']): Promise<RemoteTitle[]>;
+    getTitle(id: string): Promise<RemoteTitle>;
+  },
+  title: HikkaTitle,
+  linkRe?: RegExp,
+): Promise<RemoteTitle | null> {
+  if (linkRe) {
+    for (const ext of title.external) {
+      const m = ext.url.match(linkRe);
+      if (m?.[1]) {
+        try {
+          return await src.getTitle(decodeURIComponent(m[1]));
+        } catch {
+          /* посилання застаріло — шукаємо за назвою */
+        }
+      }
+    }
+  }
+  const names = titleNames(title);
+  let best: { t: RemoteTitle; score: number } | null = null;
+  for (const q of names.slice(0, 3)) {
+    let found: RemoteTitle[];
+    try {
+      found = await src.search(q, title.kind);
+    } catch {
+      continue;
+    }
+    for (const t of found.slice(0, 10)) {
+      let score = bestSimilarity([t.title, ...t.altTitles], names);
+      if (title.year && t.year && Math.abs(title.year - t.year) > 1) score -= 0.15;
+      if (!best || score > best.score) best = { t, score };
+    }
+    if (best && best.score >= 0.98) break;
+  }
+  return best && best.score >= 0.8 ? best.t : null;
+}
+
+/** Номер розділу для сортування. */
+export const chapterNum = (s: string | null | undefined) =>
+  s == null ? 0 : Number.parseFloat(String(s).replace(',', '.')) || 0;
