@@ -6,6 +6,7 @@ import type { Chapter, ReadSource, RemoteTitle } from '../sources/types';
 import { IconExternal, IconLink, IconSearch, IconSort } from '../ui/icons';
 import { openReader } from './reader-url';
 import { HikkaSyncBar } from './hikka-bar';
+import { ExternalLinks } from './external-links';
 import {
   activeSource,
   activeState,
@@ -78,6 +79,7 @@ export function ChaptersBlock() {
         <div className="hp-card hp-state">{s.hikkaError ?? act?.error ?? 'Помилка завантаження'}</div>
       )}
       {!searchFor && status === 'ready' && <ChapterList state={s} />}
+      <ExternalLinks state={s} />
     </section>
   );
 }

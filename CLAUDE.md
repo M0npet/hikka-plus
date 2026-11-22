@@ -6,7 +6,7 @@
 
 ## Рішення MK (не порушувати)
 - Усе вбудовано в сайт і в його стилі; блок розділів і кнопка — на сторінці тайтлу, читалка — оверлей.
-- Джерела — **тільки українські**: Zenko, manga.in.ua, baka.in.ua, Honey Manga, UAManga, DGManga, Animesvit, Смаколики, Runi. Захист читалки (токени, nonce, Referer) не обходимо — такі сайти лише посиланням. Повний список сайтів і чому деякі не підключені — `claude/sources-ua.md` у claude.ai-проєкті. Senkuro — лише зразок UX.
+- Джерела — **тільки українські**: Zenko, manga.in.ua, baka.in.ua, Honey Manga, UAManga, DGManga, Animesvit, Смаколики, Runi. Захист читалки (токени, nonce, Referer) не обходимо — такі сайти лише посиланням: `src/sources/links.ts` (Mangra — точно за `hikkaSlug`, FAUST і Mangarama — публічний пошук, Dengeki — посилання на пошук; спершу завжди посилання з блоку «Читати» на Hikka), UI — `src/features/external-links.tsx`. Повний список сайтів і чому деякі не підключені — `claude/sources-ua.md` у claude.ai-проєкті. Senkuro — лише зразок UX.
 - Без власного сервера. Віддалено можна оновлювати лише дані (JSON), не код (політики AMO/CWS).
 - Не заважати Hikka Features і Hikka Forge: тільки свій Shadow DOM з тегами `hikka-plus-*`,
   класи `hp-*`, чужий DOM не змінювати, клавіші перехоплювати лише при відкритій читалці.
@@ -16,6 +16,7 @@
 ## Структура
 - `entrypoints/background.ts` — fetch за allowlist (`src/core/hosts.ts`), CORS обходимо тут.
 - `entrypoints/content/` — монтування блоків (`src/core/mount.ts`, self-healing для SPA), стилі `style.css`.
+  Зміну сторінки в SPA перевіряти за `location.pathname` ідемпотентно: подія `wxt:locationchange` (Navigation API) приходить ДО оновлення адреси.
 - `src/features/title-state.ts` — спільний стан тайтлу (кнопка, блок, читалка).
 - `src/sources/` — джерела (`ReadSource`), автопідбір (`match.ts`, `autoMatchBy` — спільний для нових джерел).
 - `src/core/hikka-auth.ts` + `hikka-api.ts` (лише background) — OAuth Hikka і PUT /read; `src/features/hikka-sync.ts`, `hikka-bar.tsx` — синхронізація лічильника.

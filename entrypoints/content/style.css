@@ -725,3 +725,12 @@ input[type='range'] {
 .hp-hikka input[type='checkbox'] {
   accent-color: var(--hp-primary-fg);
 }
+
+/* «Також є на …» — посилання на сайти із захищеною читалкою. */
+.hp-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}

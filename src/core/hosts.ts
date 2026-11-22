@@ -15,6 +15,10 @@ export const API_HOSTS = [
   'https://dgmanga.app',
   'https://runi.ink',
   'https://api.smakolykytl.site',
+  // Джерела-посилання (лише пошук тайтлу, без читання).
+  'https://mangra.app',
+  'https://faust-web.com',
+  'https://mangarama.com.ua',
 ] as const;
 
 /** Хости, яким потрібен заголовок X-Requested-With (AJAX-ендпоінти DLE). */

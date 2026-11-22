@@ -8,21 +8,25 @@ const TIMEOUT_MS = 20_000;
 const MAX_FORM = 32_768;
 
 async function handle(msg: FetchRequest): Promise<FetchResponse> {
-  if (!isAllowedUrl(msg.url) || (msg.form?.length ?? 0) > MAX_FORM) {
+  if (!isAllowedUrl(msg.url) || (msg.form?.length ?? 0) > MAX_FORM || (msg.json?.length ?? 0) > MAX_FORM) {
     return { ok: false, status: 0, body: '', error: 'URL не в списку дозволених' };
   }
   const url = new URL(msg.url);
   const headers = new Headers({ Accept: 'application/json, text/html, */*' });
   if (XHR_HOSTS.has(url.host)) headers.set('X-Requested-With', 'XMLHttpRequest');
   const post = msg.method === 'POST';
-  if (post) headers.set('Content-Type', 'application/x-www-form-urlencoded;charset=UTF-8');
+  if (post)
+    headers.set(
+      'Content-Type',
+      msg.json !== undefined ? 'application/json' : 'application/x-www-form-urlencoded;charset=UTF-8',
+    );
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       method: post ? 'POST' : 'GET',
-      body: post ? (msg.form ?? '') : undefined,
+      body: post ? (msg.json ?? msg.form ?? '') : undefined,
       headers,
       credentials: 'omit',
       signal: ctrl.signal,

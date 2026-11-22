@@ -22,7 +22,13 @@ export default defineContentScript({
       await finishHikkaLogin();
       return;
     }
+    // Стан тайтлу береться з поточного шляху. Перевіряємо його ідемпотентно з кількох місць:
+    // подія WXT про зміну адреси (через Navigation API) приходить ДО того, як location оновився,
+    // тож самої події мало — додатково звіряємо шлях після мутацій DOM і раз на пів секунди.
+    let lastPath: string | null = null;
     const syncPage = () => {
+      if (location.pathname === lastPath) return;
+      lastPath = location.pathname;
       const page = parseTitlePage();
       if (page) void loadTitle(page);
       else resetTitle();
@@ -57,10 +63,20 @@ export default defineContentScript({
     });
     syncPage();
     mounter.start();
-    ctx.addEventListener(window, 'wxt:locationchange', () => {
+    const onNav = () => {
       syncPage();
       mounter.schedule();
+    };
+    ctx.addEventListener(window, 'wxt:locationchange', () => {
+      // Адреса ще стара — перевіряємо після того, як навігація завершиться.
+      setTimeout(onNav, 0);
+      setTimeout(onNav, 150);
     });
+    ctx.addEventListener(window, 'popstate', onNav);
+    const pathObs = new MutationObserver(syncPage);
+    pathObs.observe(document.body, { childList: true, subtree: true });
+    ctx.onInvalidated(() => pathObs.disconnect());
+    ctx.setInterval(onNav, 500);
 
     // Читалка — оверлей, відкривається на запит із кнопки/блоку.
     let removeReader: (() => void) | null = null;
