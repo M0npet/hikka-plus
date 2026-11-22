@@ -48,6 +48,8 @@ jobs:
         with:
           name: hikka-plus-${{ github.sha }}
           path: .output/*.zip
+          # Тестові збірки довго не тримаємо — бережемо безкоштовні 500 MB сховища.
+          retention-days: 14
 
       - name: Реліз
         if: startsWith(github.ref, 'refs/tags/v')
