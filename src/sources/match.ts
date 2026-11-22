@@ -100,8 +100,14 @@ export async function autoMatchBy(
   // кириличні назви (до 3), потім англійська й оригінальна.
   const cyr = names.filter((n) => /[а-яіїєґ]/i.test(n));
   const queries = [...cyr.slice(0, 3), ...names.filter((n) => !cyr.includes(n)).slice(0, 2)];
+  // Запасні запити — частина назви: пошук деяких сайтів (NovelHub) шукає фразу цілком, тож інший
+  // переклад («Сходження Героя щита» ↔ «Становлення Героя Щита») знаходиться лише за «Героя щита».
+  // Ідуть, лише якщо повні назви не дали навіть кандидата для «Схоже».
+  const w = (cyr[0] ?? '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ');
+  const partial = w.length >= 3 ? [w.slice(-2).join(' '), w.slice(0, 2).join(' ')] : [];
   let best: { t: RemoteTitle; score: number } | null = null;
-  for (const q of queries) {
+  for (const q of [...queries, ...partial]) {
+    if (partial.includes(q) && ((best as { score: number } | null)?.score ?? 0) >= NEAR_MIN) break;
     let found: RemoteTitle[];
     // Без розділових знаків: пошук деяких сайтів (Honey) нічого не знаходить за «I'm the …».
     const query = q.replace(/[^\p{L}\p{N}]+/gu, ' ').trim() || q;

@@ -10,6 +10,8 @@
   --hp-card: var(--card, oklch(17% 0.006 286));
   --hp-popover: var(--popover, oklch(14.2% 0.004 286));
   --hp-primary: var(--primary, oklch(30% 0.05 343));
+  /* Небезпечні дії (скидання) — червоний Hikka (--destructive), як у shadcn. */
+  --hp-destructive: var(--destructive, oklch(57.7% 0.245 27.3));
   --hp-primary-fg: var(--primary-foreground, oklch(72% 0.18 343));
   --hp-primary-border: var(--primary-border, var(--hp-primary));
   --hp-secondary: var(--secondary, oklch(27.5% 0.006 286));
@@ -207,6 +209,23 @@ select {
 }
 .hp-btn--outline:hover {
   background: var(--hp-field-hover);
+}
+.hp-btn--destructive {
+  color: var(--hp-destructive);
+  border-color: color-mix(in oklab, var(--hp-destructive) 45%, transparent);
+  background: color-mix(in oklab, var(--hp-destructive) 12%, transparent);
+}
+.hp-btn--destructive:hover {
+  background: color-mix(in oklab, var(--hp-destructive) 22%, transparent);
+}
+/* Підтвердження («Точно? Натисни ще раз») — суцільна червона. */
+.hp-btn--destructive-solid {
+  color: #fff;
+  border-color: var(--hp-destructive);
+  background: var(--hp-destructive);
+}
+.hp-btn--destructive-solid:hover {
+  background: color-mix(in oklab, var(--hp-destructive) 85%, black);
 }
 .hp-btn--ghost:hover,
 .hp-btn--ghost[aria-pressed='true'] {
@@ -1135,6 +1154,13 @@ select {
   background: var(--hp-bg);
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
   animation: hp-slide-r 0.2s ease-out;
+}
+/* Панель лежить на фоні сторінки (чорному), а не на картці — рамка полів тут губиться, тож світліша. */
+.hp-panel .hp-input {
+  border-color: color-mix(in oklab, var(--hp-input), var(--hp-fg) 10%);
+}
+.hp-panel .hp-input:focus-visible {
+  border-color: var(--hp-ring);
 }
 .hp-panel--right {
   right: 0;

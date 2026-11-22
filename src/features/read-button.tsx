@@ -3,7 +3,7 @@ import { IconBook } from '../ui/icons';
 import { Button } from '../ui/kit';
 import { chapterNo } from '../sources/types';
 import { openReader } from './reader-url';
-import { continueTarget, overallStatus, titleProgress, useTitleState } from './title-state';
+import { continueTarget, overallStatus, titleProgress, useTitleState, visibleChapters } from './title-state';
 
 /** Кнопка в лівій колонці під «Додати у список»; прогрес тайтлу — смужка всередині кнопки. */
 export function ReadButton() {
@@ -14,6 +14,9 @@ export function ReadButton() {
   const target = status === 'ready' ? continueTarget(s) : null;
   const { read, total } = titleProgress(s);
   const started = !!s.progress.last || read > 0;
+  // Прочитано все — не пропонуємо «продовжити» з першого розділу; клік — перечитати з початку.
+  const allRead = status === 'ready' && total > 0 && read >= total;
+  const first = allRead ? visibleChapters(s)[0] : undefined;
   const cp = target ? s.progress.chapters[chapterKey(target.number)] : undefined;
   const pos = cp?.pos ?? 0;
 
@@ -22,6 +25,7 @@ export function ReadButton() {
   if (status === 'loading') sub = 'шукаю розділи…';
   else if (status === 'not-found') sub = 'не знайдено';
   else if (status === 'error') sub = 'помилка';
+  else if (allRead) label = 'Усе прочитано';
   else if (target) {
     label = started ? 'Продовжити' : 'Читати';
     sub = `Розділ ${chapterNo(target)}${cp && pos > 0.01 && pos < 0.985 ? ` · ${posText(cp, true)}` : ''}`;
@@ -36,8 +40,11 @@ export function ReadButton() {
         size="lg"
         className="hp-read"
         disabled={!target}
-        title={pct > 0 ? `Прочитано ${read} з ${total}` : undefined}
-        onClick={() => target && s.activeId && openReader({ sourceId: s.activeId, chapterId: target.id })}
+        title={allRead && first ? `Перечитати з розділу ${chapterNo(first)}` : pct > 0 ? `Прочитано ${read} з ${total}` : undefined}
+        onClick={() => {
+          const c = first ?? target;
+          if (c && s.activeId) openReader({ sourceId: s.activeId, chapterId: c.id });
+        }}
       >
         <IconBook />
         <span>{label}</span>

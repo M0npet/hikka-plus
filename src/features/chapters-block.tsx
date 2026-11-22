@@ -290,7 +290,11 @@ function ChapterList({ state: s }: { state: TitleState }) {
         <div className="hp-row hp-small">
           <span className="hp-grow">
             Прочитано <b>{read}</b> з {total}
-            {target && read > 0 && <span className="hp-muted"> · далі: розділ {chapterNo(target)}</span>}
+            {total > 0 && read >= total ? (
+              <span className="hp-muted"> · усе прочитано</span>
+            ) : (
+              target && read > 0 && <span className="hp-muted"> · далі: розділ {chapterNo(target)}</span>
+            )}
           </span>
           <span className="hp-muted hp-tnum">{pct}%</span>
         </div>
@@ -315,7 +319,8 @@ function ChapterList({ state: s }: { state: TitleState }) {
             value={team}
             onChange={(v) => void setTeam(v)}
             options={[
-              { value: '', label: 'Усі команди', hint: String(new Set(all.map((c) => chapterKey(c.number))).size) },
+              // «Усі команди» — скільки команд; у кожної команди — скільки в неї розділів.
+              { value: '', label: 'Усі команди', hint: String(teams.length) },
               ...teams.map((t) => ({ value: t, label: t, hint: String(counts.get(t)) })),
             ]}
           />

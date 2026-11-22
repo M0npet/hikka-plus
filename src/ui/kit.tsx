@@ -50,7 +50,7 @@ export function ThemeRoot({ children }: { children: ReactNode }) {
 
 /* ---------- Button ---------- */
 
-export type BtnVariant = 'default' | 'secondary' | 'outline' | 'ghost';
+export type BtnVariant = 'default' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'destructive-solid';
 export type BtnSize = 'lg' | 'md' | 'sm' | 'xs';
 
 export const btn = (variant: BtnVariant = 'secondary', size: BtnSize = 'md', icon = false, extra?: string) =>

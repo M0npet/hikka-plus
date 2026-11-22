@@ -164,6 +164,8 @@ export function continueTarget(s: TitleState): Chapter | null {
 // ---------- Завантаження ----------
 
 const MISS_TTL = 3 * 24 * 3600 * 1000; // «не знайдено» перевіряємо знову через 3 дні
+/** Версія автопідбору: збільшити, коли він став знаходити більше, — старі «не знайдено» перевіряться знову. */
+const MATCH_VERSION = 2;
 
 let loadToken = 0;
 let unwatch: (() => void) | null = null;
@@ -284,8 +286,8 @@ export async function loadTitle(page: TitlePage) {
         pickActive(token);
         return loadChapters(token, source, linkToRemote(link, kind), link.manual);
       }
-      // binding.near ще немає — «не знайдено» записане до підказки «Схоже» (до 0.4.4): шукаємо знову.
-      if (link === null && binding.near && Date.now() - (binding.misses[source.id] ?? 0) < MISS_TTL) {
+      // «Не знайдено» записане старішим автопідбором (до «Схоже» / запасних запитів) — шукаємо знову.
+      if (link === null && binding.nearV === MATCH_VERSION && Date.now() - (binding.misses[source.id] ?? 0) < MISS_TTL) {
         const near = binding.near?.[source.id];
         setSource(token, source.id, { status: 'not-found', chapters: [], near: near ? linkToRemote(near, kind) : undefined });
         pickActive(token);
@@ -304,6 +306,7 @@ export async function loadTitle(page: TitlePage) {
         },
         misses: { ...b.misses, [source.id]: remote ? 0 : Date.now() },
         near: withNear(b.near, source.id, near),
+        nearV: MATCH_VERSION,
       }));
       if (!remote) {
         setSource(token, source.id, { status: 'not-found', chapters: [], near: near ?? undefined });

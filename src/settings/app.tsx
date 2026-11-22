@@ -286,7 +286,7 @@ function ConfirmButton({ children, onConfirm }: { children: ReactNode; onConfirm
   }, [armed]);
   return (
     <Button
-      variant={armed ? 'default' : 'outline'}
+      variant={armed ? 'destructive-solid' : 'destructive'}
       size="sm"
       onClick={() => {
         if (!armed) return setArmed(true);
