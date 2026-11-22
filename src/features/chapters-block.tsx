@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { titleNames } from '../core/hikka';
 import { chapterKey } from '../core/store';
 import { getSource, sourcesFor } from '../sources/registry';
 import type { Chapter, ReadSource, RemoteTitle } from '../sources/types';
 import { IconExternal, IconLink, IconSearch, IconSort } from '../ui/icons';
-import { Button, btn, ChipTabs, Header, Progress, Select } from '../ui/kit';
+import { Button, btn, ChipMenu, ChipTabs, Header, Progress, Select } from '../ui/kit';
 import { openReader } from './reader-url';
 import { HikkaSyncBar } from './hikka-bar';
 import { ExternalLinks } from './external-links';
@@ -97,10 +97,47 @@ function SourceSwitcher({
   searchFor: string | null;
   onSearch: (id: string) => void;
 }) {
-  const list = sourcesFor(s.page.kind);
+  const all = sourcesFor(s.page.kind);
+  const isFound = (id: string) => {
+    const st = s.sources[id];
+    return !!st && st.status !== 'not-found' && st.status !== 'searching';
+  };
+  const size = (id: string) => new Set(s.sources[id]?.chapters.map((c) => chapterKey(c.number))).size;
+  // Звичайний режим: у ряду лише джерела, де тайтл знайшовся (більше розділів — лівіше),
+  // решта — у плашці «Ще N». Поки нічого не знайдено або йде ручний пошук — усі плашки.
+  const found = all
+    .filter((src) => (isFound(src.id) && s.sources[src.id]?.status !== 'error') || src.id === s.activeId).sort((a, b) => size(b.id) - size(a.id));
+  const compact = !searchFor && found.length > 0;
+  const list = compact ? found : all;
+  const rest = compact ? all.filter((src) => !found.includes(src)) : [];
+  const status = (id: string) => {
+    const st = s.sources[id];
+    return !st ? '' : st.status === 'searching' ? 'шукаю…' : st.status === 'error' ? 'помилка' : 'немає';
+  };
+  const restSearching = rest.some((src) => s.sources[src.id]?.status === 'searching');
   return (
     <ChipTabs
       label={searchFor ? 'Де шукати' : 'Джерело'}
+      extra={
+        rest.length > 0 && (
+          <ChipMenu
+            label={
+              <>
+                Ще {rest.length}
+                {restSearching && <span className="hp-chip__count">шукаю…</span>}
+              </>
+            }
+            title="Інші джерела — тайтл не знайдено автоматично"
+            items={rest.map((src) => ({
+              value: src.id,
+              label: src.name,
+              hint: status(src.id),
+              title: `Шукати на ${src.name} вручну`,
+            }))}
+            onPick={onSearch}
+          />
+        )
+      }
       value={searchFor ?? s.activeId}
       onPick={(id) => {
         const st = s.sources[id];
@@ -164,6 +201,23 @@ function ChapterList({ state: s }: { state: TitleState }) {
   const target = continueTarget(s);
   const lastKey = s.progress.last?.key;
 
+  // Список одразу на останньому відкритому розділі (або на тому, з якого продовжувати), щоб не гортати.
+  // Лише прокрутка всередині списку; повторюємо при зміні джерела, команди чи сортування,
+  // але не при кожному оновленні прогресу (інакше список стрибав би під час читання).
+  const listRef = useRef<HTMLDivElement>(null);
+  const focusKey = lastKey ?? (target ? chapterKey(target.number) : null);
+  const ready = shown.length > 0;
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || !focusKey || query) return;
+    const row = list.querySelector<HTMLElement>(`[data-key="${CSS.escape(focusKey)}"]`);
+    if (!row) return;
+    const lr = list.getBoundingClientRect();
+    const rr = row.getBoundingClientRect();
+    list.scrollTop += rr.top - lr.top - (list.clientHeight - rr.height) / 2;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.activeId, team, desc, ready]);
+
   if (!all.length) return <div className="hp-state">Розділів поки немає.</div>;
 
   const hasVolumes = chapters.some((c) => c.volume);
@@ -223,14 +277,14 @@ function ChapterList({ state: s }: { state: TitleState }) {
         </Button>
       </div>
 
-      <div className="hp-list" role="list">
+      <div ref={listRef} className="hp-list" role="list">
         {shown.length === 0 && <div className="hp-state">Нічого не знайдено.</div>}
         {shown.map((c) => {
           const volHead = hasVolumes && c.volume !== lastVol;
           lastVol = c.volume;
           const key = chapterKey(c.number);
           return (
-            <div key={c.id} role="listitem">
+            <div key={c.id} role="listitem" data-key={key}>
               {volHead && <div className="hp-vol">Том {c.volume ?? '—'}</div>}
               <ChapterRow
                 chapter={c}

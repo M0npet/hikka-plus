@@ -461,15 +461,85 @@ select {
 /* ---------- ChipTabs (components/ui/chip-tabs.tsx) ---------- */
 
 .hp-chips {
+  --hp-fade: linear-gradient(#000, #000);
   display: flex;
   gap: 8px;
   overflow-x: auto;
   scrollbar-width: none;
-  /* Затухання краю, коли ряд прокручується. */
-  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: var(--hp-fade);
 }
 .hp-chips::-webkit-scrollbar {
   display: none;
+}
+.hp-chipbox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.hp-chiprow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.hp-chiprow > .hp-chips {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.hp-menu {
+  position: relative;
+  flex: none;
+}
+.hp-chip__chev {
+  width: 14px;
+  height: 14px;
+  margin-right: -4px;
+  opacity: 0.6;
+}
+.hp-chip--menu[aria-expanded='true'] {
+  border-style: solid;
+  background: var(--hp-muted);
+}
+.hp-popover--end {
+  left: auto;
+  right: 0;
+  min-width: 240px;
+}
+/* Свій повзунок під рядом плашок (системний ховається на macOS і в Firefox тонкий). */
+.hp-hscroll {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--hp-muted-fg) 12%, transparent);
+  touch-action: none;
+}
+.hp-hscroll__thumb {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--hp-muted-fg) 45%, transparent);
+  background-clip: content-box;
+  border-block: 3px solid transparent;
+  cursor: grab;
+}
+.hp-hscroll__thumb:hover,
+.hp-hscroll__thumb[data-drag] {
+  background-color: var(--hp-muted-fg);
+}
+.hp-hscroll__thumb[data-drag] {
+  cursor: grabbing;
+}
+/* Затухання краю — лише з того боку, де є прихований вміст (клас ставить ChipTabs). */
+.hp-chips--fade-r {
+  --hp-fade: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.hp-chips--fade-l {
+  --hp-fade: linear-gradient(to right, transparent, #000 24px);
+}
+.hp-chips--fade-l.hp-chips--fade-r {
+  --hp-fade: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
 }
 .hp-chip {
   display: inline-flex;
@@ -488,7 +558,8 @@ select {
   cursor: pointer;
   transition: background-color 0.15s, color 0.15s;
 }
-.hp-chip:last-child {
+/* Запас під затухання — лише коли ряд прокручується, інакше «Ще N» стоїть одразу після плашок. */
+.hp-chips--over .hp-chip:last-child {
   margin-right: 24px;
 }
 .hp-chip:hover {

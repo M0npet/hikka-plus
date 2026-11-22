@@ -33,6 +33,8 @@ export function Reader() {
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<number | null>(null);
+  /** «Назад» з першої сторінки: попередній розділ відкриваємо з останньої сторінки. */
+  const atEndRef = useRef(false);
   const finishedRef = useRef(false);
   const saveTimer = useRef<number | undefined>(undefined);
   const lastTop = useRef(0);
@@ -67,10 +69,10 @@ export function Reader() {
 
   /** Зберегти позицію в розділі (і «прочитано», якщо дочитали). */
   const save = useCallback(
-    (p: number, forceRead = false) => {
+    (p: number, forceRead = false, keepRead = false) => {
       if (!s || !chapter || !source) return;
       const key = chapterKey(chapter.number);
-      const done = forceRead || p >= DONE_AT;
+      const done = !keepRead && (forceRead || p >= DONE_AT);
       void updateProgress(s.page.kind, s.page.slug, (pr) => {
         const prevCh = pr.chapters[key];
         return {
@@ -100,11 +102,21 @@ export function Reader() {
       // Відновлюємо місце, якщо розділ почали, але не дочитали.
       const pr = await getProgress(s.page.kind, s.page.slug);
       const cp = pr.chapters[chapterKey(chapter.number)];
-      restoreRef.current = cp && !cp.read && cp.pos > 0.01 && cp.pos < DONE_AT ? cp.pos : null;
+      const atEnd = atEndRef.current;
+      atEndRef.current = false;
+      restoreRef.current = atEnd ? null : cp && !cp.read && cp.pos > 0.01 && cp.pos < DONE_AT ? cp.pos : null;
       try {
         const content = await source.getContent(chapter);
         if (!alive) return;
         const r = restoreRef.current;
+        if (atEnd && content.type === 'images' && content.pages.length > 0) {
+          // Остання сторінка; сам перехід назад не відмічає розділ прочитаним.
+          setPage(content.pages.length - 1);
+          setPos(1);
+          setLoad({ status: 'ready', content });
+          save(1, false, true);
+          return;
+        }
         if (content.type === 'images') {
           const p = r != null ? Math.round(r * Math.max(0, content.pages.length - 1)) : 0;
           setPage(p);
@@ -171,7 +183,10 @@ export function Reader() {
         if (page + 1 < pageCount) setPageAndSave(page + 1);
         else goChapter(next);
       } else if (page > 0) setPageAndSave(page - 1);
-      else goChapter(prev);
+      else if (prev) {
+        atEndRef.current = true;
+        goChapter(prev);
+      }
       scrollRef.current?.scrollTo({ top: 0 });
     },
     [page, pageCount, next, prev, goChapter, setPageAndSave],
@@ -224,6 +239,8 @@ export function Reader() {
       let handled = true;
       switch (e.key) {
         case 'Escape':
+          // Відкритий список (Select) закривається сам — панель і читалку не чіпаємо.
+          if (e.defaultPrevented || rootRef.current?.querySelector('.hp-popover')) return;
           if (panel !== 'none') setPanel('none');
           else if (!document.fullscreenElement) closeReader();
           else handled = false;

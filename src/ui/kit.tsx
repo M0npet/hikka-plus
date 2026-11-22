@@ -12,6 +12,7 @@ import {
   type ButtonHTMLAttributes,
   type CSSProperties,
   type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 
@@ -134,11 +135,14 @@ export function ChipTabs({
   value,
   onPick,
   label,
+  extra,
 }: {
   options: Chip[];
   value: string | null;
   onPick: (v: string) => void;
   label: string;
+  /** Елемент після ряду (поза прокруткою, щоб його список не обрізався), напр. ChipMenu. */
+  extra?: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   // Активну плашку тримаємо у видимій частині ряду (лише по горизонталі).
@@ -151,22 +155,101 @@ export function ChipTabs({
     if (ar.right > r.right) row.scrollLeft += ar.right - r.right + 8;
     else if (ar.left < r.left) row.scrollLeft -= r.left - ar.left + 8;
   }, [value]);
+  // Затухання країв — лише коли ряд справді не вміщується і з того боку є що прокрутити.
+  const [fade, setFade] = useState({ l: false, r: false });
+  const [bar, setBar] = useState({ w: 100, x: 0 }); // бігунок повзунка, % ширини доріжки
+  useEffect(() => {
+    const row = ref.current;
+    if (!row) return;
+    const upd = () => {
+      const l = row.scrollLeft > 1;
+      const r = row.scrollLeft + row.clientWidth < row.scrollWidth - 1;
+      setFade((f) => (f.l === l && f.r === r ? f : { l, r }));
+      const w = (row.clientWidth / Math.max(1, row.scrollWidth)) * 100;
+      const x = (row.scrollLeft / Math.max(1, row.scrollWidth)) * 100;
+      setBar((b) => (Math.abs(b.w - w) < 0.1 && Math.abs(b.x - x) < 0.1 ? b : { w, x }));
+    };
+    // Колесо миші гортає ряд убік; на краю ряду прокрутка йде сторінці.
+    const onWheel = (e: WheelEvent) => {
+      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      const max = row.scrollWidth - row.clientWidth;
+      if (max <= 1) return;
+      const dy = e.deltaMode === 1 ? e.deltaY * 32 : e.deltaY;
+      if ((dy < 0 && row.scrollLeft <= 0) || (dy > 0 && row.scrollLeft >= max - 1)) return;
+      e.preventDefault();
+      row.scrollLeft += dy;
+    };
+    upd();
+    row.addEventListener('scroll', upd, { passive: true });
+    row.addEventListener('wheel', onWheel, { passive: false });
+    const ro = new ResizeObserver(upd);
+    ro.observe(row);
+    return () => {
+      row.removeEventListener('scroll', upd);
+      row.removeEventListener('wheel', onWheel);
+      ro.disconnect();
+    };
+  }, [options.length]);
+  // Перетягування бігунка: зсув миші → пропорційний зсув ряду.
+  const drag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const row = ref.current;
+    const track = e.currentTarget.parentElement;
+    if (!row || !track) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    el.dataset.drag = '';
+    const x0 = e.clientX;
+    const s0 = row.scrollLeft;
+    const k = row.scrollWidth / track.clientWidth;
+    const move = (m: PointerEvent) => {
+      row.scrollLeft = s0 + (m.clientX - x0) * k;
+    };
+    const up = () => {
+      delete el.dataset.drag;
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+  };
+  // Клік по доріжці — гортаємо майже на ширину ряду в той бік.
+  const jump = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const row = ref.current;
+    if (!row) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const dir = ((e.clientX - r.left) / r.width) * 100 < bar.x ? -1 : 1;
+    row.scrollBy({ left: dir * row.clientWidth * 0.8, behavior: 'smooth' });
+  };
   return (
-    <div ref={ref} className="hp-chips" role="tablist" aria-label={label}>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          role="tab"
-          aria-selected={o.value === value}
-          className={cx('hp-chip', o.off && 'hp-chip--off')}
-          title={o.title}
-          onClick={() => onPick(o.value)}
-        >
-          {o.label}
-          {o.count != null && o.count !== '' && <span className="hp-chip__count">{o.count}</span>}
-        </button>
-      ))}
+    <div className="hp-chipbox">
+      <div className="hp-chiprow">
+      <div ref={ref} className={cx('hp-chips', (fade.l || fade.r) && 'hp-chips--over', fade.l && 'hp-chips--fade-l', fade.r && 'hp-chips--fade-r')} role="tablist" aria-label={label}>
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            role="tab"
+            aria-selected={o.value === value}
+            className={cx('hp-chip', o.off && 'hp-chip--off')}
+            title={o.title}
+            onClick={() => onPick(o.value)}
+          >
+            {o.label}
+            {o.count != null && o.count !== '' && <span className="hp-chip__count">{o.count}</span>}
+          </button>
+        ))}
+      </div>
+        {extra}
+      </div>
+      {(fade.l || fade.r) && (
+        <div className="hp-hscroll" aria-hidden="true" onPointerDown={jump}>
+          <div className="hp-hscroll__thumb" style={{ left: `${bar.x}%`, width: `${bar.w}%` }} onPointerDown={drag} />
+        </div>
+      )}
     </div>
   );
 }
@@ -318,6 +401,19 @@ export function Select<T extends string>({
     };
   }, [open]);
 
+  // Esc закриває список, навіть якщо фокус не на кнопці (Firefox/macOS не фокусує кнопку кліком).
+  // Не зупиняємо подію: читалка сама пропускає Esc, поки список відкритий.
+  useEffect(() => {
+    if (!open) return;
+    const onEsc = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setOpen(false);
+    };
+    window.addEventListener('keydown', onEsc, true);
+    return () => window.removeEventListener('keydown', onEsc, true);
+  }, [open]);
+
   useEffect(() => {
     if (open) list.current?.querySelector(`[data-i="${active}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [open, active]);
@@ -330,8 +426,7 @@ export function Select<T extends string>({
       }
       return;
     }
-    if (e.key === 'Escape' || e.key === 'Tab') {
-      if (e.key === 'Escape') e.preventDefault();
+    if (e.key === 'Tab') {
       setOpen(false);
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -383,6 +478,114 @@ export function Select<T extends string>({
               onClick={() => pick(o.value)}
             >
               <Check on={o.value === value} />
+              <span className="hp-grow hp-ellipsis">{o.label}</span>
+              {o.hint && <span className="hp-option__hint">{o.hint}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- ChipMenu (плашка зі списком, напр. «Ще 6») ---------- */
+
+export type MenuItem = { value: string; label: string; hint?: string; title?: string };
+
+export function ChipMenu({
+  label,
+  items,
+  onPick,
+  title,
+}: {
+  label: ReactNode;
+  items: MenuItem[];
+  onPick: (v: string) => void;
+  title?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const wrap = useRef<HTMLDivElement>(null);
+  const id = useId();
+
+  // Закриття кліком поза списком і клавішею Esc (як у Select).
+  useEffect(() => {
+    if (!open || !wrap.current) return;
+    const root = wrap.current.getRootNode() as Document | ShadowRoot;
+    const inside = (e: Event) => wrap.current?.contains(e.target as Node);
+    const onRoot = (e: Event) => !inside(e) && setOpen(false);
+    const onDoc = (e: Event) => root instanceof ShadowRoot && e.target !== root.host && setOpen(false);
+    const onEsc = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setOpen(false);
+    };
+    root.addEventListener('pointerdown', onRoot, true);
+    if (root !== document) document.addEventListener('pointerdown', onDoc, true);
+    window.addEventListener('keydown', onEsc, true);
+    return () => {
+      root.removeEventListener('pointerdown', onRoot, true);
+      document.removeEventListener('pointerdown', onDoc, true);
+      window.removeEventListener('keydown', onEsc, true);
+    };
+  }, [open]);
+
+  const pick = (v: string) => {
+    setOpen(false);
+    onPick(v);
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (!open) {
+      if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) {
+        e.preventDefault();
+        setActive(0);
+        setOpen(true);
+      }
+      return;
+    }
+    if (e.key === 'Tab') setOpen(false);
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const d = e.key === 'ArrowDown' ? 1 : -1;
+      setActive((i) => Math.max(0, Math.min(items.length - 1, i + d)));
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      const o = items[active];
+      if (o) pick(o.value);
+    }
+  };
+
+  return (
+    <div ref={wrap} className="hp-menu">
+      <button
+        type="button"
+        className="hp-chip hp-chip--off hp-chip--menu"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={id}
+        title={title}
+        onClick={() => {
+          setActive(0);
+          setOpen((v) => !v);
+        }}
+        onKeyDown={onKey}
+      >
+        {label}
+        <svg className="hp-icon hp-chip__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div id={id} className="hp-popover hp-popover--end" role="menu">
+          {items.map((o, i) => (
+            <div
+              key={o.value}
+              role="menuitem"
+              title={o.title}
+              className={cx('hp-option', i === active && 'hp-option--active')}
+              onPointerEnter={() => setActive(i)}
+              onClick={() => pick(o.value)}
+            >
               <span className="hp-grow hp-ellipsis">{o.label}</span>
               {o.hint && <span className="hp-option__hint">{o.hint}</span>}
             </div>
