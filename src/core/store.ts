@@ -172,6 +172,11 @@ function toBindRecord(b: Binding): BindRecord | null {
   return rec;
 }
 
+/** Що відправити в sync: вибір, а якщо його скинули — порожній запис із часом скидання. */
+function toPushRecord(b: Binding): BindRecord | null {
+  return toBindRecord(b) ?? (b.u ? { u: b.u } : null);
+}
+
 const choiceDigest = (b: Binding) => JSON.stringify({ ...toBindRecord(b), u: 0 });
 
 /** Накласти новіший вибір з іншого пристрою на локальну прив'язку. */
@@ -212,7 +217,7 @@ export function patchBinding(
       const changed = !opts?.fromSync && choiceDigest(prev) !== choiceDigest(next);
       if (changed) next = { ...next, u: Date.now() };
       await storage.setItem(bindKey(kind, slug), next);
-      if (changed) pushBind(kind, slug, async () => toBindRecord(await getBinding(kind, slug)));
+      if (changed) pushBind(kind, slug, async () => toPushRecord(await getBinding(kind, slug)));
     })
     .catch(() => {});
   return bindQueue;

@@ -50,7 +50,7 @@ export function ExternalLinks({ state: s }: { state: TitleState }) {
 
   return (
     <div className="hp-links" aria-label="Інші сайти">
-      <span className="hp-small hp-muted">Також є на:</span>
+      {titles.length > 0 && <span className="hp-small hp-muted">Також є на:</span>}
       {titles.map((f) => (
         <a
           key={f.id}
@@ -65,6 +65,8 @@ export function ExternalLinks({ state: s }: { state: TitleState }) {
           <IconExternal />
         </a>
       ))}
+      {/* Пошук — не гарантія, що тайтл там є, тож окремим підписом. */}
+      {searches.length > 0 && <span className="hp-small hp-muted">Пошукати на:</span>}
       {searches.map((f) => (
         <a
           key={f.id}

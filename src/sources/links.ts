@@ -69,8 +69,11 @@ const mangra: LinkSource = {
   kinds: ['manga', 'novel'],
   async find(t) {
     const linked = fromHikka(t, /(^|\.)mangra\.app$/);
-    const rows = await mangraRows();
+    // Якщо список не завантажився — лишається хоча б посилання з Hikka.
+    const rows = await mangraRows().catch(() => [] as MangraRow[]);
     const exact = rows.find((r) => r.hikkaSlug === t.slug);
+    // Порядок довіри: hikkaSlug на Mangra → посилання з «Читати» на Hikka → збіг за назвою.
+    if (!exact && linked) return linked;
     const names = titleNames(t);
     const row =
       exact ??
@@ -78,7 +81,7 @@ const mangra: LinkSource = {
         .map((r) => ({ r, s: bestSimilarity([r.title, r.altTitle ?? ''].filter(Boolean), names) }))
         .filter((x) => x.s >= MIN_SCORE && !x.r.hikkaSlug)
         .sort((a, b) => b.s - a.s)[0]?.r;
-    if (!row) return linked;
+    if (!row) return null;
     return {
       url: `${MANGRA}/title/${row.slug}`,
       title: row.title,

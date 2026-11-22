@@ -49,12 +49,13 @@ export function pushBind(kind: ReadKind, slug: string, get: () => Promise<BindRe
   const key = bindSyncKey(kind, slug);
   debounce(key, async () => {
     const rec = await get();
+    if (!rec) return;
     const prev = await storage.getItem<BindRecord>(key);
-    if (prev && rec && prev.u >= rec.u) return;
-    if (!rec) {
-      if (prev) await storage.removeItem(key);
-      return;
-    }
+    if (prev && prev.u >= rec.u) return;
+    // Скинутий вибір пишемо як порожній запис із часом (а не видаляємо ключ),
+    // інакше інший пристрій вирішить, що запису немає, і поверне свій старий вибір.
+    const empty = !rec.a && !rec.m && !rec.t;
+    if (empty && !prev) return;
     if (!prev) await pruneBindings();
     await storage.setItem(key, rec);
   });
