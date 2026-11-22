@@ -6,7 +6,7 @@
 
 ## Рішення MK (не порушувати)
 - Усе вбудовано в сайт і в його стилі; блок розділів і кнопка — на сторінці тайтлу, читалка — оверлей.
-- Джерела — **тільки українські**: Zenko, manga.in.ua, baka.in.ua, Honey Manga, UAManga, DGManga, Animesvit, Смаколики, Runi. Захист читалки (токени, nonce, Referer) не обходимо — такі сайти лише посиланням: `src/sources/links.ts` (Mangra — точно за `hikkaSlug`, FAUST і Mangarama — публічний пошук, Dengeki — посилання на пошук; спершу завжди посилання з блоку «Читати» на Hikka), UI — `src/features/external-links.tsx`. Повний список сайтів і чому деякі не підключені — `claude/sources-ua.md` у claude.ai-проєкті. Senkuro — лише зразок UX.
+- Джерела — **тільки українські**: Zenko, manga.in.ua, baka.in.ua, Honey Manga, UAManga, DGManga, Animesvit, Смаколики, Runi, NovelHub (novel.org.ua; роботи 18+ сайт віддає лише після входу — не показуємо), FanVers (fan-vers.com, лише переклади), Wattpad (лише історії українською, language 46; платні — ні). Захист читалки (токени, nonce, Referer) не обходимо — такі сайти лише посиланням: `src/sources/links.ts` (Mangra — точно за `hikkaSlug`, FAUST і Mangarama — публічний пошук, Dengeki — посилання на пошук; спершу завжди посилання з блоку «Читати» на Hikka), UI — `src/features/external-links.tsx`. Повний список сайтів і чому деякі не підключені — `claude/sources-ua.md` у claude.ai-проєкті. Senkuro — лише зразок UX.
 - Без власного сервера. Віддалено можна оновлювати лише дані (JSON), не код (політики AMO/CWS).
 - Не заважати Hikka Features і Hikka Forge: тільки свій Shadow DOM з тегами `hikka-plus-*`,
   класи `hp-*`, чужий DOM не змінювати, клавіші перехоплювати лише при відкритій читалці.
@@ -20,6 +20,9 @@
 - `src/features/title-state.ts` — спільний стан тайтлу (кнопка, блок, читалка).
 - `src/sources/` — джерела (`ReadSource`), автопідбір (`match.ts`, `autoMatchBy` — спільний для нових джерел).
 - `src/core/hikka-auth.ts` + `hikka-api.ts` (лише background) — OAuth Hikka і PUT /read; `src/features/hikka-sync.ts`, `hikka-bar.tsx` — синхронізація лічильника.
+- `entrypoints/hikka-bridge.ts` — скрипт у контексті сторінки (`injectScript`, web_accessible лише для hikka.io): після нашого PUT /read подія `hikka-plus:read-changed` (`src/core/bridge.ts`) → `invalidateQueries` у QueryClient самої Hikka (знаходимо через дерево React) для запитів з `read` в `_id` — віджет «у списку» оновлюється без F5. DOM Hikka не змінюємо.
+- Вікно налаштувань: `entrypoints/popup` (по іконці) і `entrypoints/options` (вкладка) → `src/settings/` (`app.tsx` — розділи Джерела / Hikka / Читалка / Дані, `data.ts` — копія JSON і скидання без токена Hikka, `mount.tsx` — той самий `style.css` у Shadow DOM + палітра Hikka за системною темою). Поля читалки — спільні `NovelFields`/`MangaFields` з `reader/settings-panel.tsx`.
+- `src/core/source-prefs.ts` — увімкнені джерела й порядок (`local:hp:sources` + `sync:hp:sources`); `sourcesFor`/`linkSourcesFor` їх враховують, content script перезавантажує блок тайтлу при зміні. `src/core/sync-flag.ts` — вимикач синхронізації між пристроями (`local:hp:syncOn`), перевіряється в усіх pull/push.
 - `src/core/progress-sync.ts` — прогрес між пристроями через storage.sync (стисло, новіший перемагає).
 - `src/core/prefs-sync.ts` — вибір користувача між пристроями: прив'язки (`sync:hp:b:*` — активне джерело, ручні прив'язки, команди; автопідбір НЕ синхронізується, до 80 тайтлів) і налаштування читалки (`sync:hp:settings`). Поле `Binding.u` — час останнього вибору.
 - Збірка з клієнтом Hikka: `WXT_HIKKA_CLIENT_REFERENCE`/`WXT_HIKKA_CLIENT_SECRET` (`.env.local`, у CI — секрети репо `HIKKA_CLIENT_*`).

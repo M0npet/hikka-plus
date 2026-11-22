@@ -10,6 +10,8 @@ export default defineConfig({
       'Читалка ранобе та манґи прямо на сторінці тайтлу hikka.io. Неофіційне розширення.',
     permissions: ['storage'],
     host_permissions: ['https://hikka.io/*', ...API_HOSTS.map((h) => `${h}/*`)],
+    // Скрипт-міст у контексті сторінки (entrypoints/hikka-bridge.ts) — лише для hikka.io.
+    web_accessible_resources: [{ resources: ['hikka-bridge.js'], matches: ['https://hikka.io/*'] }],
     ...(browser === 'firefox' && {
       browser_specific_settings: {
         gecko: {

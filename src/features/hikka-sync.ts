@@ -15,6 +15,7 @@ import {
   tokenItem,
   type HikkaRead,
 } from '../core/hikka-auth';
+import { notifyHikkaReadChanged } from '../core/bridge';
 import type { ReadKind } from '../core/page';
 
 export const autoSyncItem = storage.defineItem<boolean>('local:hp:hikkaAutoSync', { fallback: true });
@@ -144,6 +145,8 @@ export async function setHikkaChapters(kind: ReadKind, slug: string, n: number, 
   const res = await putRead(kind, slug, next);
   if (res.ok) {
     if (isCur(kind, slug)) setRemote({ kind, slug, status: 'ok', read: res.data as HikkaRead });
+    // Віджет «у списку» на сторінці Hikka — оновити одразу, без F5.
+    notifyHikkaReadChanged(slug);
   } else {
     await authErrorItem.setValue(
       res.error === 'auth' ? 'Вхід у Hikka закінчився — увійди ще раз.' : `Не вдалося оновити Hikka: ${res.message}`,

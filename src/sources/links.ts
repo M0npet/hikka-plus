@@ -1,3 +1,4 @@
+import { sourcePrefs } from '../core/source-prefs';
 import { titleNames, type HikkaTitle } from '../core/hikka';
 import { getDoc, getJson, postJson } from '../core/net';
 import type { ReadKind } from '../core/page';
@@ -252,4 +253,5 @@ const dengeki: LinkSource = {
 };
 
 export const LINK_SOURCES: LinkSource[] = [mangra, faust, mangarama, mangaez, dengeki];
-export const linkSourcesFor = (kind: ReadKind) => LINK_SOURCES.filter((s) => s.kinds.includes(kind));
+export const linkSourcesFor = (kind: ReadKind) =>
+  LINK_SOURCES.filter((s) => s.kinds.includes(kind) && !sourcePrefs().off.includes(s.id));

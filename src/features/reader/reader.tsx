@@ -34,6 +34,8 @@ export function Reader() {
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<number | null>(null);
+  /** Куди ми самі прокрутили при відновленні позиції — такий стрибок не ховає панелі. */
+  const programmaticTop = useRef<number | null>(null);
   /** «Назад» з першої сторінки: попередній розділ відкриваємо з останньої сторінки. */
   const atEndRef = useRef(false);
   const finishedRef = useRef(false);
@@ -169,7 +171,11 @@ export function Reader() {
     el.addEventListener('touchstart', mark, { once: true });
     el.addEventListener('keydown', mark, { once: true });
     const apply = () => {
-      if (!userMoved) el.scrollTop = ratio * (el.scrollHeight - el.clientHeight);
+      if (userMoved) return;
+      const top = ratio * (el.scrollHeight - el.clientHeight);
+      if (Math.abs(el.scrollTop - top) < 1) return;
+      programmaticTop.current = top;
+      el.scrollTop = top;
     };
     const timers = [50, 400, 1200, 2500].map((t) => window.setTimeout(apply, t));
     return () => {
@@ -224,7 +230,10 @@ export function Reader() {
     const ratio = Math.min(1, top / max);
     setPos(ratio);
 
-    if (settings.autoHideBars && panel === 'none') {
+    // Стрибок від відновлення позиції — не прокрутка користувача: панелі лишаються.
+    const own = programmaticTop.current != null && Math.abs(top - programmaticTop.current) < 2;
+    programmaticTop.current = null;
+    if (settings.autoHideBars && panel === 'none' && !own) {
       if (top - lastTop.current > 12 && top > 80) setBarsHidden(true);
       else if (lastTop.current - top > 12) setBarsHidden(false);
     }

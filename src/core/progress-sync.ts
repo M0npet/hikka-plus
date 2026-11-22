@@ -10,6 +10,7 @@
 import { storage } from '#imports';
 import type { ReadKind } from './page';
 import type { Progress } from './store';
+import { syncOn } from './sync-flag';
 
 interface SyncRecord {
   r: string;
@@ -108,6 +109,7 @@ type Io = {
 /** Підтягнути запис із sync, якщо він новіший за локальний. */
 export async function pullProgress(kind: ReadKind, slug: string, io: Io) {
   try {
+    if (!(await syncOn())) return;
     const rec = await storage.getItem<SyncRecord>(syncKey(kind, slug));
     const local = await io.get();
     if (rec && rec.u > local.updatedAt) await io.setRaw(applyRecord(local, rec));
@@ -120,7 +122,7 @@ export async function pullProgress(kind: ReadKind, slug: string, io: Io) {
 /** Стежити за змінами з інших пристроїв, поки відкрита сторінка тайтлу. */
 export function watchSynced(kind: ReadKind, slug: string, io: Io) {
   return storage.watch<SyncRecord>(syncKey(kind, slug), async (rec) => {
-    if (!rec) return;
+    if (!rec || !(await syncOn())) return;
     const local = await io.get();
     if (rec.u > local.updatedAt) await io.setRaw(applyRecord(local, rec));
   });
@@ -141,6 +143,7 @@ export function schedulePush(kind: ReadKind, slug: string, io: Pick<Io, 'get'>) 
 }
 
 async function push(kind: ReadKind, slug: string, io: Pick<Io, 'get'>) {
+  if (!(await syncOn())) return;
   const key = syncKey(kind, slug);
   try {
     const rec = toRecord(await io.get());

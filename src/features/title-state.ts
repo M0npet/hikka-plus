@@ -207,6 +207,7 @@ export async function loadTitle(page: TitlePage) {
     progress: { last: null, chapters: {}, updatedAt: 0 },
   });
 
+  const on = (id: string | null): id is string => !!id && sourcesFor(kind).some((x) => x.id === id);
   let binding: Awaited<ReturnType<typeof getBinding>>;
   try {
     // Вибір джерела/команди з інших пристроїв (storage.sync), якщо новіший.
@@ -218,8 +219,9 @@ export async function loadTitle(page: TitlePage) {
     const progress = await getProgress(kind, slug);
     patch(token, (s) => ({
       ...s,
-      activeId: binding.active,
-      activeChosen: !!binding.active,
+      // Обране раніше джерело могли вимкнути у налаштуваннях — тоді обираємо автоматично.
+      activeId: on(binding.active) ? binding.active : null,
+      activeChosen: on(binding.active),
       teams: binding.teams,
       progress,
     }));

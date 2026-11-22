@@ -1,5 +1,5 @@
 import './style.css';
-import { browser, defineContentScript } from '#imports';
+import { browser, defineContentScript, injectScript } from '#imports';
 import { Mounter, mountOverlay } from '@/src/core/mount';
 import { parseTitlePage } from '@/src/core/page';
 import { ChaptersBlock } from '@/src/features/chapters-block';
@@ -9,6 +9,7 @@ import { initReaderUrl } from '@/src/features/reader-url';
 import { loadTitle, readerStore, resetTitle } from '@/src/features/title-state';
 import { AUTH_PATH } from '@/src/core/hikka-auth';
 import { finishHikkaLogin } from '@/src/features/hikka-sync';
+import { initSourcePrefs, watchSourcePrefs } from '@/src/core/source-prefs';
 
 export default defineContentScript({
   matches: ['https://hikka.io/*'],
@@ -17,11 +18,15 @@ export default defineContentScript({
 
   async main(ctx) {
     console.info('[Hikka Plus] content script запущено', browser.runtime.getManifest().version);
+    // Міст у контекст сторінки: після запису в список Hikka оновлює її власний кеш (лічильник зліва).
+    void injectScript('/hikka-bridge.js', { keepInDom: true }).catch(() => {});
     // Повернення з підтвердження входу на Hikka.
     if (location.pathname === AUTH_PATH) {
       await finishHikkaLogin();
       return;
     }
+    // Увімкнені джерела та їх порядок (вікно налаштувань розширення).
+    await initSourcePrefs();
     // Стан тайтлу береться з поточного шляху. Перевіряємо його ідемпотентно з кількох місць:
     // подія WXT про зміну адреси (через Navigation API) приходить ДО того, як location оновився,
     // тож самої події мало — додатково звіряємо шлях після мутацій DOM і раз на пів секунди.
@@ -77,6 +82,16 @@ export default defineContentScript({
     pathObs.observe(document.body, { childList: true, subtree: true });
     ctx.onInvalidated(() => pathObs.disconnect());
     ctx.setInterval(onNav, 500);
+
+    // Джерела ввімкнули/вимкнули чи переставили у вікні налаштувань — перезавантажити блок тайтлу
+    // (якщо читалка відкрита, зміни підхопляться при наступному переході).
+    const unPrefs = watchSourcePrefs(() => {
+      if (readerStore.get()) return;
+      resetTitle();
+      lastPath = null;
+      syncPage();
+    });
+    ctx.onInvalidated(unPrefs);
 
     // Читалка — оверлей, відкривається на запит із кнопки/блоку.
     let removeReader: (() => void) | null = null;

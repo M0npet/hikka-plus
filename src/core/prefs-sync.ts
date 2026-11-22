@@ -7,6 +7,7 @@
  */
 import { storage } from '#imports';
 import type { ReadKind } from './page';
+import { syncOn } from './sync-flag';
 
 /** Стислий запис прив'язки: a — активне джерело, m — ручні прив'язки [id, назва, url], t — команди. */
 export interface BindRecord {
@@ -25,6 +26,7 @@ export const bindSyncKey = (kind: ReadKind, slug: string) =>
 
 export async function pullBind(kind: ReadKind, slug: string): Promise<BindRecord | null> {
   try {
+    if (!(await syncOn())) return null;
     return (await storage.getItem<BindRecord>(bindSyncKey(kind, slug))) ?? null;
   } catch (e) {
     console.warn('[Hikka Plus] sync bind pull', e);
@@ -48,6 +50,7 @@ function debounce(key: string, fn: () => Promise<void>) {
 export function pushBind(kind: ReadKind, slug: string, get: () => Promise<BindRecord | null>) {
   const key = bindSyncKey(kind, slug);
   debounce(key, async () => {
+    if (!(await syncOn())) return;
     const rec = await get();
     if (!rec) return;
     const prev = await storage.getItem<BindRecord>(key);
@@ -82,6 +85,7 @@ export interface SettingsRecord<T> {
 
 export async function pullSettings<T>(): Promise<SettingsRecord<T> | null> {
   try {
+    if (!(await syncOn())) return null;
     return (await storage.getItem<SettingsRecord<T>>(SETTINGS_KEY)) ?? null;
   } catch {
     return null;
@@ -90,6 +94,7 @@ export async function pullSettings<T>(): Promise<SettingsRecord<T> | null> {
 
 export function pushSettings<T>(rec: SettingsRecord<T>) {
   debounce(SETTINGS_KEY, async () => {
+    if (!(await syncOn())) return;
     const prev = await storage.getItem<SettingsRecord<T>>(SETTINGS_KEY);
     if (prev && prev.u >= rec.u) return;
     await storage.setItem(SETTINGS_KEY, rec);

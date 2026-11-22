@@ -15,6 +15,9 @@ export const API_HOSTS = [
   'https://dgmanga.app',
   'https://runi.ink',
   'https://api.smakolykytl.site',
+  'https://novel.org.ua',
+  'https://fan-vers.com',
+  'https://www.wattpad.com',
   // Джерела-посилання (лише пошук тайтлу, без читання).
   'https://mangra.app',
   'https://faust-web.com',
