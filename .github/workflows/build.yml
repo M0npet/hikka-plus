@@ -56,6 +56,9 @@ jobs:
         with:
           name: hikka-plus-${{ github.sha }}
           path: .output/*.zip
+          # .output — прихована тека (з крапкою); upload-artifact v4.4+ без цього нічого не вивантажує.
+          include-hidden-files: true
+          if-no-files-found: error
           # Тестові збірки довго не тримаємо — бережемо безкоштовні 500 MB сховища.
           retention-days: 14
 
@@ -77,6 +80,9 @@ jobs:
             --api-key "$KEY" \
             --api-secret "$SECRET" \
             --approval-timeout 900000
+          # Зрозуміла назва замість випадкової від AMO.
+          VER="$(node -p "require('./package.json').version")"
+          mv .output/signed/*.xpi ".output/signed/hikka-plus-$VER-firefox-signed.xpi"
           ls -l .output/signed
 
       - name: Реліз
