@@ -807,7 +807,24 @@ select {
 /* ---------- Кнопка «Читати» ---------- */
 
 .hp-read {
+  position: relative;
+  overflow: hidden;
   width: 100%;
+}
+.hp-read__bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: color-mix(in oklab, var(--hp-primary-fg) 15%, transparent);
+  pointer-events: none;
+}
+.hp-read__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--hp-primary-fg);
+  transition: width 0.3s ease;
 }
 .hp-read__sub {
   font-weight: 400;
@@ -892,6 +909,8 @@ select {
   background: var(--hp-tint-hover);
 }
 .hp-ch__title {
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: 14px;
   line-height: 20px;
   font-weight: 500;
@@ -912,6 +931,7 @@ select {
   }
 }
 .hp-ch__pct {
+  flex: none;
   font-size: 12px;
   color: var(--hp-primary-fg);
   font-variant-numeric: tabular-nums;
@@ -1078,6 +1098,11 @@ select {
 }
 .hp-bar__pct {
   padding: 0 8px;
+}
+.hp-bar__team {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
 }
 .hp-bar__count {
   min-width: 56px;

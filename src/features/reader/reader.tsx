@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { chapterKey, getProgress, updateProgress, useSettings } from '../../core/store';
+import { chapterKey, getProgress, posText, updateProgress, useSettings, type ChapterProgress } from '../../core/store';
 import { getSource } from '../../sources/registry';
 import { chapterLabel, type Chapter, type ChapterContent, type ContentFormat } from '../../sources/types';
 import { IconCheck, IconClose, IconExpand, IconExternal, IconLeft, IconList, IconRight, IconSettings } from '../../ui/icons';
 import { closeReader, moveReader } from '../reader-url';
-import { contentFormat, neighbor, titleProgress, useReaderRequest, useTitleState } from '../title-state';
+import { contentFormat, neighbor, setTeam, titleProgress, useReaderRequest, useTitleState } from '../title-state';
 import { SettingsPanel } from './settings-panel';
-import { Button, btn, Progress } from '../../ui/kit';
+import { Button, btn, Progress, Select } from '../../ui/kit';
 import { NovelView, PagedView, StripView } from './views';
 
 type Load =
@@ -28,6 +28,7 @@ export function Reader() {
   const [barsHidden, setBarsHidden] = useState(false);
   const [page, setPage] = useState(0);
   const [pos, setPos] = useState(0); // прогрес поточного розділу 0..1
+  const [stripPage, setStripPage] = useState(0); // сторінка під серединою екрана в режимі стрічки
   const [pageInfo, setPageInfo] = useState('');
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -46,6 +47,16 @@ export function Reader() {
   const all = srcState?.chapters ?? [];
   const list = team ? all.filter((c) => c.team === team) : all;
   const chapter: Chapter | undefined = all.find((c) => c.id === req?.chapterId);
+  // Той самий розділ від інших команд — для вибору, у кого читати.
+  const versions = chapter ? all.filter((c) => chapterKey(c.number) === chapterKey(chapter.number) && c.team) : [];
+  const teamChoice = new Set(versions.map((c) => c.team)).size > 1;
+  const pickTeam = (t: string) => {
+    const c = versions.find((v) => v.team === t);
+    if (!c || c.id === chapter?.id) return;
+    // Обраний фільтр команди в блоці «Розділи» теж переводимо, щоб «далі/назад» ішли за нею.
+    if (team && s?.activeId === sourceId) void setTeam(t);
+    moveReader({ sourceId, chapterId: c.id });
+  };
   const prev = chapter ? neighbor(list.length ? list : all, chapter, -1) : undefined;
   const next = chapter ? neighbor(list.length ? list : all, chapter, 1) : undefined;
 
@@ -69,7 +80,7 @@ export function Reader() {
 
   /** Зберегти позицію в розділі (і «прочитано», якщо дочитали). */
   const save = useCallback(
-    (p: number, forceRead = false, keepRead = false) => {
+    (p: number, forceRead = false, keepRead = false, pg?: { page: number; pages: number }) => {
       if (!s || !chapter || !source) return;
       const key = chapterKey(chapter.number);
       const done = !keepRead && (forceRead || p >= DONE_AT);
@@ -80,7 +91,12 @@ export function Reader() {
           last: { key, label: chapterLabel(chapter), sourceId: source.id, chapterId: chapter.id },
           chapters: {
             ...pr.chapters,
-            [key]: { pos: Math.max(0, Math.min(1, p)), read: done || !!prevCh?.read, at: Date.now() },
+            [key]: {
+              pos: Math.max(0, Math.min(1, p)),
+              read: done || !!prevCh?.read,
+              at: Date.now(),
+              ...(pg ? { page: pg.page, pages: pg.pages } : {}),
+            },
           },
         };
       });
@@ -105,21 +121,28 @@ export function Reader() {
       const atEnd = atEndRef.current;
       atEndRef.current = false;
       restoreRef.current = atEnd ? null : cp && !cp.read && cp.pos > 0.01 && cp.pos < DONE_AT ? cp.pos : null;
+      const restorePage = restoreRef.current != null && cp?.page != null ? cp.page : null;
       try {
         const content = await source.getContent(chapter);
         if (!alive) return;
         const r = restoreRef.current;
         if (atEnd && content.type === 'images' && content.pages.length > 0) {
           // Остання сторінка; сам перехід назад не відмічає розділ прочитаним.
-          setPage(content.pages.length - 1);
+          const n = content.pages.length;
+          setPage(n - 1);
           setPos(1);
           setLoad({ status: 'ready', content });
-          save(1, false, true);
+          save(1, false, true, { page: n - 1, pages: n });
           return;
         }
         if (content.type === 'images') {
-          const p = r != null ? Math.round(r * Math.max(0, content.pages.length - 1)) : 0;
+          const n = content.pages.length;
+          const p = restorePage != null && restorePage < n ? restorePage : r != null ? Math.round(r * Math.max(0, n - 1)) : 0;
           setPage(p);
+          setPos(r ?? 0);
+          setLoad({ status: 'ready', content });
+          save(r ?? 0, false, false, { page: p, pages: n });
+          return;
         }
         setPos(r ?? 0);
         setLoad({ status: 'ready', content });
@@ -172,7 +195,7 @@ export function Reader() {
       setPage(p);
       const ratio = pageCount > 1 ? p / (pageCount - 1) : 1;
       setPos(ratio);
-      save(ratio, p >= pageCount - 1);
+      save(ratio, p >= pageCount - 1, false, { page: p, pages: pageCount });
     },
     [pageCount, save],
   );
@@ -207,21 +230,24 @@ export function Reader() {
     }
     lastTop.current = top;
 
-    if (!isNovel && settings.manga.pageNumbers) {
+    let pg: { page: number; pages: number } | undefined;
+    if (!isNovel) {
       const imgs = el.querySelectorAll<HTMLImageElement>('img[data-page]');
       const mid = el.getBoundingClientRect().top + el.clientHeight / 2;
       let cur = 0;
       for (const img of imgs) if (img.getBoundingClientRect().top <= mid) cur = Number(img.dataset.page);
-      setPageInfo(`${cur + 1} / ${imgs.length}`);
+      pg = { page: cur, pages: imgs.length };
+      setStripPage(cur);
+      if (settings.manga.pageNumbers) setPageInfo(`${cur + 1} / ${imgs.length}`);
     }
 
     if ((ratio >= DONE_AT || max - top < 40) && !finishedRef.current) {
       finishedRef.current = true;
-      save(1, true);
+      save(1, true, false, pg && { page: pg.pages - 1, pages: pg.pages });
       return;
     }
     window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => save(ratio), SAVE_DELAY);
+    saveTimer.current = window.setTimeout(() => save(ratio, false, false, pg), SAVE_DELAY);
   };
 
   const toggleFullscreen = useCallback(() => {
@@ -308,7 +334,18 @@ export function Reader() {
             {source ? ` · ${source.name}` : ''}
           </span>
         </div>
-        <span className="hp-small hp-muted hp-tnum hp-bar__pct">{Math.round(pos * 100)}%</span>
+        {teamChoice && chapter?.team && (
+          <Select
+            className="hp-bar__team"
+            title="Команда перекладу цього розділу"
+            value={chapter.team}
+            onChange={pickTeam}
+            options={versions.map((v) => ({ value: v.team!, label: v.team! }))}
+          />
+        )}
+        <span className="hp-small hp-muted hp-tnum hp-bar__pct">
+          {posText(pageCount > 0 ? { pos, page: paged ? page : stripPage, pages: pageCount } : { pos })}
+        </span>
         {chapter && (
           <a
             className={btn('ghost', 'md', true)}
@@ -460,7 +497,7 @@ export function Reader() {
 function ChaptersPanel(props: {
   chapters: Chapter[];
   currentId: string;
-  progress: Record<string, { pos: number; read: boolean }>;
+  progress: Record<string, ChapterProgress>;
   summary: { read: number; total: number };
   onPick: (c: Chapter) => void;
   onClose: () => void;
@@ -498,8 +535,9 @@ function ChaptersPanel(props: {
               aria-current={cur || undefined}
               onClick={() => props.onPick(c)}
             >
-              <span className="hp-grow hp-ellipsis hp-ch__title">{chapterLabel(c)}</span>
-              {p && !p.read && p.pos > 0.01 && <span className="hp-ch__pct">{Math.round(p.pos * 100)}%</span>}
+              <span className="hp-ellipsis hp-ch__title">{chapterLabel(c)}</span>
+              {p && !p.read && p.pos > 0.01 && <span className="hp-ch__pct">{posText(p)}</span>}
+              <span className="hp-grow" />
               {p?.read && <IconCheck className="hp-icon hp-ch__done" />}
             </button>
           );

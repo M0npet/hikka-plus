@@ -3,7 +3,7 @@
  * (Firefox Sync / синхронізація Chrome). Ліміти: ~100 КБ усього, 8 КБ на ключ,
  * 512 ключів, у Chrome 120 записів/хв і 1800/год — тож пишемо стисло й рідко.
  *
- * Запис на тайтл: { r: "1-205,207,12.5", l: [ключ, позиція, джерело, id розділу], u: час }.
+ * Запис на тайтл: { r: "1-205,207,12.5", l: [ключ, позиція, джерело, id розділу, сторінка?, сторінок?], u: час }.
  * Позиція всередині зберігається лише для останнього відкритого розділу.
  * Конфлікти — «перемагає новіший» (u).
  */
@@ -13,7 +13,7 @@ import type { Progress } from './store';
 
 interface SyncRecord {
   r: string;
-  l?: [string, number, string, string];
+  l?: [string, number, string, string, number?, number?];
   u: number;
 }
 
@@ -71,8 +71,10 @@ function toRecord(p: Progress): SyncRecord {
     .map(([k]) => k);
   const rec: SyncRecord = { r: encodeRead(read), u: p.updatedAt };
   if (p.last) {
-    const pos = p.chapters[p.last.key]?.pos ?? 0;
+    const c = p.chapters[p.last.key];
+    const pos = c?.pos ?? 0;
     rec.l = [p.last.key, Math.round(pos * 1000) / 1000, p.last.sourceId, p.last.chapterId];
+    if (c?.pages && c.page != null) rec.l.push(c.page, c.pages);
   }
   return rec;
 }
@@ -82,14 +84,15 @@ function applyRecord(local: Progress, rec: SyncRecord): Progress {
   const readSet = new Set(decodeRead(rec.r));
   const chapters: Progress['chapters'] = {};
   for (const [k, c] of Object.entries(local.chapters)) {
-    chapters[k] = readSet.has(k) ? { ...c, read: true, pos: 1 } : { ...c, read: false, pos: c.read ? 0 : c.pos };
+    // Розділ став непрочитаним на іншому пристрої — позицію (і сторінку) скидаємо.
+    chapters[k] = readSet.has(k) ? { ...c, read: true, pos: 1 } : c.read ? { pos: 0, read: false, at: c.at } : { ...c, read: false };
   }
   for (const k of readSet) if (!chapters[k]) chapters[k] = { pos: 1, read: true, at: rec.u };
   let last = local.last;
   if (rec.l) {
-    const [key, pos, sourceId, chapterId] = rec.l;
+    const [key, pos, sourceId, chapterId, page, pages] = rec.l;
     last = { key, label: '', sourceId, chapterId };
-    if (!readSet.has(key)) chapters[key] = { pos, read: false, at: rec.u };
+    if (!readSet.has(key)) chapters[key] = { pos, read: false, at: rec.u, ...(pages ? { page, pages } : {}) };
   }
   return { last, chapters, updatedAt: rec.u };
 }

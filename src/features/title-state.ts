@@ -13,7 +13,7 @@ import {
   type Progress,
 } from '../core/store';
 import { getSource, sourcesFor } from '../sources/registry';
-import type { Chapter, ContentFormat, ReadSource, RemoteTitle } from '../sources/types';
+import { renumberByVolume, type Chapter, type ContentFormat, type ReadSource, type RemoteTitle } from '../sources/types';
 import { loadRemoteRead, queueHikkaChapters, resetRemoteRead } from './hikka-sync';
 
 /**
@@ -165,7 +165,7 @@ const setSource = (token: number, id: string, p: Partial<SourceState>) =>
 async function loadChapters(token: number, source: ReadSource, remote: RemoteTitle, manual: boolean) {
   setSource(token, source.id, { status: 'loading', remote, manual, chapters: [], error: undefined });
   try {
-    const chapters = await source.getChapters(remote.id);
+    const chapters = renumberByVolume(await source.getChapters(remote.id));
     setSource(token, source.id, { status: 'ready', chapters });
   } catch (e) {
     setSource(token, source.id, { status: 'error', error: `Не вдалося завантажити розділи: ${String(e)}` });

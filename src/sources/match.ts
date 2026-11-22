@@ -64,8 +64,10 @@ export async function autoMatchBy(
   let best: { t: RemoteTitle; score: number } | null = null;
   for (const q of names.slice(0, 3)) {
     let found: RemoteTitle[];
+    // Без розділових знаків: пошук деяких сайтів (Honey) нічого не знаходить за «I'm the …».
+    const query = q.replace(/[^\p{L}\p{N}]+/gu, ' ').trim() || q;
     try {
-      found = await src.search(q, title.kind);
+      found = await src.search(query, title.kind);
     } catch {
       continue;
     }

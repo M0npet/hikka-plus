@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { titleNames } from '../core/hikka';
-import { chapterKey } from '../core/store';
+import { chapterKey, posText, type ChapterProgress } from '../core/store';
 import { getSource, sourcesFor } from '../sources/registry';
-import type { Chapter, ReadSource, RemoteTitle } from '../sources/types';
+import { chapterNo, type Chapter, type ReadSource, type RemoteTitle } from '../sources/types';
 import { IconExternal, IconLink, IconSearch, IconSort } from '../ui/icons';
 import { Button, btn, ChipMenu, ChipTabs, Header, Progress, Select } from '../ui/kit';
 import { openReader } from './reader-url';
@@ -190,7 +190,7 @@ function ChapterList({ state: s }: { state: TitleState }) {
   const shown = useMemo(() => {
     const q = query.trim().replace(',', '.').toLowerCase();
     let list = chapters.filter(
-      (c) => !q || c.number.startsWith(q) || (c.name ?? '').toLowerCase().includes(q),
+      (c) => !q || c.number.startsWith(q) || !!c.shown?.startsWith(q) || (c.name ?? '').toLowerCase().includes(q),
     );
     if (desc) list = [...list].reverse();
     return list;
@@ -230,7 +230,7 @@ function ChapterList({ state: s }: { state: TitleState }) {
         <div className="hp-row hp-small">
           <span className="hp-grow">
             Прочитано <b>{read}</b> з {total}
-            {target && read > 0 && <span className="hp-muted"> · далі: розділ {target.number}</span>}
+            {target && read > 0 && <span className="hp-muted"> · далі: розділ {chapterNo(target)}</span>}
           </span>
           <span className="hp-muted hp-tnum">{pct}%</span>
         </div>
@@ -333,7 +333,7 @@ function StatusRing({ pos, read }: { pos: number; read: boolean }) {
 function ChapterRow(props: {
   chapter: Chapter;
   sourceId: string;
-  progress?: { pos: number; read: boolean };
+  progress?: ChapterProgress;
   current: boolean;
 }) {
   const { chapter: c, progress: p, current } = props;
@@ -354,11 +354,13 @@ function ChapterRow(props: {
       >
         <StatusRing pos={pos} read={read} />
       </button>
-      <span className="hp-grow hp-ellipsis hp-ch__title">
-        Розділ {c.number}
+      <span className="hp-ellipsis hp-ch__title">
+        Розділ {chapterNo(c)}
         {c.name ? <span className="hp-muted"> — {c.name}</span> : null}
       </span>
-      {!read && pos > 0.01 && <span className="hp-ch__pct">{Math.round(pos * 100)}%</span>}
+      {/* Прогрес — одразу біля назви, щоб не губився серед команди й дати справа. */}
+      {!read && p && pos > 0.01 && <span className="hp-ch__pct">{posText(p)}</span>}
+      <span className="hp-grow" />
       {c.team && (
         <span className="hp-ch__meta hp-ch__team hp-ellipsis">{c.team}</span>
       )}

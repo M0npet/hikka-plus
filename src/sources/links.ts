@@ -181,6 +181,58 @@ const mangarama: LinkSource = {
   },
 };
 
+// ---------- MANGAEZ (manga.valsky.org): публічний пошук /v1/search; розділи — лише після входу ----------
+
+const MANGAEZ = 'https://manga.valsky.org';
+
+interface MangaezHit {
+  slug: string;
+  name: string;
+  kind?: string | null;
+  /** Назва, за якою спрацював пошук (часто англійська чи оригінальна). */
+  matched?: string | null;
+}
+
+interface MangaezTitle {
+  originalName?: string | null;
+  lastChapter?: string | null;
+}
+
+const isNovelKind = (k?: string | null) => !!k && /ранобе|роман|новел/i.test(k);
+
+const mangaez: LinkSource = {
+  id: 'mangaez',
+  name: 'MANGAEZ',
+  kinds: ['manga', 'novel'],
+  async find(t) {
+    const linked = fromHikka(t, /(^|\.)manga\.valsky\.org$/);
+    if (linked) return linked;
+    const names = titleNames(t);
+    const wantNovel = t.kind === 'novel';
+    let best: { hit: MangaezHit; s: number } | null = null;
+    for (const q of names.slice(0, 3)) {
+      const res = await getJson<{ titles?: MangaezHit[] }>(`${MANGAEZ}/v1/search?q=${encodeURIComponent(q)}`).catch(
+        () => null,
+      );
+      for (const h of (res?.titles ?? []).slice(0, 6)) {
+        if (isNovelKind(h.kind) !== wantNovel) continue;
+        const s = bestSimilarity([h.name, h.matched ?? ''].filter(Boolean), names);
+        if (!best || s > best.s) best = { hit: h, s };
+      }
+      if (best && best.s >= 0.98) break;
+    }
+    if (!best) return null;
+    const d = await getJson<MangaezTitle>(`${MANGAEZ}/v1/titles/${encodeURIComponent(best.hit.slug)}`).catch(() => null);
+    const s = d?.originalName ? Math.max(best.s, bestSimilarity([d.originalName], names)) : best.s;
+    if (s < MIN_SCORE) return null;
+    return {
+      url: `${MANGAEZ}/titles/${best.hit.slug}`,
+      title: best.hit.name,
+      chapters: d?.lastChapter ? `Розділ ${d.lastChapter}` : undefined,
+    };
+  },
+};
+
 // ---------- Dengeki: API закритий — лише посилання на пошук у каталозі ----------
 
 const dengeki: LinkSource = {
@@ -199,5 +251,5 @@ const dengeki: LinkSource = {
   },
 };
 
-export const LINK_SOURCES: LinkSource[] = [mangra, faust, mangarama, dengeki];
+export const LINK_SOURCES: LinkSource[] = [mangra, faust, mangarama, mangaez, dengeki];
 export const linkSourcesFor = (kind: ReadKind) => LINK_SOURCES.filter((s) => s.kinds.includes(kind));

@@ -232,6 +232,17 @@ export interface ChapterProgress {
   pos: number;
   read: boolean;
   at: number;
+  /** Манґа: поточна сторінка (з 0) і кількість сторінок у розділі. */
+  page?: number;
+  pages?: number;
+}
+
+/** Підпис позиції в розділі: «стор. 12/24 · 48%» для манґи, «48%» для тексту; short — без відсотків, якщо є сторінки. */
+export function posText(c: { pos: number; page?: number; pages?: number }, short = false): string {
+  const pct = `${Math.round(c.pos * 100)}%`;
+  if (!c.pages || c.pages < 2 || c.page == null) return pct;
+  const pg = `стор. ${Math.min(c.page, c.pages - 1) + 1}/${c.pages}`;
+  return short ? pg : `${pg} · ${pct}`;
 }
 
 export interface Progress {

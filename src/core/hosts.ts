@@ -19,6 +19,7 @@ export const API_HOSTS = [
   'https://mangra.app',
   'https://faust-web.com',
   'https://mangarama.com.ua',
+  'https://manga.valsky.org',
 ] as const;
 
 /** Хости, яким потрібен заголовок X-Requested-With (AJAX-ендпоінти DLE). */
