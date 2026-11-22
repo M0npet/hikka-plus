@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { chapterKey, getProgress, updateProgress, useSettings } from '../../core/store';
 import { getSource } from '../../sources/registry';
 import { chapterLabel, type Chapter, type ChapterContent, type ContentFormat } from '../../sources/types';
-import { IconClose, IconExpand, IconExternal, IconLeft, IconList, IconRight, IconSettings } from '../../ui/icons';
+import { IconCheck, IconClose, IconExpand, IconExternal, IconLeft, IconList, IconRight, IconSettings } from '../../ui/icons';
 import { closeReader, moveReader } from '../reader-url';
 import { contentFormat, neighbor, titleProgress, useReaderRequest, useTitleState } from '../title-state';
 import { SettingsPanel } from './settings-panel';
+import { Button, btn, Progress } from '../../ui/kit';
 import { NovelView, PagedView, StripView } from './views';
 
 type Load =
@@ -279,9 +280,9 @@ export function Reader() {
 
       {/* Верхня панель */}
       <header className="hp-bar hp-bar--top">
-        <button type="button" className="hp-btn hp-btn--ghost hp-btn--icon" title="Закрити (Esc)" onClick={closeReader}>
+        <Button variant="ghost" size="md" icon title="Закрити (Esc)" aria-label="Закрити" onClick={closeReader}>
           <IconClose />
-        </button>
+        </Button>
         <div className="hp-bar__title hp-grow">
           <b className="hp-ellipsis">{title}</b>
           <span className="hp-ellipsis">
@@ -290,12 +291,10 @@ export function Reader() {
             {source ? ` · ${source.name}` : ''}
           </span>
         </div>
-        <span className="hp-small hp-muted" style={{ fontVariantNumeric: 'tabular-nums' }}>
-          {Math.round(pos * 100)}%
-        </span>
+        <span className="hp-small hp-muted hp-tnum hp-bar__pct">{Math.round(pos * 100)}%</span>
         {chapter && (
           <a
-            className="hp-btn hp-btn--ghost hp-btn--icon"
+            className={btn('ghost', 'md', true)}
             href={chapter.url}
             target="_blank"
             rel="noreferrer"
@@ -304,9 +303,9 @@ export function Reader() {
             <IconExternal />
           </a>
         )}
-        <button type="button" className="hp-btn hp-btn--ghost hp-btn--icon" title="Повний екран (F)" onClick={toggleFullscreen}>
+        <Button variant="ghost" size="md" icon title="Повний екран (F)" aria-label="Повний екран" onClick={toggleFullscreen}>
           <IconExpand />
-        </button>
+        </Button>
       </header>
 
       {/* Вміст */}
@@ -322,11 +321,16 @@ export function Reader() {
         }}
       >
         {!chapter && <div className="hp-error">Розділ не знайдено у списку джерела.</div>}
-        {chapter && load.status === 'loading' && <div className="hp-error">Завантаження…</div>}
+        {chapter && load.status === 'loading' && (
+          <div className="hp-error">
+            <span className="hp-spinner" aria-hidden="true" />
+            Завантаження…
+          </div>
+        )}
         {chapter && load.status === 'error' && (
           <div className="hp-error">
             <div>{load.error}</div>
-            <a className="hp-btn" href={chapter.url} target="_blank" rel="noreferrer">
+            <a className={btn('secondary', 'md')} href={chapter.url} target="_blank" rel="noreferrer">
               Відкрити на {source?.name}
             </a>
           </div>
@@ -349,16 +353,16 @@ export function Reader() {
           <div className="hp-end">
             <div className="hp-muted hp-small">Кінець розділу{chapter?.team ? ` · переклад: ${chapter.team}` : ''}</div>
             {next ? (
-              <button type="button" className="hp-btn hp-btn--primary" onClick={() => goChapter(next)}>
+              <Button variant="default" size="lg" onClick={() => goChapter(next)}>
                 Далі: {chapterLabel(next)}
                 <IconRight />
-              </button>
+              </Button>
             ) : (
-              <div>Це останній доступний розділ.</div>
+              <div className="hp-small">Це останній доступний розділ.</div>
             )}
-            <button type="button" className="hp-btn hp-btn--ghost" onClick={closeReader}>
+            <Button variant="ghost" size="md" onClick={closeReader}>
               До сторінки тайтлу
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -372,43 +376,53 @@ export function Reader() {
 
       {/* Нижня панель */}
       <nav className="hp-bar hp-bar--bottom" aria-label="Навігація по розділах">
-        <button
-          type="button"
-          className="hp-btn hp-btn--ghost hp-btn--icon"
+        <Button
+          variant="ghost"
+          size="md"
+          icon
           disabled={!prev}
           title={prev ? `Попередній: ${chapterLabel(prev)}` : 'Немає попереднього'}
+          aria-label="Попередній розділ"
           onClick={() => goChapter(prev)}
         >
           <IconLeft />
-        </button>
-        <button
-          type="button"
-          className={`hp-btn hp-btn--ghost hp-btn--icon ${panel === 'chapters' ? 'hp-btn--active' : ''}`}
+        </Button>
+        <Button
+          variant="ghost"
+          size="md"
+          icon
+          aria-pressed={panel === 'chapters'}
           title="Усі розділи"
+          aria-label="Усі розділи"
           onClick={() => setPanel(panel === 'chapters' ? 'none' : 'chapters')}
         >
           <IconList />
-        </button>
-        <span className="hp-small hp-muted" style={{ padding: '0 6px', whiteSpace: 'nowrap' }}>
+        </Button>
+        <span className="hp-small hp-muted hp-tnum hp-bar__count">
           {idx + 1} / {total}
         </span>
-        <button
-          type="button"
-          className={`hp-btn hp-btn--ghost hp-btn--icon ${panel === 'settings' ? 'hp-btn--active' : ''}`}
+        <Button
+          variant="ghost"
+          size="md"
+          icon
+          aria-pressed={panel === 'settings'}
           title="Налаштування"
+          aria-label="Налаштування"
           onClick={() => setPanel(panel === 'settings' ? 'none' : 'settings')}
         >
           <IconSettings />
-        </button>
-        <button
-          type="button"
-          className="hp-btn hp-btn--ghost hp-btn--icon"
+        </Button>
+        <Button
+          variant="ghost"
+          size="md"
+          icon
           disabled={!next}
           title={next ? `Наступний: ${chapterLabel(next)}` : 'Немає наступного'}
+          aria-label="Наступний розділ"
           onClick={() => goChapter(next)}
         >
           <IconRight />
-        </button>
+        </Button>
       </nav>
 
       {panel === 'settings' && <SettingsPanel settings={settings} format={format} onClose={() => setPanel('none')} />}
@@ -440,20 +454,21 @@ function ChaptersPanel(props: {
   return (
     <aside className="hp-panel hp-panel--left" aria-label="Розділи">
       <div className="hp-panel__head">
-        <span className="hp-grow">Розділи</span>
-        <button type="button" className="hp-btn hp-btn--ghost hp-btn--icon" onClick={props.onClose} title="Закрити">
+        <span className="hp-panel__title">Розділи</span>
+        <Button variant="ghost" size="sm" icon onClick={props.onClose} title="Закрити (Esc)" aria-label="Закрити">
           <IconClose />
-        </button>
+        </Button>
       </div>
-      <div style={{ padding: '0 16px 8px' }}>
-        <div className="hp-small hp-muted">
-          Прочитано {props.summary.read} з {props.summary.total} · {pct}%
+      <div className="hp-panel__summary">
+        <div className="hp-row hp-small">
+          <span className="hp-grow">
+            Прочитано <b>{props.summary.read}</b> з {props.summary.total}
+          </span>
+          <span className="hp-muted hp-tnum">{pct}%</span>
         </div>
-        <div className="hp-progress" style={{ marginTop: 6 }}>
-          <div style={{ width: `${pct}%` }} />
-        </div>
+        <Progress value={pct} />
       </div>
-      <div className="hp-panel__body" style={{ padding: '0 8px 16px' }}>
+      <div className="hp-panel__body hp-panel__body--list">
         {props.chapters.map((c) => {
           const cur = c.id === props.currentId;
           const p = props.progress[chapterKey(c.number)];
@@ -463,11 +478,12 @@ function ChaptersPanel(props: {
               ref={cur ? curRef : undefined}
               type="button"
               className={`hp-ch ${cur ? 'hp-ch--current' : p?.read ? 'hp-ch--read' : ''}`}
+              aria-current={cur || undefined}
               onClick={() => props.onPick(c)}
             >
               <span className="hp-grow hp-ellipsis hp-ch__title">{chapterLabel(c)}</span>
-              {p && !p.read && p.pos > 0.01 && <span className="hp-ch__meta">{Math.round(p.pos * 100)}%</span>}
-              {p?.read && <span className="hp-ch__meta">✓</span>}
+              {p && !p.read && p.pos > 0.01 && <span className="hp-ch__pct">{Math.round(p.pos * 100)}%</span>}
+              {p?.read && <IconCheck className="hp-icon hp-ch__done" />}
             </button>
           );
         })}

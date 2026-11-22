@@ -3,6 +3,7 @@ import type { HikkaTitle } from '../core/hikka';
 import { linkSourcesFor, type LinkResult } from '../sources/links';
 import { IconExternal, IconSearch } from '../ui/icons';
 import type { TitleState } from './title-state';
+import { btn } from '../ui/kit';
 
 type Found = { id: string; name: string; res: LinkResult };
 
@@ -54,14 +55,14 @@ export function ExternalLinks({ state: s }: { state: TitleState }) {
       {titles.map((f) => (
         <a
           key={f.id}
-          className="hp-btn hp-btn--ghost hp-small"
+          className={btn('outline', 'sm')}
           href={f.res.url}
           target="_blank"
           rel="noreferrer"
           title={`Відкрити на ${f.name}${f.res.title ? ` — ${f.res.title}` : ''}${f.res.exact ? ' (сайт сам прив’язав тайтл до Hikka)' : ''}`}
         >
           {f.name}
-          {f.res.chapters && <span className="hp-muted">· {f.res.chapters}</span>}
+          {f.res.chapters && <span className="hp-muted hp-tnum">{f.res.chapters}</span>}
           <IconExternal />
         </a>
       ))}
@@ -70,7 +71,7 @@ export function ExternalLinks({ state: s }: { state: TitleState }) {
       {searches.map((f) => (
         <a
           key={f.id}
-          className="hp-btn hp-btn--ghost hp-small"
+          className={btn('outline', 'sm')}
           href={f.res.url}
           target="_blank"
           rel="noreferrer"

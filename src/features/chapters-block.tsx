@@ -4,6 +4,7 @@ import { chapterKey } from '../core/store';
 import { getSource, sourcesFor } from '../sources/registry';
 import type { Chapter, ReadSource, RemoteTitle } from '../sources/types';
 import { IconExternal, IconLink, IconSearch, IconSort } from '../ui/icons';
+import { Button, btn, ChipTabs, Header, Progress, Select } from '../ui/kit';
 import { openReader } from './reader-url';
 import { HikkaSyncBar } from './hikka-bar';
 import { ExternalLinks } from './external-links';
@@ -37,13 +38,11 @@ export function ChaptersBlock() {
   const searchFor = binding ?? (status === 'not-found' ? (sourcesFor(s.page.kind)[0]?.id ?? null) : null);
 
   return (
-    <section className="hp-block" aria-label="Розділи (Hikka Plus)">
-      <div className="hp-block__head">
-        <h3 className="hp-block__title">Розділи</h3>
-        <span className="hp-grow" />
-        {src && act?.remote?.url && (
+    <section className="hp-section" aria-label="Розділи (Hikka Plus)">
+      <Header title="Розділи">
+        {src && act?.remote?.url && !searchFor && (
           <a
-            className="hp-btn hp-btn--ghost hp-small"
+            className={btn('ghost', 'sm')}
             href={act.remote.url}
             target="_blank"
             rel="noreferrer"
@@ -53,32 +52,35 @@ export function ChaptersBlock() {
             <IconExternal />
           </a>
         )}
-        <button
-          type="button"
-          className="hp-btn hp-btn--ghost hp-small"
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-pressed={!!(searchFor && binding)}
           onClick={() => setBinding(searchFor ? null : (s.activeId ?? sourcesFor(s.page.kind)[0]?.id ?? null))}
           title="Знайти тайтл на джерелі вручну"
         >
           <IconLink />
           {searchFor && binding ? 'Скасувати' : 'Знайти вручну'}
-        </button>
+        </Button>
+      </Header>
+
+      <div className="hp-card">
+        <SourceSwitcher state={s} searchFor={searchFor} onSearch={(id) => setBinding(id)} />
+
+        {searchFor && <BindSearch key={searchFor} state={s} sourceId={searchFor} onDone={() => setBinding(null)} />}
+
+        {!searchFor && status === 'loading' && (
+          <div className="hp-col">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="hp-skeleton" />
+            ))}
+          </div>
+        )}
+        {!searchFor && status === 'error' && (
+          <div className="hp-state">{s.hikkaError ?? act?.error ?? 'Помилка завантаження'}</div>
+        )}
+        {!searchFor && status === 'ready' && <ChapterList state={s} />}
       </div>
-
-      <SourceSwitcher state={s} searchFor={searchFor} onSearch={(id) => setBinding(id)} />
-
-      {searchFor && <BindSearch key={searchFor} state={s} sourceId={searchFor} onDone={() => setBinding(null)} />}
-
-      {!searchFor && status === 'loading' && (
-        <div className="hp-card">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="hp-skeleton" />
-          ))}
-        </div>
-      )}
-      {!searchFor && status === 'error' && (
-        <div className="hp-card hp-state">{s.hikkaError ?? act?.error ?? 'Помилка завантаження'}</div>
-      )}
-      {!searchFor && status === 'ready' && <ChapterList state={s} />}
       <ExternalLinks state={s} />
     </section>
   );
@@ -97,11 +99,19 @@ function SourceSwitcher({
 }) {
   const list = sourcesFor(s.page.kind);
   return (
-    <div className="hp-sources" role="group" aria-label={searchFor ? 'Де шукати' : 'Джерело'}>
-      {list.map((src) => {
-        const st = s.sources[src.id];
+    <ChipTabs
+      label={searchFor ? 'Де шукати' : 'Джерело'}
+      value={searchFor ?? s.activeId}
+      onPick={(id) => {
+        const st = s.sources[id];
         const found = st && st.status !== 'not-found' && st.status !== 'searching';
-        const info = !st
+        if (searchFor || !found) onSearch(id);
+        else void setActiveSource(id);
+      }}
+      options={list.map((src) => {
+        const st = s.sources[src.id];
+        const found = !!st && st.status !== 'not-found' && st.status !== 'searching';
+        const count = !st
           ? ''
           : st.status === 'searching'
             ? 'шукаю…'
@@ -112,27 +122,19 @@ function SourceSwitcher({
                 : st.status === 'error'
                   ? 'помилка'
                   : `${new Set(st.chapters.map((c) => chapterKey(c.number))).size}`;
-        return (
-          <button
-            key={src.id}
-            type="button"
-            className={`hp-src ${found ? '' : 'hp-src--off'}`}
-            aria-pressed={searchFor ? searchFor === src.id : s.activeId === src.id}
-            title={
-              searchFor
-                ? `Шукати на ${src.name}`
-                : found
-                  ? `Читати з ${src.name}`
-                  : `Не знайдено на ${src.name} — шукати вручну`
-            }
-            onClick={() => (searchFor || !found ? onSearch(src.id) : void setActiveSource(src.id))}
-          >
-            {src.name}
-            {info && <small>{info}</small>}
-          </button>
-        );
+        return {
+          value: src.id,
+          label: src.name,
+          count,
+          off: !found,
+          title: searchFor
+            ? `Шукати на ${src.name}`
+            : found
+              ? `Читати з ${src.name}`
+              : `Не знайдено на ${src.name} — шукати вручну`,
+        };
       })}
-    </div>
+    />
   );
 }
 
@@ -162,7 +164,7 @@ function ChapterList({ state: s }: { state: TitleState }) {
   const target = continueTarget(s);
   const lastKey = s.progress.last?.key;
 
-  if (!all.length) return <div className="hp-card hp-state">Розділів поки немає.</div>;
+  if (!all.length) return <div className="hp-state">Розділів поки немає.</div>;
 
   const hasVolumes = chapters.some((c) => c.volume);
   let lastVol: string | null | undefined;
@@ -170,61 +172,58 @@ function ChapterList({ state: s }: { state: TitleState }) {
   return (
     <>
       {/* Прогрес тайтлу */}
-      <div className="hp-card hp-summary">
-        <div className="hp-row">
-          <span className="hp-grow hp-small">
-            Прочитано <b>{read}</b> з {total} розділів
-            {target && read > 0 && (
-              <span className="hp-muted"> · далі: Розділ {target.number}</span>
-            )}
+      <div className="hp-col hp-col--tight">
+        <div className="hp-row hp-small">
+          <span className="hp-grow">
+            Прочитано <b>{read}</b> з {total}
+            {target && read > 0 && <span className="hp-muted"> · далі: розділ {target.number}</span>}
           </span>
-          <span className="hp-small hp-muted">{pct}%</span>
+          <span className="hp-muted hp-tnum">{pct}%</span>
         </div>
-        <div className="hp-progress">
-          <div style={{ width: `${pct}%` }} />
-        </div>
+        <Progress value={pct} />
         <HikkaSyncBar state={s} />
       </div>
 
       <div className="hp-toolbar">
-        <label className="hp-row hp-grow" style={{ position: 'relative' }}>
-          <IconSearch style={{ position: 'absolute', left: 10, opacity: 0.6 }} />
+        <label className="hp-search hp-grow">
+          <IconSearch />
           <input
-            className="hp-input hp-grow"
-            style={{ paddingLeft: 34 }}
+            className="hp-input"
             placeholder="Номер або назва розділу"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
         {teams.length > 1 && (
-          <select
-            className="hp-select"
-            value={team}
+          <Select
+            className="hp-toolbar__team"
             title="Команда перекладу"
-            onChange={(e) => void setTeam(e.target.value)}
-          >
-            <option value="">Усі команди ({teams.length})</option>
-            {teams.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+            value={team}
+            onChange={(v) => void setTeam(v)}
+            options={[
+              { value: '', label: 'Усі команди', hint: String(teams.length) },
+              ...teams.map((t) => ({ value: t, label: t })),
+            ]}
+          />
         )}
-        {teams.length === 1 && <span className="hp-badge" title="Команда перекладу">{teams[0]}</span>}
-        <button
-          type="button"
-          className="hp-btn hp-btn--icon"
+        {teams.length === 1 && (
+          <span className="hp-badge hp-ellipsis" title="Команда перекладу">
+            {teams[0]}
+          </span>
+        )}
+        <Button
+          variant="outline"
+          size="md"
+          icon
           title={desc ? 'Спочатку перші' : 'Спочатку нові'}
-          aria-pressed={desc}
+          aria-label={desc ? 'Спочатку перші' : 'Спочатку нові'}
           onClick={() => setDesc((v) => !v)}
         >
           <IconSort />
-        </button>
+        </Button>
       </div>
 
-      <div className="hp-card hp-list" role="list">
+      <div className="hp-list" role="list">
         {shown.length === 0 && <div className="hp-state">Нічого не знайдено.</div>}
         {shown.map((c) => {
           const volHead = hasVolumes && c.volume !== lastVol;
@@ -307,9 +306,7 @@ function ChapterRow(props: {
       </span>
       {!read && pos > 0.01 && <span className="hp-ch__pct">{Math.round(pos * 100)}%</span>}
       {c.team && (
-        <span className="hp-ch__meta hp-ellipsis" style={{ maxWidth: 140 }}>
-          {c.team}
-        </span>
+        <span className="hp-ch__meta hp-ch__team hp-ellipsis">{c.team}</span>
       )}
       {c.date && <span className="hp-ch__meta">{dateFmt.format(c.date)}</span>}
     </div>
@@ -345,14 +342,10 @@ function BindSearch({ state: s, sourceId, onDone }: { state: TitleState; sourceI
   }, [srcId]);
 
   return (
-    <div className="hp-card" style={{ padding: 12 }}>
-      {overallStatus(s) === 'not-found' && (
-        <p className="hp-small hp-muted" style={{ margin: '0 0 10px' }}>
-          Автоматично не знайшов цей тайтл на українських джерелах. Знайди його вручну — прив'язка запам'ятається.
-        </p>
-      )}
-      <p className="hp-small hp-muted" style={{ margin: '0 0 10px' }}>
-        Шукаю на <b className="hp-fg">{source?.name}</b>. Інше джерело — обери плашкою вище.
+    <div className="hp-col">
+      <p className="hp-small hp-muted hp-p">
+        {overallStatus(s) === 'not-found' && 'Автоматично не знайшов цей тайтл на українських джерелах. '}
+        Шукаю на <b className="hp-fg">{source?.name}</b> — інше джерело обери вище. Прив'язка запам'ятається.
       </p>
       <form
         className="hp-row"
@@ -361,21 +354,24 @@ function BindSearch({ state: s, sourceId, onDone }: { state: TitleState; sourceI
           void run();
         }}
       >
-        <input
-          className="hp-input hp-grow"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={`Назва на ${source?.name ?? 'джерелі'}`}
-          aria-label={`Пошук на ${source?.name ?? 'джерелі'}`}
-        />
-        <button type="submit" className="hp-btn" disabled={busy}>
+        <label className="hp-search hp-grow">
+          <IconSearch />
+          <input
+            className="hp-input"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={`Назва на ${source?.name ?? 'джерелі'}`}
+            aria-label={`Пошук на ${source?.name ?? 'джерелі'}`}
+          />
+        </label>
+        <Button type="submit" variant="secondary" size="md" disabled={busy}>
           {busy ? 'Шукаю…' : 'Шукати'}
-        </button>
+        </Button>
       </form>
       {err && <div className="hp-state">{err}</div>}
       {results && results.length === 0 && <div className="hp-state">Нічого не знайдено на {source?.name}.</div>}
       {results && results.length > 0 && (
-        <div className="hp-results" style={{ marginTop: 8 }}>
+        <div className="hp-list hp-list--results">
           {results.slice(0, 12).map((r) => (
             <button
               key={r.id}
@@ -390,13 +386,11 @@ function BindSearch({ state: s, sourceId, onDone }: { state: TitleState; sourceI
               {r.cover ? (
                 <img src={r.cover} alt="" loading="lazy" referrerPolicy="no-referrer" />
               ) : (
-                <span style={{ width: 40 }} />
+                <span className="hp-result__nocover" />
               )}
               <span className="hp-grow">
-                <span className="hp-ellipsis" style={{ display: 'block', fontWeight: 500, fontSize: 14 }}>
-                  {r.title}
-                </span>
-                <span className="hp-ellipsis hp-small hp-muted" style={{ display: 'block' }}>
+                <span className="hp-ellipsis hp-result__title">{r.title}</span>
+                <span className="hp-ellipsis hp-xs hp-muted hp-block">
                   {[r.altTitles[0], r.year, r.chapterCount != null ? `${r.chapterCount} розд.` : null]
                     .filter(Boolean)
                     .join(' · ')}

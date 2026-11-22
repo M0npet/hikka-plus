@@ -45,90 +45,66 @@ input,
 select {
   font: inherit;
   color: inherit;
+  margin: 0;
 }
 
-/* ---------- Базові елементи у стилі Hikka ---------- */
+/* ---------- Похідні змінні (рахуються там, де можуть змінитися базові: корінь і читалка) ---------- */
 
-.hp-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: var(--hp-radius);
-  background: var(--hp-secondary);
-  color: var(--hp-secondary-fg);
-  font-size: 14px;
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.15s, opacity 0.15s;
-}
-.hp-btn:hover {
-  background: color-mix(in oklch, var(--hp-secondary) 80%, var(--hp-fg) 20%);
-}
-.hp-btn:focus-visible {
-  outline: 2px solid var(--hp-ring);
-  outline-offset: 2px;
-}
-.hp-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.hp-btn--lg {
-  height: 48px;
-  width: 100%;
-  font-size: 14px;
-}
-.hp-btn--primary {
-  background: var(--hp-primary);
-  color: var(--hp-primary-fg);
-  box-shadow: inset 0 0 0 1px var(--hp-primary-border);
-}
-.hp-btn--primary:hover {
-  background: color-mix(in oklch, var(--hp-primary) 85%, var(--hp-primary-fg) 15%);
-}
-.hp-btn--ghost {
-  background: transparent;
-}
-.hp-btn--ghost:hover {
-  background: var(--hp-accent);
-}
-.hp-btn--icon {
-  width: 36px;
-  padding: 0;
-}
-.hp-btn--active {
-  background: var(--hp-primary);
-  color: var(--hp-primary-fg);
+.hp-root,
+.hp-reader {
+  --hp-r-lg: var(--hp-radius);
+  --hp-r-md: max(0px, calc(var(--hp-radius) - 2px));
+  --hp-r-sm: max(0px, calc(var(--hp-radius) - 4px));
+  /* Вибраний стан як у Tabs/ChipTabs Hikka: 15% акценту поверх фону + рамка 40%. */
+  --hp-tint-bg: color-mix(in srgb, var(--hp-primary-fg) 15%, var(--hp-bg));
+  --hp-tint-hover: color-mix(in srgb, var(--hp-primary-fg) 20%, var(--hp-bg));
+  --hp-tint-border: color-mix(in oklab, var(--hp-primary-fg) 40%, transparent);
+  --hp-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
-.hp-input,
-.hp-select {
-  height: 36px;
-  padding: 0 10px;
-  border: 1px solid var(--hp-input);
-  border-radius: var(--hp-radius);
-  background: transparent;
-  font-size: 14px;
-  min-width: 0;
+/* Світла тема Hikka (і світлі теми читалки). */
+.hp-root,
+.hp-theme-light,
+.hp-theme-sepia {
+  --hp-field-bg: transparent;
+  --hp-field-hover: var(--hp-accent);
+  --hp-ghost-hover: var(--hp-accent);
+  --hp-dim: color-mix(in oklab, var(--hp-fg) 60%, transparent);
+  --hp-sw-on: var(--hp-primary-fg);
+  --hp-sw-on-border: var(--hp-primary-fg);
+  --hp-sw-off: var(--hp-input);
+  --hp-thumb-on: var(--hp-bg);
+  --hp-thumb-off: var(--hp-bg);
 }
-.hp-select option {
-  background: var(--hp-popover);
+/* Темна тема Hikka (клас dark на <html>) і темна тема читалки. */
+.hp-dark,
+.hp-theme-dark {
+  --hp-field-bg: color-mix(in oklab, var(--hp-input) 30%, transparent);
+  --hp-field-hover: color-mix(in oklab, var(--hp-input) 50%, transparent);
+  --hp-ghost-hover: color-mix(in oklab, var(--hp-accent) 50%, transparent);
+  --hp-dim: var(--hp-muted-fg);
+  --hp-sw-on: var(--hp-primary);
+  --hp-sw-on-border: var(--hp-primary-border);
+  --hp-sw-off: var(--hp-muted);
+  --hp-thumb-on: var(--hp-primary-fg);
+  --hp-thumb-off: #fff;
 }
-.hp-input:focus,
-.hp-select:focus {
-  outline: 2px solid var(--hp-ring);
-  outline-offset: -1px;
+.hp-root {
+  display: contents;
 }
+
+/* ---------- Утиліти ---------- */
 
 .hp-muted {
   color: var(--hp-muted-fg);
 }
 .hp-small {
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 20px;
+}
+.hp-xs {
+  font-size: 12px;
+  line-height: 16px;
 }
 .hp-row {
   display: flex;
@@ -144,167 +120,818 @@ select {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.hp-badge {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: var(--hp-secondary);
-  color: var(--hp-muted-fg);
-  font-size: 12px;
+.hp-fg {
+  color: var(--hp-fg);
   font-weight: 500;
 }
 .hp-icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   flex: none;
 }
-
-/* ---------- Кнопка «Читати» ---------- */
-
-.hp-read {
-  margin-top: 0;
+.hp-tnum {
+  font-variant-numeric: tabular-nums;
 }
-.hp-read__sub {
+
+/* ---------- Button (hikka-next: components/ui/button.tsx) ---------- */
+
+.hp-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--hp-r-lg);
+  background: transparent;
+  color: var(--hp-fg);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.hp-btn:focus-visible {
+  border-color: var(--hp-ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--hp-ring) 50%, transparent);
+}
+.hp-btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.hp-btn--lg {
+  height: 48px;
+  padding: 0 16px;
+}
+.hp-btn--md {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--hp-r-md);
+}
+.hp-btn--sm {
+  height: 32px;
+  padding: 0 8px;
+}
+.hp-btn--xs {
+  height: 24px;
+  padding: 0 8px;
   font-size: 12px;
-  opacity: 0.8;
-  font-weight: 400;
+  line-height: 16px;
+}
+.hp-btn--icon {
+  padding: 0;
+  aspect-ratio: 1;
+}
+.hp-btn--default {
+  background: var(--hp-primary);
+  color: var(--hp-primary-fg);
+  border-color: var(--hp-primary-border);
+}
+.hp-btn--default:hover {
+  background: var(--hp-primary-border);
+}
+.hp-btn--secondary {
+  background: var(--hp-secondary);
+  color: var(--hp-secondary-fg);
+}
+.hp-btn--secondary:hover {
+  background: color-mix(in oklab, var(--hp-secondary) 80%, transparent);
+}
+.hp-btn--outline {
+  border-color: var(--hp-input);
+  background: var(--hp-field-bg);
+  box-shadow: var(--hp-shadow-xs);
+}
+.hp-btn--outline:hover {
+  background: var(--hp-field-hover);
+}
+.hp-btn--ghost:hover,
+.hp-btn--ghost[aria-pressed='true'] {
+  background: var(--hp-ghost-hover);
+}
+/* Іконка-кнопка, що відкриває панель: увімкнена — як вибраний Tab. */
+.hp-btn--ghost[aria-pressed='true'] {
+  background: var(--hp-tint-bg);
+  border-color: var(--hp-tint-border);
+  color: var(--hp-primary-fg);
 }
 
-/* ---------- Блок «Розділи» ---------- */
+/* ---------- Header (components/ui/header.tsx) ---------- */
 
-.hp-block {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin: 48px 0 0;
-}
-.hp-block__head {
+.hp-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 32px;
 }
-.hp-block__title {
+.hp-header__title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
   margin: 0;
   font-size: 18px;
   line-height: 28px;
   font-weight: 700;
 }
-.hp-toolbar {
+.hp-header__count {
+  font-weight: 500;
+  color: var(--hp-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+.hp-header__actions {
   display: flex;
+  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  margin-left: auto;
+  flex: none;
+}
+
+/* ---------- Block / Card (components/ui/block.tsx, variant card) ---------- */
+
+.hp-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
 }
 .hp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 16px;
   border: 1px solid var(--hp-border);
-  border-radius: var(--hp-radius);
+  border-radius: var(--hp-r-lg);
   background: var(--hp-surface);
+}
+.hp-sep {
+  height: 1px;
+  margin: 0 -16px;
+  background: var(--hp-border);
+  flex: none;
+}
+
+/* ---------- Field: Input / Select trigger (field-base.ts) ---------- */
+
+.hp-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--hp-input);
+  border-radius: var(--hp-r-lg);
+  background: var(--hp-field-bg);
+  box-shadow: var(--hp-shadow-xs);
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+  outline: none;
+  transition: color 0.15s, box-shadow 0.15s, background-color 0.15s;
+}
+.hp-input--lg {
+  height: 48px;
+}
+.hp-input::placeholder {
+  color: var(--hp-muted-fg);
+}
+.hp-input:focus-visible {
+  border-color: var(--hp-ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--hp-ring) 50%, transparent);
+}
+/* Поле з іконкою пошуку всередині. */
+.hp-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.hp-search > .hp-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--hp-muted-fg);
+  pointer-events: none;
+}
+.hp-search > .hp-input {
+  padding-left: 36px;
+}
+
+/* ---------- Select (components/ui/select.tsx) ---------- */
+
+.hp-select {
+  position: relative;
+  min-width: 0;
+}
+.hp-select__trigger {
+  cursor: pointer;
+}
+.hp-select__trigger:hover {
+  background: var(--hp-field-hover);
+}
+.hp-select__chev {
+  opacity: 0.5;
+}
+.hp-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 100%;
+  max-width: min(360px, 90vw);
+  max-height: min(24rem, 60vh);
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--hp-border);
+  border-radius: var(--hp-r-lg);
+  background: var(--hp-popover);
+  color: var(--hp-fg);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  scrollbar-width: thin;
+  animation: hp-pop 0.15s ease-out;
+}
+.hp-popover--up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+@keyframes hp-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+.hp-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--hp-r-lg);
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+  user-select: none;
+}
+.hp-option--active {
+  background: var(--hp-muted);
+}
+.hp-option__hint {
+  font-size: 12px;
+  color: var(--hp-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Checkbox ---------- */
+
+.hp-check {
+  display: grid;
+  place-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--hp-border);
+  border-radius: var(--hp-r-sm);
+}
+.hp-check[data-on] {
+  border-color: var(--hp-primary-border);
+  background: var(--hp-primary);
+  color: var(--hp-primary-fg);
+}
+.hp-check svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ---------- Tabs: сегменти (components/ui/tabs.tsx) ---------- */
+
+.hp-tabs {
+  display: flex;
+  width: 100%;
+  height: 36px;
+  padding: 3px;
+  border-radius: var(--hp-r-lg);
+  background: var(--hp-muted);
+  color: var(--hp-muted-fg);
+}
+.hp-tabs__item {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--hp-r-md);
+  background: transparent;
+  color: var(--hp-dim);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
+}
+.hp-tabs__item:hover {
+  color: var(--hp-fg);
+}
+.hp-tabs__item[aria-checked='true'] {
+  border-color: var(--hp-tint-border);
+  background: var(--hp-tint-bg);
+  color: var(--hp-primary-fg);
+}
+.hp-tabs__item:focus-visible {
+  outline: 1px solid var(--hp-ring);
+}
+.hp-tabs--sm {
+  width: auto;
+  height: 30px;
+  border-radius: var(--hp-r-md);
+}
+.hp-tabs--sm .hp-tabs__item {
+  padding: 0 12px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* ---------- ChipTabs (components/ui/chip-tabs.tsx) ---------- */
+
+.hp-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* Затухання краю, коли ряд прокручується. */
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+.hp-chips::-webkit-scrollbar {
+  display: none;
+}
+.hp-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--hp-r-md);
+  background: color-mix(in oklab, var(--hp-secondary) 40%, transparent);
+  color: var(--hp-muted-fg);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.hp-chip:last-child {
+  margin-right: 24px;
+}
+.hp-chip:hover {
+  background: var(--hp-accent);
+}
+.hp-chip[aria-selected='true'] {
+  border-color: var(--hp-tint-border);
+  background: var(--hp-tint-bg);
+  color: var(--hp-primary-fg);
+}
+.hp-chip[aria-selected='true']:hover {
+  background: var(--hp-tint-hover);
+}
+.hp-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--hp-ring);
+}
+.hp-chip__count {
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+/* Тайтл на джерелі не знайдено: тьмяніша, але клікабельна (ручний пошук). */
+.hp-chip--off:not([aria-selected='true']) {
+  background: transparent;
+  border-color: var(--hp-border);
+  border-style: dashed;
+}
+
+/* ---------- Switch (components/ui/switch.tsx) ---------- */
+
+.hp-switch {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  width: 32px;
+  height: 18.4px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--hp-sw-off);
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.hp-switch::after {
+  /* Більша зона натискання, як у Hikka. */
+  content: '';
+  position: absolute;
+  inset: -8px -12px;
+}
+.hp-switch[aria-checked='true'] {
+  background: var(--hp-sw-on);
+  border-color: var(--hp-sw-on-border);
+}
+.hp-switch:focus-visible {
+  border-color: var(--hp-ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--hp-ring) 50%, transparent);
+}
+.hp-switch__thumb {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--hp-thumb-off);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  pointer-events: none;
+  transition: transform 0.15s;
+}
+.hp-switch[aria-checked='true'] .hp-switch__thumb {
+  background: var(--hp-thumb-on);
+  transform: translateX(calc(100% - 2px));
+}
+
+/* ---------- Рядки налаштувань (settings/customization/*) ---------- */
+
+.hp-setrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.hp-setrow__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  cursor: pointer;
+}
+.hp-field > .hp-setrow__text {
+  cursor: default;
+}
+.hp-setrow__label {
+  font-size: 14px;
+  line-height: 1.25;
+  font-weight: 500;
+}
+.hp-setrow__hint {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--hp-muted-fg);
+}
+.hp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hp-field__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.hp-field__value {
+  font-size: 14px;
+  color: var(--hp-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Slider (components/ui/slider.tsx) ---------- */
+
+.hp-slider {
+  --hp-track: color-mix(in oklab, var(--hp-primary-fg) 20%, transparent);
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.hp-slider:focus-visible {
+  outline: none;
+}
+.hp-slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--hp-primary-fg) var(--hp-fill), var(--hp-track) var(--hp-fill));
+}
+.hp-slider::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--hp-track);
+}
+.hp-slider::-moz-range-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--hp-primary-fg);
+}
+.hp-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -6px;
+  border: 2px solid var(--hp-primary-fg);
+  border-radius: 999px;
+  background: var(--hp-primary);
+}
+.hp-slider::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--hp-primary-fg);
+  border-radius: 999px;
+  background: var(--hp-primary);
+}
+.hp-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px var(--hp-ring);
+}
+.hp-slider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 2px var(--hp-ring);
+}
+
+/* ---------- Badge (components/ui/badge.tsx, secondary) ---------- */
+
+.hp-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid var(--hp-border);
+  border-radius: var(--hp-r-sm);
+  background: var(--hp-secondary);
+  color: var(--hp-secondary-fg);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ---------- Progress (components/ui/progress.tsx) ---------- */
+
+.hp-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--hp-primary-fg) 10%, transparent);
+  overflow: hidden;
+  flex: none;
+}
+.hp-progress > div {
+  height: 100%;
+  background: var(--hp-primary-fg);
+  transition: width 0.3s ease;
+}
+
+/* ---------- Skeleton ---------- */
+
+.hp-skeleton {
+  height: 40px;
+  border-radius: var(--hp-r-md);
+  background: color-mix(in oklab, var(--hp-secondary) 20%, transparent);
+  animation: hp-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes hp-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* ---------- Загальні елементи блоку ---------- */
+
+.hp-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.hp-col--tight {
+  gap: 8px;
+}
+.hp-p {
+  margin: 0;
+}
+.hp-block {
+  display: block;
+}
+.hp-state {
+  padding: 8px 0;
+  font-size: 14px;
+  color: var(--hp-muted-fg);
+}
+
+/* ---------- Кнопка «Читати» ---------- */
+
+.hp-read {
+  width: 100%;
+}
+.hp-read__sub {
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+/* ---------- Блок «Розділи» ---------- */
+
+.hp-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hp-toolbar__team {
+  width: 200px;
+  flex: none;
+}
+.hp-toolbar > .hp-badge {
+  max-width: 200px;
+}
+@media (max-width: 520px) {
+  .hp-toolbar {
+    flex-wrap: wrap;
+  }
+  .hp-toolbar > .hp-search {
+    flex-basis: 100%;
+  }
+  .hp-toolbar__team {
+    flex: 1;
+    width: auto;
+  }
 }
 .hp-list {
   display: flex;
   flex-direction: column;
   max-height: 520px;
+  margin: 0 -8px -8px;
+  padding: 0 0 8px;
   overflow-y: auto;
-  padding: 4px;
   scrollbar-width: thin;
 }
+.hp-list--results {
+  max-height: 440px;
+  margin-bottom: 0;
+  padding: 0;
+}
 .hp-vol {
-  position: sticky;
-  top: -4px;
-  z-index: 1;
-  padding: 8px 10px 4px;
-  background: var(--hp-bg);
+  padding: 12px 8px 4px;
   color: var(--hp-muted-fg);
   font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  line-height: 16px;
+  font-weight: 500;
 }
 .hp-ch {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: calc(var(--hp-radius) - 2px);
+  min-height: 40px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--hp-r-md);
   background: transparent;
   text-align: left;
   cursor: pointer;
+  outline: none;
 }
 .hp-ch:hover {
-  background: var(--hp-accent);
+  background: var(--hp-ghost-hover);
 }
-.hp-ch--read {
+.hp-ch:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--hp-ring);
+}
+.hp-ch--read .hp-ch__title {
   color: var(--hp-muted-fg);
 }
 .hp-ch--current {
-  background: color-mix(in oklch, var(--hp-primary) 60%, transparent);
+  border-color: var(--hp-tint-border);
+  background: var(--hp-tint-bg);
+}
+.hp-ch--current:hover {
+  background: var(--hp-tint-hover);
 }
 .hp-ch__title {
   font-size: 14px;
+  line-height: 20px;
   font-weight: 500;
 }
 .hp-ch__meta {
   font-size: 12px;
+  line-height: 16px;
   color: var(--hp-muted-fg);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
-.hp-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+.hp-ch__team {
+  max-width: 140px;
+}
+@media (max-width: 520px) {
+  .hp-ch__team {
+    display: none;
+  }
+}
+.hp-ch__pct {
+  font-size: 12px;
+  color: var(--hp-primary-fg);
+  font-variant-numeric: tabular-nums;
+}
+.hp-ch__done {
+  color: var(--hp-primary-fg);
+}
+/* Кружечок стану розділу. */
+.hp-status {
+  display: inline-flex;
   flex: none;
-  background: var(--hp-primary-fg);
-}
-.hp-state {
-  padding: 16px;
-  font-size: 14px;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
   color: var(--hp-muted-fg);
+  cursor: pointer;
 }
-.hp-results {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 4px;
+.hp-status:hover {
+  color: var(--hp-fg);
 }
+.hp-status svg {
+  width: 20px;
+  height: 20px;
+}
+.hp-status--read {
+  color: var(--hp-primary-fg);
+}
+
+/* Результати ручного пошуку. */
 .hp-result {
   display: flex;
-  gap: 10px;
   align-items: center;
-  padding: 6px;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 8px;
   border: 0;
-  border-radius: calc(var(--hp-radius) - 2px);
+  border-radius: var(--hp-r-md);
   background: transparent;
   text-align: left;
   cursor: pointer;
 }
 .hp-result:hover {
-  background: var(--hp-accent);
+  background: var(--hp-ghost-hover);
 }
-.hp-result img {
+.hp-result img,
+.hp-result__nocover {
   width: 40px;
   height: 56px;
-  object-fit: cover;
-  border-radius: 6px;
-  background: var(--hp-muted);
   flex: none;
+  object-fit: cover;
+  border-radius: var(--hp-r-sm);
+  background: var(--hp-muted);
 }
-.hp-skeleton {
-  height: 36px;
-  margin: 4px;
-  border-radius: calc(var(--hp-radius) - 2px);
-  background: linear-gradient(90deg, var(--hp-muted), var(--hp-accent), var(--hp-muted));
-  background-size: 200% 100%;
-  animation: hp-shimmer 1.2s linear infinite;
-  opacity: 0.5;
+.hp-result__title {
+  display: block;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
 }
-@keyframes hp-shimmer {
-  to {
-    background-position: -200% 0;
-  }
+
+/* ---------- Синхронізація з Hikka ---------- */
+
+.hp-hikka {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hp-hikka .hp-row {
+  gap: 8px;
+  padding: 0 4px;
+}
+.hp-hikka--offer {
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--hp-tint-border);
+  border-radius: var(--hp-r-md);
+  background: var(--hp-tint-bg);
+}
+
+/* ---------- «Також є на …» ---------- */
+
+.hp-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 /* ---------- Читалка (оверлей) ---------- */
@@ -318,6 +945,8 @@ select {
   flex-direction: column;
   background: var(--hp-bg);
   color: var(--hp-fg);
+  /* Скло для панелей поверх вмісту (surface-glass Hikka). */
+  --hp-glass: color-mix(in oklab, var(--hp-card) 80%, transparent);
 }
 .hp-reader__scroll {
   flex: 1;
@@ -325,6 +954,7 @@ select {
   overflow-x: hidden;
   overscroll-behavior: contain;
   scrollbar-width: thin;
+  outline: none;
 }
 .hp-bar {
   position: absolute;
@@ -333,56 +963,70 @@ select {
   z-index: 5;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  background: color-mix(in oklch, var(--hp-popover) 92%, transparent);
-  backdrop-filter: blur(10px);
-  border-color: var(--hp-border);
+  gap: 4px;
+  background: var(--hp-glass);
+  backdrop-filter: blur(24px) saturate(150%);
   transition: transform 0.2s ease;
 }
 .hp-bar--top {
   top: 0;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--hp-border);
 }
 .hp-bar--bottom {
-  bottom: 12px;
+  bottom: 16px;
   left: 50%;
   right: auto;
+  padding: 4px;
   transform: translateX(-50%);
   border: 1px solid var(--hp-border);
-  border-radius: calc(var(--hp-radius) + 4px);
+  border-radius: calc(var(--hp-r-lg) + 4px);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.2), 0 4px 6px -4px rgb(0 0 0 / 0.2);
 }
 .hp-bars-hidden .hp-bar--top {
   transform: translateY(-100%);
 }
 .hp-bars-hidden .hp-bar--bottom {
-  transform: translate(-50%, calc(100% + 24px));
+  transform: translate(-50%, calc(100% + 32px));
 }
 .hp-bar__title {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  line-height: 1.2;
+  padding: 0 4px;
 }
 .hp-bar__title b {
   font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
 }
 .hp-bar__title span {
   font-size: 12px;
+  line-height: 16px;
   color: var(--hp-muted-fg);
 }
+.hp-bar__pct {
+  padding: 0 8px;
+}
+.hp-bar__count {
+  min-width: 56px;
+  padding: 0 4px;
+  text-align: center;
+  white-space: nowrap;
+}
 
+/* Бічні панелі — як Sheet на Hikka. */
 .hp-panel {
   position: absolute;
   top: 0;
   bottom: 0;
   z-index: 10;
-  width: min(360px, 92vw);
+  width: min(380px, 92vw);
   display: flex;
   flex-direction: column;
-  background: var(--hp-popover);
-  border-color: var(--hp-border);
-  box-shadow: 0 0 40px rgb(0 0 0 / 0.35);
+  background: var(--hp-bg);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+  animation: hp-slide-r 0.2s ease-out;
 }
 .hp-panel--right {
   right: 0;
@@ -391,69 +1035,52 @@ select {
 .hp-panel--left {
   left: 0;
   border-right: 1px solid var(--hp-border);
+  animation-name: hp-slide-l;
+}
+@keyframes hp-slide-r {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes hp-slide-l {
+  from {
+    transform: translateX(-100%);
+  }
 }
 .hp-panel__head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 12px 8px 16px;
-  font-weight: 700;
+  gap: 4px;
+  min-height: 57px;
+  padding: 12px 12px 12px 16px;
+  border-bottom: 1px solid var(--hp-border);
 }
-.hp-panel__body {
+.hp-panel__title {
   flex: 1;
-  overflow-y: auto;
-  padding: 0 16px 16px;
-  scrollbar-width: thin;
+  min-width: 0;
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 600;
 }
-.hp-set {
+.hp-panel__summary {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px 0;
+  padding: 16px;
   border-bottom: 1px solid var(--hp-border);
-  font-size: 14px;
 }
-.hp-set__label {
-  display: flex;
-  justify-content: space-between;
-  color: var(--hp-muted-fg);
-  font-size: 13px;
-  font-weight: 500;
-}
-.hp-seg {
-  display: flex;
-  padding: 3px;
-  gap: 3px;
-  border-radius: var(--hp-radius);
-  background: var(--hp-secondary);
-}
-.hp-seg button {
+.hp-panel__body {
   flex: 1;
-  height: 30px;
-  border: 0;
-  border-radius: calc(var(--hp-radius) - 3px);
-  background: transparent;
-  font-size: 13px;
-  cursor: pointer;
-}
-.hp-seg button[aria-pressed='true'] {
-  background: var(--hp-bg);
-  font-weight: 600;
-}
-.hp-switch {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+  padding: 16px 16px 24px;
+  scrollbar-width: thin;
 }
-.hp-switch input {
-  width: 36px;
-  height: 20px;
-  accent-color: var(--hp-primary-fg);
-}
-input[type='range'] {
-  width: 100%;
-  accent-color: var(--hp-primary-fg);
+.hp-panel__body--list {
+  gap: 0;
+  padding: 8px;
 }
 
 /* Ранобе */
@@ -475,7 +1102,7 @@ input[type='range'] {
   max-width: 100%;
   height: auto;
   margin: 1em auto;
-  border-radius: 6px;
+  border-radius: var(--hp-r-md);
 }
 .hp-novel--indent .hp-novel__text p {
   text-indent: 1.5em;
@@ -484,13 +1111,17 @@ input[type='range'] {
   text-align: justify;
   hyphens: auto;
 }
+/* Власні теми ранобе (акцент і радіус лишаються від Hikka). */
 .hp-theme-sepia {
   --hp-bg: #f4ecd8;
   --hp-fg: #433422;
   --hp-muted-fg: #7a6a55;
-  --hp-popover: #efe5cc;
-  --hp-border: #d9cba9;
+  --hp-card: #efe5cc;
+  --hp-popover: #f7f0de;
+  --hp-border: #ddd0b0;
+  --hp-input: #d4c5a1;
   --hp-accent: #e8dcc0;
+  --hp-muted: #e8dcc0;
   --hp-secondary: #e6d9bb;
   --hp-secondary-fg: #433422;
 }
@@ -498,19 +1129,25 @@ input[type='range'] {
   --hp-bg: #ffffff;
   --hp-fg: #1d1d20;
   --hp-muted-fg: #66666e;
-  --hp-popover: #f6f6f7;
-  --hp-border: #e3e3e6;
-  --hp-accent: #ededef;
-  --hp-secondary: #ededef;
+  --hp-card: #fafafa;
+  --hp-popover: #ffffff;
+  --hp-border: #e4e4e7;
+  --hp-input: #e4e4e7;
+  --hp-accent: #f4f4f5;
+  --hp-muted: #f4f4f5;
+  --hp-secondary: #f4f4f5;
   --hp-secondary-fg: #1d1d20;
 }
 .hp-theme-dark {
   --hp-bg: #121214;
   --hp-fg: #d8d8dc;
   --hp-muted-fg: #8a8a92;
+  --hp-card: #1a1a1d;
   --hp-popover: #1a1a1d;
   --hp-border: #2a2a2e;
+  --hp-input: #2a2a2e;
   --hp-accent: #26262a;
+  --hp-muted: #26262a;
   --hp-secondary: #26262a;
   --hp-secondary-fg: #d8d8dc;
 }
@@ -533,7 +1170,7 @@ input[type='range'] {
   width: 100%;
   height: auto;
   min-height: 200px;
-  background: var(--hp-muted);
+  background: color-mix(in oklab, var(--hp-secondary) 20%, transparent);
 }
 .hp-strip img[data-loaded='1'] {
   min-height: 0;
@@ -545,13 +1182,13 @@ input[type='range'] {
   align-items: center;
   justify-content: center;
   min-height: 100%;
-  padding: 56px 0;
+  padding: 64px 0;
 }
 .hp-page img {
   max-width: 100%;
 }
 .hp-page--fit-height img {
-  max-height: calc(100vh - 112px);
+  max-height: calc(100vh - 128px);
   width: auto;
 }
 .hp-page--fit-width img {
@@ -563,11 +1200,19 @@ input[type='range'] {
   left: 50%;
   bottom: 76px;
   transform: translateX(-50%);
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--hp-popover) 85%, transparent);
+  padding: 2px 8px;
+  border: 1px solid var(--hp-border);
+  border-radius: var(--hp-r-sm);
+  background: var(--hp-glass);
+  backdrop-filter: blur(24px);
   font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
+  transition: transform 0.2s ease;
+}
+.hp-bars-hidden .hp-pagenum {
+  transform: translate(-50%, 60px);
 }
 .hp-end {
   display: flex;
@@ -584,7 +1229,21 @@ input[type='range'] {
   gap: 12px;
   padding: 120px 16px;
   text-align: center;
+  font-size: 14px;
   color: var(--hp-muted-fg);
+}
+.hp-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid color-mix(in oklab, var(--hp-primary-fg) 25%, transparent);
+  border-top-color: var(--hp-primary-fg);
+  border-radius: 50%;
+  animation: hp-spin 0.8s linear infinite;
+}
+@keyframes hp-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .hp-toast {
   position: absolute;
@@ -592,33 +1251,14 @@ input[type='range'] {
   top: 72px;
   transform: translateX(-50%);
   z-index: 20;
-  padding: 6px 12px;
-  border-radius: var(--hp-radius);
-  background: var(--hp-popover);
+  padding: 8px 12px;
   border: 1px solid var(--hp-border);
-  font-size: 13px;
+  border-radius: var(--hp-r-lg);
+  background: var(--hp-popover);
+  font-size: 14px;
 }
 
-/* ---------- Прогрес ---------- */
-
-.hp-progress {
-  height: 6px;
-  border-radius: 999px;
-  background: var(--hp-secondary);
-  overflow: hidden;
-}
-.hp-progress > div {
-  height: 100%;
-  border-radius: inherit;
-  background: var(--hp-primary-fg);
-  transition: width 0.3s ease;
-}
-.hp-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px;
-}
+/* Прогрес поточного розділу — тонка смужка зверху. */
 .hp-chbar {
   position: absolute;
   top: 0;
@@ -626,120 +1266,10 @@ input[type='range'] {
   right: 0;
   z-index: 6;
   height: 3px;
-  background: transparent;
   pointer-events: none;
 }
 .hp-chbar > div {
   height: 100%;
   background: var(--hp-primary-fg);
   transition: width 0.15s linear;
-}
-/* Стан розділу у списку: кружечок-прогрес */
-.hp-status {
-  position: relative;
-  width: 20px;
-  height: 20px;
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  padding: 0;
-  border-radius: 50%;
-  background: transparent;
-  cursor: pointer;
-  color: var(--hp-muted-fg);
-}
-.hp-status:hover {
-  color: var(--hp-fg);
-}
-.hp-status svg {
-  width: 20px;
-  height: 20px;
-}
-.hp-status--read {
-  color: var(--hp-primary-fg);
-}
-.hp-ch__pct {
-  font-size: 12px;
-  color: var(--hp-primary-fg);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ---------- Перемикач джерел ---------- */
-
-.hp-sources {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.hp-src {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--hp-border);
-  border-radius: 999px;
-  background: transparent;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-}
-.hp-src:hover {
-  background: var(--hp-accent);
-}
-.hp-src[aria-pressed='true'] {
-  background: var(--hp-primary);
-  color: var(--hp-primary-fg);
-  border-color: transparent;
-}
-.hp-src--off {
-  color: var(--hp-muted-fg);
-  /* «немає»: пунктир — видно, що тут не читаємо, але можна шукати вручну. */
-  border-style: dashed;
-}
-.hp-src--off[aria-pressed='true'] {
-  border-style: solid;
-}
-.hp-fg {
-  color: var(--hp-fg);
-  font-weight: 500;
-}
-.hp-src small {
-  font-size: 12px;
-  opacity: 0.75;
-  font-weight: 400;
-}
-
-/* ---------- Синхронізація з Hikka ---------- */
-.hp-hikka {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-.hp-hikka .hp-btn {
-  height: 30px;
-  padding: 0 10px;
-}
-.hp-hikka--offer {
-  padding: 8px 10px;
-  border-radius: var(--hp-radius);
-  background: var(--hp-primary);
-  color: var(--hp-primary-fg);
-  box-shadow: inset 0 0 0 1px var(--hp-primary-border);
-}
-.hp-hikka input[type='checkbox'] {
-  accent-color: var(--hp-primary-fg);
-}
-
-/* «Також є на …» — посилання на сайти із захищеною читалкою. */
-.hp-links {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 10px;
 }

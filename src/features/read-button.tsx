@@ -1,5 +1,6 @@
 import { chapterKey } from '../core/store';
 import { IconBook } from '../ui/icons';
+import { Button, Progress } from '../ui/kit';
 import { openReader } from './reader-url';
 import { continueTarget, overallStatus, titleProgress, useTitleState } from './title-state';
 
@@ -25,22 +26,21 @@ export function ReadButton() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <button
-        type="button"
-        className="hp-btn hp-btn--lg hp-btn--primary hp-read"
+    <div className="hp-col hp-col--tight">
+      <Button
+        variant="default"
+        size="lg"
+        className="hp-read"
         disabled={!target}
         onClick={() => target && s.activeId && openReader({ sourceId: s.activeId, chapterId: target.id })}
       >
         <IconBook />
         <span>{label}</span>
         {sub && <span className="hp-read__sub">· {sub}</span>}
-      </button>
+      </Button>
       {status === 'ready' && total > 0 && read > 0 && (
         <div title={`Прочитано ${read} з ${total}`}>
-          <div className="hp-progress">
-            <div style={{ width: `${Math.round((read / total) * 100)}%` }} />
-          </div>
+          <Progress value={(read / total) * 100} />
         </div>
       )}
     </div>

@@ -10,6 +10,7 @@ import {
   useRemoteRead,
 } from './hikka-sync';
 import { markReadUpTo, maxReadLocal, type TitleState } from './title-state';
+import { Button, Switch } from '../ui/kit';
 
 const STATUS: Record<string, string> = {
   reading: 'Читаю',
@@ -47,9 +48,9 @@ export function HikkaSyncBar({ state: s }: { state: TitleState }) {
         <span className="hp-grow hp-small hp-muted">
           {auth.error ?? 'Синхронізуй прочитане зі своїм списком на Hikka'}
         </span>
-        <button type="button" className="hp-btn hp-small" onClick={() => void startHikkaLogin()}>
+        <Button variant="secondary" size="sm" onClick={() => void startHikkaLogin()}>
           Підключити Hikka
-        </button>
+        </Button>
       </div>
     );
   }
@@ -87,44 +88,44 @@ export function HikkaSyncBar({ state: s }: { state: TitleState }) {
           <span className="hp-grow hp-small">
             У списку Hikka прочитано <b>{hikkaN}</b> розд. Відмітити 1–{hikkaN} тут?
           </span>
-          <button type="button" className="hp-btn hp-small" onClick={() => void markReadUpTo(hikkaN)}>
+          <Button variant="default" size="sm" onClick={() => void markReadUpTo(hikkaN)}>
             Відмітити
-          </button>
-          <button
-            type="button"
-            className="hp-btn hp-btn--ghost hp-small"
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => {
               setDismissed(hikkaN);
               void patchBinding(kind, slug, (b) => ({ ...b, hikkaDismissed: hikkaN }));
             }}
           >
             Ні
-          </button>
+          </Button>
         </div>
       )}
       <div className="hp-hikka">
         <span className="hp-grow hp-small hp-muted">{info}</span>
         {localN > hikkaN && here && here.status !== 'loading' && here.status !== 'error' && (
-          <button
-            type="button"
-            className="hp-btn hp-btn--ghost hp-small"
+          <Button
+            variant="ghost"
+            size="sm"
             title="Записати номер останнього прочитаного розділу у твій список Hikka"
             onClick={() => void setHikkaChapters(kind, slug, localN, s.hikka?.chapters ?? null)}
           >
             Записати {localN} у Hikka
-          </button>
+          </Button>
         )}
-        <label className="hp-row hp-small hp-muted" title="Оновлювати лічильник у Hikka, коли дочитуєш розділ">
-          <input
-            type="checkbox"
+        <span className="hp-row hp-small hp-muted" title="Оновлювати лічильник у Hikka, коли дочитуєш розділ">
+          <Switch
+            label="Автоматично оновлювати лічильник у Hikka"
             checked={auth.autoSync}
-            onChange={(e) => void autoSyncItem.setValue(e.target.checked)}
+            onChange={(v) => void autoSyncItem.setValue(v)}
           />
-          авто
-        </label>
-        <button
-          type="button"
-          className="hp-btn hp-btn--ghost hp-small"
+          Авто
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
           title="Відключити Hikka на цьому пристрої"
           onClick={() => {
             void logoutHikka();
@@ -132,7 +133,7 @@ export function HikkaSyncBar({ state: s }: { state: TitleState }) {
           }}
         >
           Вийти
-        </button>
+        </Button>
       </div>
     </>
   );

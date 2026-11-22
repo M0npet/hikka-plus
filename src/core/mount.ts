@@ -1,5 +1,6 @@
 import { createShadowRootUi, type ContentScriptContext } from '#imports';
-import type { ReactNode } from 'react';
+import { createElement, type ReactNode } from 'react';
+import { ThemeRoot } from '../ui/kit';
 import { createRoot, type Root } from 'react-dom/client';
 
 export interface InlineFeature {
@@ -77,7 +78,7 @@ export class Mounter {
         append: anchor.append,
         onMount: (container) => {
           const root = createRoot(container);
-          root.render(f.render());
+          root.render(createElement(ThemeRoot, null, f.render()));
           return root;
         },
         onRemove: (root) => root?.unmount(),
@@ -101,7 +102,7 @@ export async function mountOverlay(ctx: ContentScriptContext, node: ReactNode) {
     append: 'last',
     onMount: (container) => {
       const root = createRoot(container);
-      root.render(node);
+      root.render(createElement(ThemeRoot, null, node));
       return root;
     },
     onRemove: (root) => root?.unmount(),
