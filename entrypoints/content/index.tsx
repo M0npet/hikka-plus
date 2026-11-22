@@ -1,5 +1,5 @@
 import './style.css';
-import { defineContentScript } from '#imports';
+import { browser, defineContentScript } from '#imports';
 import { Mounter, mountOverlay } from '@/src/core/mount';
 import { parseTitlePage } from '@/src/core/page';
 import { ChaptersBlock } from '@/src/features/chapters-block';
@@ -14,6 +14,7 @@ export default defineContentScript({
   runAt: 'document_idle',
 
   async main(ctx) {
+    console.info('[Hikka Plus] content script запущено', browser.runtime.getManifest().version);
     const syncPage = () => {
       const page = parseTitlePage();
       if (page) void loadTitle(page);

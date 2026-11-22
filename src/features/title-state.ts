@@ -191,24 +191,40 @@ export async function loadTitle(page: TitlePage) {
   unwatch?.();
   readerStore.set(null);
   const { kind, slug } = page;
-  const binding = await getBinding(kind, slug);
-  if (token !== loadToken) return;
-
+  // Стан з'являється одразу, щоб блоки на сторінці показалися навіть до завантаження.
   titleStore.set({
     page,
     sources: {},
-    activeId: binding.active,
-    activeChosen: !!binding.active,
-    teams: binding.teams,
-    progress: await getProgress(kind, slug),
+    activeId: null,
+    activeChosen: false,
+    teams: {},
+    progress: { last: null, chapters: {}, updatedAt: 0 },
   });
+
+  let binding: Awaited<ReturnType<typeof getBinding>>;
+  try {
+    binding = await getBinding(kind, slug);
+    const progress = await getProgress(kind, slug);
+    patch(token, (s) => ({
+      ...s,
+      activeId: binding.active,
+      activeChosen: !!binding.active,
+      teams: binding.teams,
+      progress,
+    }));
+  } catch (e) {
+    console.error('[Hikka Plus] storage', e);
+    patch(token, (s) => ({ ...s, hikkaError: `Помилка сховища розширення: ${String(e)}` }));
+    return;
+  }
   unwatch = watchProgress(kind, slug, (progress) => patch(token, (s) => ({ ...s, progress })));
 
   let hikka: HikkaTitle;
   try {
     hikka = await fetchHikkaTitle(kind, slug);
   } catch (e) {
-    patch(token, (s) => ({ ...s, hikkaError: String(e) }));
+    console.error('[Hikka Plus] hikka api', e);
+    patch(token, (s) => ({ ...s, hikkaError: `Не вдалося отримати дані тайтлу з Hikka: ${String(e)}` }));
     return;
   }
   patch(token, (s) => ({ ...s, hikka }));
