@@ -25,6 +25,8 @@ export type WatchPrefs = {
   favPlayer?: string;
   /** Режим «Ширше» — запам'ятовується між тайтлами. */
   wide?: boolean;
+  /** Підсвітка навколо плеєра кольорами з відео (як Ambient mode на YouTube). undefined — увімкнено. */
+  ambient?: boolean;
 };
 
 export const DEFAULT_WATCH_PREFS: WatchPrefs = { enabled: true, autoNext: true, hikkaSync: true };

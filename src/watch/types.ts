@@ -69,5 +69,10 @@ export function safeFrameSrc(raw: string | null | undefined, kind: PlayerKind): 
   }
 }
 
-/** Повідомлення з нашого фрейму плеєра (entrypoints/player-frame.content.ts): скільки висоти займає панель під відео. */
-export const PANEL_MSG = 'hikka-plus:panel';
+/**
+ * Підсвітка навколо плеєра (entrypoints/player-frame.content.ts ↔ PlayerFrame):
+ * AMBIENT_MSG — з фрейму: {ready} | {w, h, px: ArrayBuffer RGBA} | {off} (кадр недоступний);
+ * AMBIENT_REQ — з hikka.io у фрейм: {on: boolean}.
+ */
+export const AMBIENT_MSG = 'hikka-plus:ambient';
+export const AMBIENT_REQ = 'hikka-plus:ambient-req';

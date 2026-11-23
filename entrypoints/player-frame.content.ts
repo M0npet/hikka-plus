@@ -1,72 +1,94 @@
 /*
  * Лише всередині НАШОГО iframe плеєра (name="hikka-plus", див. PlayerFrame у src/watch/watch-block.tsx).
  *
- * Лише міряє, скільки висоти фрейму займає панель плеєра під відео (Moon у Firefox), і каже про це hikka.io.
- * Плеєр не чіпаємо.
+ * Підсвітка навколо плеєра (MK 2026-11-23, 14:48, як Ambient mode на YouTube): раз на ~0.1 с зменшуємо поточний кадр
+ * відео до 32×18 і шлемо пікселі на hikka.io — там їх розмивають за рамкою. Лише ЧИТАЄМО кадр, плеєр не чіпаємо.
+ * Працює, лише коли hikka.io попросив (вимикач «Підсвітка» в налаштуваннях плеєра). Якщо кадр прочитати не можна
+ * (відео з чужого сервера без CORS) — кажемо про це один раз і більше не пробуємо.
  *
- * Раніше (0.5.2–0.5.5) тут ще прибирали стиль Hikka Features, що ховав рідну панель Ashdi/Moon і в нашому фреймі.
- * Hikka Features 3.1.22 це виправив (свій iframe `#hikka-features-player` + перевірка через батьківську сторінку) —
- * обхід прибрано (MK 2026-11-23, 14:26). Розбір — claude/research-hf-player-conflict.md у claude.ai-проєкті.
+ * Раніше тут були обхід стилю Hikka Features (0.5.2–0.5.4; вони виправили в 3.1.22) і замір панелі Moon,
+ * щоб рамка ставала вищою (0.5.4–0.5.5) — замір розгойдував розкладку Moon у вузькому блоці (панель блимала), прибрано.
  */
-import { PANEL_MSG } from '@/src/watch/types';
+import { AMBIENT_MSG, AMBIENT_REQ } from '@/src/watch/types';
 
 export const FRAME_NAME = 'hikka-plus';
+const PARENT = 'https://hikka.io';
+const W = 32;
+const H = 18;
 
 export default defineContentScript({
-  matches: ['https://ashdi.vip/vod/*', 'https://moonanime.art/iframe/*', 'https://moonanime.net/iframe/*'],
+  matches: ['https://ashdi.vip/vod/*', 'https://moonanime.art/iframe/*', 'https://moonanime.net/iframe/*', 'https://fenixplay.xyz/*'],
   allFrames: true,
   runAt: 'document_idle',
   main() {
     if (window.parent === window || window.name !== FRAME_NAME) return;
-    reportPanelSpace();
+    ambient();
   },
 });
 
-/**
- * Рамка під панель (MK 2026-11-23, 03:34, «давай попробуем»): Moon у Firefox ставить свою панель ПІД відео,
- * тож у рамці 16:9 відео стискається й з'являються смуги збоку. Лише ЧИТАЄМО розміри: скільки висоти фрейму
- * не зайнято самим зображенням (панель) — і кажемо батьківській сторінці (hikka.io), щоб рамка стала вищою
- * на стільки. Там, де панель поверх відео, виходить 0 — рамка лишається 16:9. Плеєр не чіпаємо.
- */
+function ambient() {
+  let on = false;
+  let failed = false;
+  let timer = 0;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const send = (m: Record<string, unknown>, transfer?: Transferable[]) =>
+    window.parent.postMessage({ type: AMBIENT_MSG, ...m }, PARENT, transfer ?? []);
 
-function reportPanelSpace() {
-  let last = -1;
-  const measure = () => {
+  const pick = (): HTMLVideoElement | null => {
     let best: HTMLVideoElement | null = null;
     let area = 0;
     for (const v of document.querySelectorAll('video')) {
+      if (v.readyState < 2 || !v.videoWidth) continue;
       const r = v.getBoundingClientRect();
-      if (r.width * r.height > area && v.videoWidth > 0) {
+      if (r.width * r.height > area) {
         best = v;
         area = r.width * r.height;
       }
     }
-    if (!best) return;
-    const r = best.getBoundingClientRect();
-    const a = best.videoWidth / best.videoHeight;
-    if (!(a > 0.5 && a < 4)) return;
-    // Видима картинка при object-fit: contain.
-    const shownH = Math.min(r.height, r.width / a);
-    const extra = Math.max(0, Math.min(200, Math.round((window.innerHeight - shownH) / 4) * 4));
-    if (Math.abs(extra - last) < 4) return;
-    last = extra;
-    window.parent.postMessage({ type: PANEL_MSG, extra }, 'https://hikka.io');
+    return best;
   };
-  let t = 0;
-  const schedule = () => {
-    clearTimeout(t);
-    t = window.setTimeout(measure, 150);
+
+  let lastT = -1;
+  const sample = () => {
+    if (!on || failed || !ctx || document.hidden) return;
+    const v = pick();
+    if (!v) return;
+    // На паузі кадр не змінюється — не шлемо те саме.
+    if (v.paused && v.currentTime === lastT) return;
+    lastT = v.currentTime;
+    try {
+      ctx.drawImage(v, 0, 0, W, H);
+      const px = ctx.getImageData(0, 0, W, H).data;
+      const buf = px.buffer.slice(0);
+      send({ w: W, h: H, px: buf }, [buf]);
+    } catch {
+      // SecurityError: відео з іншого сервера без CORS — кадр нам недоступний.
+      failed = true;
+      send({ off: true });
+      stop();
+    }
   };
-  const ro = new ResizeObserver(schedule);
-  const hook = () => document.querySelectorAll('video').forEach((v) => {
-    ro.observe(v);
-    v.addEventListener('loadedmetadata', schedule);
+  const start = () => {
+    if (timer || failed) return;
+    timer = window.setInterval(sample, 100);
+    sample();
+  };
+  const stop = () => {
+    clearInterval(timer);
+    timer = 0;
+  };
+
+  window.addEventListener('message', (e) => {
+    if (e.source !== window.parent || e.origin !== PARENT) return;
+    const d = e.data as { type?: unknown; on?: unknown } | null;
+    if (!d || d.type !== AMBIENT_REQ) return;
+    on = d.on === true;
+    if (on) start();
+    else stop();
   });
-  window.addEventListener('resize', schedule);
-  // Плеєр будує відео не одразу.
-  const iv = window.setInterval(() => {
-    hook();
-    schedule();
-  }, 1000);
-  setTimeout(() => clearInterval(iv), 20_000);
+  // hikka.io міг надіслати запит раніше, ніж ми запустилися, — просимо повторити.
+  send({ ready: true });
 }

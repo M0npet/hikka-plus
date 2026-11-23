@@ -309,6 +309,12 @@ function PlayerFields() {
         />
         <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної" checked={w.autoNext} onChange={(autoNext) => setW({ autoNext })} />
         <SwitchRow
+          label="Підсвітка"
+          hint="Кольори з відео навколо плеєра, як Ambient mode на YouTube"
+          checked={w.ambient !== false}
+          onChange={(ambient) => setW({ ambient })}
+        />
+        <SwitchRow
           label="Відмічати серії в Hikka"
           hint="Серія зараховується, коли дійшли до ендингу (або за 1:30 до кінця)"
           checked={w.hikkaSync}

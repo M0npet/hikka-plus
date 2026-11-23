@@ -10,7 +10,7 @@ import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
 import { IconExpand, IconExternal, IconEye, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv } from '../ui/icons';
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
-import { PANEL_MSG, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
+import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
 import type { WatchPrefs } from './watch-store';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -175,6 +175,9 @@ export function WatchBlock(p: WatchBlockProps) {
   // З якої секунди почати після (пере)завантаження iframe.
   const startAt = useRef(init?.t ?? 0);
   const frameRef = useRef<HTMLDivElement>(null);
+  // Підсвітка: canvas за рамкою (поза .hp-watch__frame — та обрізає вміст).
+  const [glowEl, setGlowEl] = useState<HTMLCanvasElement | null>(null);
+  const ambient = p.prefs.ambient !== false;
   const stageRef = useRef<HTMLElement | null>(null);
   const [stageEl, setStageEl] = useState<HTMLElement | null>(null);
   const [slotEl, setSlotEl] = useState<HTMLDivElement | null>(null);
@@ -301,6 +304,8 @@ export function WatchBlock(p: WatchBlockProps) {
   const st = p.episodes[ep];
   const ed = p.edInfo && p.edInfo.ep === ep ? p.edInfo : null;
   const frame = (
+    <div className="hp-watch__view">
+    {ambient && !p.renderFrame && <canvas ref={setGlowEl} className="hp-watch__glow" aria-hidden="true" />}
     <div ref={frameRef} className="hp-watch__frame">
       {p.renderFrame ? (
         p.renderFrame(player, ep)
@@ -324,8 +329,10 @@ export function WatchBlock(p: WatchBlockProps) {
             }, 3000);
           }}
           onEpisode={playerEp}
+          glow={ambient ? glowEl : null}
         />
       )}
+    </div>
     </div>
   );
   const portal = wide && p.theater;
@@ -524,6 +531,7 @@ export function WatchBlock(p: WatchBlockProps) {
             <div className="hp-popover hp-popover--end hp-watch__menu">
               <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної" checked={p.prefs.autoNext} onChange={(v) => p.onPrefs({ autoNext: v })} />
               <SwitchRow label="Відмічати в Hikka" hint="Серія зараховується, коли дійшли до ендингу" checked={p.prefs.hikkaSync} onChange={(v) => p.onPrefs({ hikkaSync: v })} />
+              <SwitchRow label="Підсвітка" hint="Кольори з відео навколо плеєра" checked={ambient} onChange={(v) => p.onPrefs({ ambient: v })} />
             </div>
           )}
         </div>
@@ -596,6 +604,8 @@ export function PlayerFrame(p: {
   onEdStart: (sec: number) => void;
   onEnded: () => void;
   onEpisode: (n: number) => void;
+  /** Canvas підсвітки за рамкою; null — підсвітку вимкнено. */
+  glow?: HTMLCanvasElement | null;
 }) {
   const [src, setSrc] = useState<string | null | undefined>(undefined);
   const [err, setErr] = useState(false);
@@ -620,37 +630,58 @@ export function PlayerFrame(p: {
     };
   }, [p.player, p.ep]);
 
-  // Moon у Firefox ставить панель під відео — рамку робимо вищою на цю панель (міряє entrypoints/player-frame.content.ts).
+  // Підсвітка: кадр 32×18 від нашого скрипта у фреймі (entrypoints/player-frame.content.ts) → canvas за рамкою (CSS розмиває).
   useEffect(() => {
     const f = ref.current;
-    const box = f?.parentElement;
-    if (!src || !f || !box) return;
-    let extra = 0;
-    const apply = () => {
-      if (extra > 0) {
-        box.classList.add('hp-watch__frame--fit');
-        box.style.setProperty('--hp-frame-h', `${Math.round((box.clientWidth * 9) / 16 + extra)}px`);
-      } else {
-        box.classList.remove('hp-watch__frame--fit');
-        box.style.removeProperty('--hp-frame-h');
-      }
-    };
+    const c = p.glow ?? null;
+    if (!src || !f) return;
+    let origin = '';
+    try {
+      origin = new URL(src).origin;
+    } catch {
+      return;
+    }
+    const on = !!c;
+    const ask = () => f.contentWindow?.postMessage({ type: AMBIENT_REQ, on }, origin);
+    const ctx = c?.getContext('2d') ?? null;
+    const tmp = document.createElement('canvas');
+    const tctx = tmp.getContext('2d');
+    let first = true;
     const onMsg = (e: MessageEvent) => {
-      const d = e.data as { type?: unknown; extra?: unknown } | null;
-      if (e.source !== f.contentWindow || !d || d.type !== PANEL_MSG || typeof d.extra !== 'number') return;
-      extra = Math.max(0, Math.min(200, d.extra));
-      apply();
+      if (e.source !== f.contentWindow || e.origin !== origin) return;
+      const d = e.data as { type?: unknown; ready?: unknown; off?: unknown; w?: unknown; h?: unknown; px?: unknown } | null;
+      if (!d || d.type !== AMBIENT_MSG) return;
+      if (d.ready) return ask();
+      if (!c || !ctx || !tctx) return;
+      if (d.off) return c.classList.remove('is-on');
+      const w = Number(d.w);
+      const h = Number(d.h);
+      if (!(d.px instanceof ArrayBuffer) || !(w > 0 && w <= 64 && h > 0 && h <= 64) || d.px.byteLength !== w * h * 4) return;
+      if (tmp.width !== w || tmp.height !== h) {
+        tmp.width = c.width = w;
+        tmp.height = c.height = h;
+        first = true;
+      }
+      tctx.putImageData(new ImageData(new Uint8ClampedArray(d.px), w, h), 0, 0);
+      // Плавна зміна кольорів: новий кадр поверх старого з прозорістю.
+      ctx.globalAlpha = first ? 1 : 0.25;
+      ctx.drawImage(tmp, 0, 0);
+      if (first) c.classList.add('is-on');
+      first = false;
     };
-    const ro = new ResizeObserver(apply);
-    ro.observe(box);
     window.addEventListener('message', onMsg);
+    ask();
     return () => {
       window.removeEventListener('message', onMsg);
-      ro.disconnect();
-      extra = 0;
-      apply();
+      c?.classList.remove('is-on');
+      if (!on) return;
+      try {
+        f.contentWindow?.postMessage({ type: AMBIENT_REQ, on: false }, origin);
+      } catch {
+        /* фрейм уже прибрано */
+      }
     };
-  }, [src]);
+  }, [src, p.glow]);
 
   useEffect(() => {
     const f = ref.current;
