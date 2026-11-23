@@ -22,6 +22,42 @@ import type { ReadKind } from '../core/page';
 
 export const autoSyncItem = storage.defineItem<boolean>('local:hp:hikkaAutoSync', { fallback: true });
 
+/**
+ * Відмітки, що не дійшли до Hikka (MK 22:30): «${kind}:${slug}» → скільки розділів треба дописати.
+ * Пишемо ДО відправки (і одразу при постановці в чергу — вкладку можуть закрити за ці 2,5 с),
+ * стираємо, коли Hikka вже має ≥ n. При наступному заході на тайтл — `retryHikkaChapters`.
+ * Дотягуємо лише такі «зірвані» відправки, а не завжди: інакше «−» у віджеті Hikka повертався б угору.
+ */
+type Retry = Record<string, { n: number; total: number | null; at: number }>;
+const retryItem = storage.defineItem<Retry>('local:hp:hikkaRetry', { fallback: {} });
+const RETRY_MAX = 50;
+
+async function markRetry(key: string, n: number, total: number | null) {
+  const all = { ...(await retryItem.getValue()) };
+  if ((all[key]?.n ?? 0) >= n) return;
+  all[key] = { n, total, at: Date.now() };
+  const keys = Object.keys(all).sort((a, b) => all[b]!.at - all[a]!.at);
+  for (const k of keys.slice(RETRY_MAX)) delete all[k];
+  await retryItem.setValue(all);
+}
+
+/** Hikka вже має ≥ n (або користувач сам знизив) — для `upTo` = undefined стерти будь-яке. */
+async function clearRetry(key: string, upTo?: number) {
+  const all = await retryItem.getValue();
+  const r = all[key];
+  if (!r || (upTo != null && r.n > upTo)) return;
+  const next = { ...all };
+  delete next[key];
+  await retryItem.setValue(next);
+}
+
+/** Зайшли на тайтл: якщо минулого разу відмітка не дійшла — дослати її (лише вгору, як завжди). */
+export async function retryHikkaChapters(kind: ReadKind, slug: string) {
+  const r = (await retryItem.getValue())[`${kind}:${slug}`];
+  if (!r || !(await autoSyncItem.getValue()) || !(await tokenItem.getValue())) return;
+  await setHikkaChapters(kind, slug, r.n, r.total);
+}
+
 // ---------- Вхід ----------
 
 export interface HikkaAuthState {
@@ -131,14 +167,17 @@ const EMPTY: HikkaRead = {
 export async function setHikkaChapters(kind: ReadKind, slug: string, n: number, total: number | null) {
   n = Math.min(Math.floor(n), 10000);
   if (!(n > 0) || !(await tokenItem.getValue())) return;
+  const key = `${kind}:${slug}`;
+  await markRetry(key, n, total);
   const cur = await getRead(kind, slug);
   if (!cur.ok && cur.error !== 'not-found') {
     if (cur.error === 'auth') await authErrorItem.setValue('Вхід у Hikka закінчився — увійди ще раз.');
+    else console.warn('[Hikka Plus] Hikka: не вдалося прочитати запис, дошлю пізніше', cur.error, cur.message);
     return;
   }
   const base = cur.ok ? (cur.data as HikkaRead) : EMPTY;
   const finished = !!total && n >= total;
-  if (base.chapters >= n && (!finished || base.status === 'completed')) return;
+  if (base.chapters >= n && (!finished || base.status === 'completed')) return clearRetry(key, n);
 
   const now = Math.floor(Date.now() / 1000);
   const next: HikkaRead = {
@@ -150,10 +189,12 @@ export async function setHikkaChapters(kind: ReadKind, slug: string, n: number, 
   };
   const res = await putRead(kind, slug, next);
   if (res.ok) {
+    await clearRetry(key, n);
     if (isCur(kind, slug)) setRemote({ kind, slug, status: 'ok', read: res.data as HikkaRead });
     // Віджет «у списку» на сторінці Hikka — оновити одразу, без F5.
     notifyHikkaReadChanged(slug);
   } else {
+    console.warn('[Hikka Plus] Hikka: запис не вдався, дошлю пізніше', res.error, res.message);
     await authErrorItem.setValue(
       res.error === 'auth' ? 'Вхід у Hikka закінчився — увійди ще раз.' : `Не вдалося оновити Hikka: ${res.message}`,
     );
@@ -174,6 +215,8 @@ export async function lowerHikkaChapters(kind: ReadKind, slug: string, n: number
     clearTimeout(prev.timer);
     pending.delete(key);
   }
+  // Користувач сам знизив — недіслана відмітка вгору застаріла.
+  await clearRetry(key);
   const cur = await getRead(kind, slug);
   if (!cur.ok) {
     if (cur.error === 'auth') await authErrorItem.setValue('Вхід у Hikka закінчився — увійди ще раз.');
@@ -208,6 +251,7 @@ export async function queueHikkaChapters(kind: ReadKind, slug: string, n: number
   const prev = pending.get(key);
   if (prev) clearTimeout(prev.timer);
   const max = Math.max(prev?.n ?? 0, n);
+  await markRetry(key, max, total);
   const timer = setTimeout(() => {
     pending.delete(key);
     void setHikkaChapters(kind, slug, max, total);

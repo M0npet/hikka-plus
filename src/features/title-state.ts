@@ -16,7 +16,7 @@ import {
 import { getSource, sourcesFor } from '../sources/registry';
 import { takeNearMiss } from '../sources/match';
 import { renumberByVolume, type Chapter, type ContentFormat, type ReadSource, type RemoteTitle } from '../sources/types';
-import { loadRemoteRead, lowerHikkaChapters, queueHikkaChapters, resetRemoteRead } from './hikka-sync';
+import { loadRemoteRead, lowerHikkaChapters, queueHikkaChapters, resetRemoteRead, retryHikkaChapters } from './hikka-sync';
 import { HIKKA_LIST_EVENT } from '../core/bridge';
 
 // Hikka сама змінила запис у своєму списку (напр. «+/−» у віджеті зліва; сигнал — від hikka-bridge):
@@ -282,6 +282,8 @@ export async function loadTitle(page: TitlePage) {
     patch(token, (s) => ({ ...s, progress }));
   });
   void loadRemoteRead(kind, slug);
+  // Минулого разу відмітка не дійшла до Hikka (мережа, закрита вкладка) — дослати.
+  void retryHikkaChapters(kind, slug);
 
   let hikka: HikkaTitle;
   try {
