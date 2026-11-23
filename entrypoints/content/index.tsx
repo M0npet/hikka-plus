@@ -13,6 +13,7 @@ import { finishHikkaLogin } from '@/src/features/hikka-sync';
 import { initSourcePrefs, watchSourcePrefs } from '@/src/core/source-prefs';
 import { trackSiteTheme } from '@/src/core/site-theme';
 import { getSettings, watchSettings } from '@/src/core/store';
+import { initCards } from '@/src/cards/cards';
 
 export default defineContentScript({
   matches: ['https://hikka.io/*'],
@@ -30,6 +31,8 @@ export default defineContentScript({
     }
     // Тема й акцент Hikka — щоб вікно налаштувань розширення виглядало так само.
     trackSiteTheme((fn) => ctx.onInvalidated(fn));
+    // Плашки «▶ N нових» / «N серія через X дн.» на картках аніме (каталог, списки, календар).
+    initCards(ctx);
     // Увімкнені джерела та їх порядок (вікно налаштувань розширення).
     await initSourcePrefs();
     // Читалку можна вимкнути у вікні налаштувань — тоді ні кнопки, ні блоку, ні запитів до джерел.

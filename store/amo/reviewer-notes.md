@@ -20,7 +20,7 @@ The Hikka OAuth client reference/secret are injected at build time from env WXT_
 PERMISSIONS
 - storage — settings, reading/watching progress, Hikka token (local only); sync storage for progress across the user's devices.
 - https://hikka.io/* — content script that adds our blocks to title pages.
-- https://api.hikka.io/* — title data (names, external links, MAL id); with the user's OAuth consent: read/update the user's read/watch list entry for the opened title.
+- https://api.hikka.io/* — title data (names, external links, MAL id); with the user's OAuth consent: read/update the user's read/watch list entry for the opened title. Plus the public episode schedule (POST /schedule/anime, no auth) every 3 h for card badges.
 - Manga/novel sources (api.zenko.online, manga.in.ua, baka.in.ua, data/search.api.honey-manga.com.ua, uamanga.com, back.animesvit.com, dgmanga.app, runi.ink, api.smakolykytl.site, novel.org.ua, fan-vers.com, www.wattpad.com) — search by title name, chapter list, chapter pages/text. Requests go from the background script (CORS) with credentials: 'omit', only to an allowlist (src/core/hosts.ts, isAllowedUrl).
 - Link-only sources (mangra.app, faust-web.com, mangarama.com.ua, manga.valsky.org) — public search to build a "read on <site>" link; nothing is read from them.
 - api.mikai.me, animeon.club — list of dubs/episodes and player iframe URLs for the opened anime.

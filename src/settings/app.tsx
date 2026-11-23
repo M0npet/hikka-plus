@@ -11,6 +11,7 @@ import { syncOnItem } from '../core/sync-flag';
 import { MangaFields, NovelFields } from '../features/reader/settings-panel';
 import { autoSyncItem } from '../features/hikka-sync';
 import { DEFAULT_WIDE_ANIM, useWatchPrefs } from '../watch/watch-store';
+import { useCardsPrefs } from '../cards/prefs';
 import { AmbientFields } from '../watch/ambient-fields';
 import { DeviceLights } from '../lights/settings';
 import { LINK_SOURCES } from '../sources/links';
@@ -306,6 +307,24 @@ function ReaderSection() {
 }
 
 /** Плеєр аніме (блок «Перегляд» на сторінці аніме). */
+/** Плашки на картках аніме (src/cards/): «▶ N нових», «N серія через X дн.». */
+function CardsFields() {
+  const [c, setC] = useCardsPrefs();
+  return (
+    <>
+      <SwitchRow
+        label="Плашки на картках"
+        hint="«▶ N нових» на тайтлах, які ви дивитесь (каталог, календар, ваші списки на Hikka)"
+        checked={c.on}
+        onChange={(on) => setC({ on })}
+      />
+      {c.on && (
+        <SwitchRow label="Коли наступна серія" hint="«N серія через X дн.» за розкладом Hikka" checked={c.next} onChange={(next) => setC({ next })} />
+      )}
+    </>
+  );
+}
+
 function PlayerFields({ mode }: { mode: SettingsMode }) {
   const [w, setW] = useWatchPrefs();
   return (
@@ -318,6 +337,7 @@ function PlayerFields({ mode }: { mode: SettingsMode }) {
           checked={w.enabled}
           onChange={(enabled) => setW({ enabled })}
         />
+        <CardsFields />
         <SwitchRow
           label="На всю ширину"
           hint="Режим «Ширше»: блок на всю ширину сторінки під верхніми картками; запам'ятовується між тайтлами"

@@ -1,5 +1,5 @@
 import { defineUnlistedScript } from '#imports';
-import { HIKKA_LIST_EVENT, READ_CHANGED_EVENT, READ_COUNT_EVENT, READ_COUNT_REQ, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '@/src/core/bridge';
+import { CARDS_EVENT, CARDS_REQ, HIKKA_LIST_EVENT, READ_CHANGED_EVENT, READ_COUNT_EVENT, READ_COUNT_REQ, WATCH_COUNT_EVENT, WATCH_COUNT_REQ, type CardRow } from '@/src/core/bridge';
 
 /**
  * Виконується в контексті сторінки hikka.io (не в ізольованому світі content script).
@@ -75,13 +75,93 @@ export default defineUnlistedScript(() => {
     if (n === null) return;
     document.dispatchEvent(new CustomEvent(READ_COUNT_EVENT, { detail: `${ct}\n${slug}\n${n}` }));
   }
+  /* ---------- Плашки на картках аніме (src/cards/) ---------- */
+
+  type Anime = { data_type?: unknown; slug?: unknown; episodes_released?: unknown; episodes_total?: unknown; status?: unknown; watch?: unknown };
+  type Entry = { episodes?: unknown; status?: unknown };
+  const isAnime = (a: unknown): a is Anime => !!a && typeof a === 'object' && (a as Anime).data_type === 'anime' && typeof (a as Anime).slug === 'string';
+  const int = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : -1);
+
+  /** Знімок того, що кеш Hikka знає про аніме на сторінці: випущені серії й запис у списку того, хто зайшов. */
+  function collectCards(): CardRow[] {
+    const all = client?.getQueryCache().getAll?.() ?? [];
+    let me = '';
+    for (const q of all) {
+      const k = q.queryKey[0] as { _id?: unknown } | undefined;
+      const u = (q.state?.data as { username?: unknown } | undefined)?.username;
+      if (k && typeof k === 'object' && k._id === 'profile' && typeof u === 'string') me = u;
+    }
+    const rows = new Map<string, CardRow>();
+    const put = (a: Anime, w?: Entry) => {
+      const slug = a.slug as string;
+      const r = rows.get(slug) ?? [slug, -1, -1, '', -1, ''];
+      if (int(a.episodes_released) >= 0) r[1] = int(a.episodes_released);
+      if (int(a.episodes_total) >= 0) r[2] = int(a.episodes_total);
+      if (typeof a.status === 'string') r[3] = a.status;
+      // У каталозі й календарі `watch` — запис саме того, хто зайшов (AnimeResponseWithWatch); [] — тайтлу немає в списку.
+      const own = w ?? (Array.isArray(a.watch) ? (a.watch[0] as Entry | undefined) : undefined);
+      if (own && int(own.episodes) >= 0) {
+        r[4] = int(own.episodes);
+        r[5] = typeof own.status === 'string' ? own.status : '';
+      }
+      rows.set(slug, r);
+    };
+    const walk = (v: unknown, ownList: boolean, depth: number) => {
+      if (!v || typeof v !== 'object' || depth > 6) return;
+      if (Array.isArray(v)) return v.forEach((x) => walk(x, ownList, depth + 1));
+      if (isAnime(v)) return put(v);
+      const o = v as { anime?: unknown; episodes?: unknown; status?: unknown };
+      // Запис списку {anime, episodes, status}: чужий список — лише дані тайтлу, без «переглянуто».
+      if (isAnime(o.anime)) return put(o.anime, ownList && int(o.episodes) >= 0 ? o : undefined);
+      for (const x of Object.values(v)) if (x && typeof x === 'object') walk(x, ownList, depth + 1);
+    };
+    for (const q of all) {
+      if (q.state?.status !== 'success' || !q.state.data) continue;
+      const k = q.queryKey[0] as { _id?: unknown; path?: { slug?: unknown; username?: unknown } } | undefined;
+      if (!k || typeof k !== 'object') continue;
+      const id = String(k._id ?? '');
+      if (id === 'watchGet') {
+        const slug = k.path?.slug;
+        const d = q.state.data as Entry & { anime?: unknown };
+        if (typeof slug === 'string') put(isAnime(d.anime) ? d.anime : ({ slug } as Anime), d);
+        continue;
+      }
+      // Лише кеш зі списками тайтлів (не коментарі, не статистика): усе, де трапляються об'єкти аніме.
+      if (!/anime|watch|schedule|franchise|collection|recommend|search/i.test(id)) continue;
+      walk(q.state.data, id === 'userWatchList' && !!me && k.path?.username === me, 0);
+    }
+    return [...rows.values()];
+  }
+  let cardsSent = '';
+  let cardsTimer = 0;
+  function sendCards(force = false) {
+    window.clearTimeout(cardsTimer);
+    cardsTimer = window.setTimeout(() => {
+      let json = '';
+      try {
+        json = JSON.stringify(collectCards());
+      } catch {
+        return;
+      }
+      if (!force && json === cardsSent) return;
+      cardsSent = json;
+      document.dispatchEvent(new CustomEvent(CARDS_EVENT, { detail: json }));
+    }, force ? 0 : 250);
+  }
+  document.addEventListener(CARDS_REQ, () => {
+    client ??= findClient();
+    if (client) sendCards(true);
+  });
+
   const last = new Map<string, number>();
   function watchCache() {
     if (unsub) return;
     client ??= findClient();
     if (!client) return;
+    sendCards(true);
     unsub = client.getQueryCache().subscribe((ev) => {
       if (ev.type !== 'updated' || ev.action?.type !== 'success') return;
+      sendCards();
       reportWatch(ev.query);
       reportRead(ev.query);
       const k = ev.query.queryKey[0] as { _id?: unknown } | undefined;

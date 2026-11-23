@@ -35,3 +35,14 @@ export const WATCH_COUNT_REQ = 'hikka-plus:watch-count-req';
 export const READ_COUNT_EVENT = 'hikka-plus:read-count';
 /** Content script → сторінка: «повідом кількість розділів для <slug>», detail — slug. */
 export const READ_COUNT_REQ = 'hikka-plus:read-count-req';
+
+/**
+ * Плашки на картках аніме (src/cards/): що знає кеш самої Hikka про тайтли на сторінці — каталог (`searchAnime`),
+ * «Мої списки» (`userWatchList`, лише власний список), календар (`animeSchedule`), віджет `watchGet`.
+ * Сторінка → content script: detail — JSON `[[slug, episodes_released, episodes_total, status, watched, watch_status], …]`
+ * (watched = -1 і watch_status = '' — запис у списку невідомий). Без жодного запиту до API.
+ */
+export const CARDS_EVENT = 'hikka-plus:cards';
+/** Content script → сторінка: «надішли знімок карток». */
+export const CARDS_REQ = 'hikka-plus:cards-req';
+export type CardRow = [slug: string, released: number, total: number, status: string, watched: number, watchStatus: string];
