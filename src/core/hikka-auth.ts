@@ -20,11 +20,17 @@ export const HIKKA_CLIENT = {
 
 export const AUTH_PATH = '/hikka-plus-auth';
 export const SCOPES = ['read:readlist', 'update:readlist'];
+/**
+ * Дозволи для відміток серій. Просимо окремо (кнопкою в блоці «Перегляд»), а не при звичайному вході:
+ * якщо в клієнті Hikka їх ще не ввімкнули, звичайний вхід не має зламатися.
+ */
+export const WATCH_SCOPES = ['read:watchlist', 'update:watchlist'];
 
 export const hikkaConfigured = () => !!HIKKA_CLIENT.reference;
 
-export function oauthUrl(): string {
-  const q = new URLSearchParams({ reference: HIKKA_CLIENT.reference, scope: SCOPES.join(',') });
+export function oauthUrl(watch = false): string {
+  const scope = watch ? [...SCOPES, ...WATCH_SCOPES] : SCOPES;
+  const q = new URLSearchParams({ reference: HIKKA_CLIENT.reference, scope: scope.join(',') });
   return `https://hikka.io/oauth?${q}`;
 }
 
@@ -38,6 +44,10 @@ export interface HikkaToken {
 export const tokenItem = storage.defineItem<HikkaToken | null>('local:hp:hikkaToken', { fallback: null });
 /** Куди повернутися після входу. */
 export const returnItem = storage.defineItem<string | null>('local:hp:authReturn', { fallback: null });
+/** Поточний токен має дозволи на список перегляду (вхід через «Відмічати серії в Hikka»). */
+export const watchScopeItem = storage.defineItem<boolean>('local:hp:hikkaWatchScope', { fallback: false });
+/** Вхід почато з дозволами на перегляд — після повернення запам'ятати це. */
+export const watchLoginItem = storage.defineItem<boolean>('local:hp:hikkaWatchLogin', { fallback: false });
 /** Остання помилка входу/синхронізації — показуємо в блоці. */
 export const authErrorItem = storage.defineItem<string | null>('local:hp:hikkaError', { fallback: null });
 
@@ -56,17 +66,31 @@ export interface HikkaRead {
   end_date: number | null;
 }
 
+export type WatchStatus = 'completed' | 'watching' | 'on_hold' | 'dropped' | 'planned';
+
+export interface HikkaWatch {
+  status: WatchStatus;
+  episodes: number;
+  rewatches: number;
+  score: number;
+  note: string | null;
+  start_date: number | null;
+  end_date: number | null;
+}
+
 export type HikkaRequest =
   | { type: 'hp-hikka'; op: 'exchange'; reference: string }
   | { type: 'hp-hikka'; op: 'logout' }
   | { type: 'hp-hikka'; op: 'getRead'; kind: ReadKind; slug: string }
-  | { type: 'hp-hikka'; op: 'putRead'; kind: ReadKind; slug: string; read: HikkaRead };
+  | { type: 'hp-hikka'; op: 'putRead'; kind: ReadKind; slug: string; read: HikkaRead }
+  | { type: 'hp-hikka'; op: 'getWatch'; slug: string }
+  | { type: 'hp-hikka'; op: 'putWatch'; slug: string; watch: HikkaWatch };
 
 export interface HikkaResponse<T = unknown> {
   ok: boolean;
   data?: T;
-  /** 'not-found' — тайтла немає у списку; 'auth' — потрібен повторний вхід. */
-  error?: 'not-found' | 'auth' | 'network' | 'other';
+  /** 'not-found' — тайтла немає у списку; 'auth' — потрібен повторний вхід; 'scope' — у токена немає потрібного дозволу. */
+  error?: 'not-found' | 'auth' | 'scope' | 'network' | 'other';
   message?: string;
 }
 
@@ -81,3 +105,5 @@ export const logoutHikka = () => call({ type: 'hp-hikka', op: 'logout' });
 export const getRead = (kind: ReadKind, slug: string) => call<HikkaRead>({ type: 'hp-hikka', op: 'getRead', kind, slug });
 export const putRead = (kind: ReadKind, slug: string, read: HikkaRead) =>
   call<HikkaRead>({ type: 'hp-hikka', op: 'putRead', kind, slug, read });
+export const getWatch = (slug: string) => call<HikkaWatch>({ type: 'hp-hikka', op: 'getWatch', slug });
+export const putWatch = (slug: string, watch: HikkaWatch) => call<HikkaWatch>({ type: 'hp-hikka', op: 'putWatch', slug, watch });

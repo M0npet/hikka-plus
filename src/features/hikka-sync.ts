@@ -13,6 +13,8 @@ import {
   putRead,
   returnItem,
   tokenItem,
+  watchLoginItem,
+  watchScopeItem,
   type HikkaRead,
 } from '../core/hikka-auth';
 import { notifyHikkaReadChanged } from '../core/bridge';
@@ -49,10 +51,11 @@ export function useHikkaAuth(): HikkaAuthState {
 }
 
 /** Перейти на сторінку підтвердження Hikka; після неї повернемося сюди ж. */
-export async function startHikkaLogin() {
+export async function startHikkaLogin(watch = false) {
   await returnItem.setValue(location.pathname + location.search);
   await authErrorItem.setValue(null);
-  location.assign(oauthUrl());
+  await watchLoginItem.setValue(watch);
+  location.assign(oauthUrl(watch));
 }
 
 /** Сторінка-повернення з Hikka (/hikka-plus-auth?reference=…): міняємо reference на токен. */
@@ -60,6 +63,8 @@ export async function finishHikkaLogin() {
   const reference = new URLSearchParams(location.search).get('reference') ?? '';
   const res = await exchangeReference(reference);
   await authErrorItem.setValue(res.ok ? null : `Не вдалося увійти в Hikka: ${res.message ?? res.error}`);
+  if (res.ok) await watchScopeItem.setValue(await watchLoginItem.getValue());
+  await watchLoginItem.setValue(false);
   const back = (await returnItem.getValue()) || '/';
   await returnItem.setValue(null);
   // Лише шлях на hikka.io, щоб не перекинути кудись назовні.

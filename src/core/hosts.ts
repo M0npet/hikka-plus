@@ -18,6 +18,10 @@ export const API_HOSTS = [
   'https://novel.org.ua',
   'https://fan-vers.com',
   'https://www.wattpad.com',
+  // Плеєр аніме: дані про серії (самі плеєри — iframe, запитів до них не робимо) і мітки ендингу.
+  'https://api.mikai.me',
+  'https://animeon.club',
+  'https://api.aniskip.com',
   // Джерела-посилання (лише пошук тайтлу, без читання).
   'https://mangra.app',
   'https://faust-web.com',

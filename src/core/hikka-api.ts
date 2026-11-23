@@ -9,6 +9,7 @@ import {
   type HikkaRequest,
   type HikkaResponse,
   type HikkaToken,
+  type HikkaWatch,
 } from './hikka-auth';
 
 const API = 'https://api.hikka.io';
@@ -20,7 +21,7 @@ const READ_FIELDS = ['status', 'chapters', 'volumes', 'rereads', 'score', 'note'
 
 async function request<T>(
   path: string,
-  init: { method?: 'GET' | 'PUT' | 'POST'; json?: unknown; auth?: boolean } = {},
+  init: { method?: 'GET' | 'PUT' | 'POST'; json?: unknown; auth?: boolean; scoped?: boolean } = {},
 ): Promise<HikkaResponse<T>> {
   const headers = new Headers({ Accept: 'application/json' });
   if (init.json !== undefined) headers.set('Content-Type', 'application/json');
@@ -42,7 +43,11 @@ async function request<T>(
     const body = (await res.json().catch(() => null)) as (T & { code?: string; message?: string }) | null;
     if (res.ok) return { ok: true, data: body as T };
     const code = body?.code ?? '';
-    if (code === 'read:not_found') return { ok: false, error: 'not-found', message: body?.message };
+    if (code === 'read:not_found' || code === 'watch:not_found') return { ok: false, error: 'not-found', message: body?.message };
+    // Запит, для якого в токена може не бути дозволу (список перегляду): вхід не скидаємо.
+    if (init.scoped && (code === 'permission:denied' || code.startsWith('auth:scope') || res.status === 403)) {
+      return { ok: false, error: 'scope', message: body?.message ?? `HTTP ${res.status}` };
+    }
     if (code.startsWith('auth:') || res.status === 401 || code === 'permission:denied') {
       // Токен прострочений/відкликаний або без потрібних дозволів — виходимо.
       if (init.auth !== false) await tokenItem.setValue(null);
@@ -54,6 +59,21 @@ async function request<T>(
   } finally {
     clearTimeout(timer);
   }
+}
+
+const WATCH_STATUS = new Set(['completed', 'watching', 'on_hold', 'dropped', 'planned']);
+
+function pickWatch(r: Partial<HikkaWatch> | undefined): HikkaWatch {
+  const n = (v: unknown, max: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(0, Math.floor(v))) : 0);
+  return {
+    status: WATCH_STATUS.has(r?.status as string) ? (r!.status as HikkaWatch['status']) : 'watching',
+    episodes: n(r?.episodes, 10000),
+    rewatches: n(r?.rewatches, 100),
+    score: n(r?.score, 10),
+    note: typeof r?.note === 'string' ? r.note : null,
+    start_date: typeof r?.start_date === 'number' ? r.start_date : null,
+    end_date: typeof r?.end_date === 'number' ? r.end_date : null,
+  };
 }
 
 function pickRead(r: Partial<HikkaRead> | undefined): HikkaRead {
@@ -105,6 +125,16 @@ export async function handleHikka(msg: HikkaRequest): Promise<HikkaResponse> {
       }
       const r = await request<HikkaRead>(path, { method: 'PUT', json: pickRead(msg.read) });
       return r.ok ? { ok: true, data: pickRead(r.data) } : r;
+    }
+    case 'getWatch':
+    case 'putWatch': {
+      if (!SLUG_RE.test(msg.slug)) return { ok: false, error: 'other' };
+      const path = `/watch/${msg.slug}`;
+      const r =
+        msg.op === 'getWatch'
+          ? await request<HikkaWatch>(path, { scoped: true })
+          : await request<HikkaWatch>(path, { method: 'PUT', json: pickWatch(msg.watch), scoped: true });
+      return r.ok ? { ok: true, data: pickWatch(r.data) } : r;
     }
   }
 }

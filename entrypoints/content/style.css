@@ -1500,3 +1500,289 @@ select {
   background: var(--hp-primary-fg);
   transition: width 0.15s linear;
 }
+
+/* ---------- Блок «Перегляд» (плеєр аніме) ---------- */
+
+.hp-watch__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.hp-watch__team {
+  flex: 1 1 260px;
+}
+.hp-watch__player {
+  flex: 0 1 180px;
+}
+.hp-watch__trig {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.hp-watch__pop {
+  min-width: max(100%, 260px);
+  max-width: min(420px, 92vw);
+}
+.hp-watch__player .hp-watch__pop {
+  left: auto;
+  right: 0;
+}
+.hp-watch__opt {
+  min-height: 40px;
+}
+.hp-watch__ava {
+  display: grid;
+  place-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  object-fit: cover;
+  background: var(--hp-muted);
+  color: var(--hp-muted-fg);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+.hp-watch__kind {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--hp-tint-border);
+  border-radius: var(--hp-r-sm);
+  background: var(--hp-tint-bg);
+  color: var(--hp-primary-fg);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+}
+.hp-watch__kind--sub {
+  border-color: var(--hp-border);
+  background: var(--hp-secondary);
+  color: var(--hp-secondary-fg);
+}
+.hp-watch__fav {
+  display: grid;
+  place-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin: -4px -4px -4px 0;
+  border: 0;
+  border-radius: var(--hp-r-md);
+  background: transparent;
+  color: var(--hp-muted-fg);
+  cursor: pointer;
+}
+.hp-watch__fav:hover {
+  background: var(--hp-ghost-hover);
+  color: var(--hp-fg);
+}
+.hp-watch__fav--on {
+  color: var(--hp-primary-fg);
+}
+.hp-watch__fav--on svg {
+  fill: currentColor;
+}
+.hp-watch__dawn {
+  flex: none;
+}
+.hp-watch__menu {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 300px;
+  padding: 16px;
+}
+
+/* Рамка плеєра 16:9 (iframe як є). */
+.hp-watch__stage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.hp-watch__frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  overflow: hidden;
+  border: 1px solid var(--hp-border);
+  border-radius: var(--hp-r-lg);
+  background: #000;
+}
+.hp-watch__frame > iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.hp-watch__empty {
+  display: grid;
+  place-content: center;
+  height: 100%;
+  color: var(--hp-muted-fg);
+  font-size: 14px;
+}
+/* Режим «Ширше»: плеєр над колонками сторінки, висота не більша за екран. */
+.hp-watch__stage--wide .hp-watch__frame {
+  max-height: calc(100vh - 140px);
+  aspect-ratio: auto;
+  height: min(calc(100vh - 140px), calc((100vw - 48px) * 9 / 16));
+}
+.hp-watch__stagebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--hp-muted-fg);
+}
+.hp-watch__moved {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--hp-border);
+  border-radius: var(--hp-r-lg);
+  font-size: 14px;
+  color: var(--hp-muted-fg);
+}
+
+.hp-watch__nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hp-watch__epname {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+.hp-watch__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  color: var(--hp-muted-fg);
+}
+.hp-watch__hint .hp-icon {
+  width: 14px;
+  height: 14px;
+}
+.hp-watch__hikka {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--hp-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.hp-watch__epsHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.hp-watch__epsHead > :last-child:not(:first-child) {
+  flex: 1;
+  min-width: 0;
+}
+.hp-watch__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 6px;
+}
+.hp-watch__ep {
+  position: relative;
+  gap: 4px;
+  padding: 0 6px;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+.hp-watch__ep .hp-icon {
+  width: 14px;
+  height: 14px;
+}
+.hp-watch__ep--seen {
+  background: color-mix(in oklab, var(--hp-secondary) 40%, transparent);
+  color: var(--hp-muted-fg);
+}
+.hp-watch__epbar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--hp-primary-fg);
+}
+
+@media (max-width: 560px) {
+  .hp-watch__bar {
+    flex-wrap: wrap;
+  }
+  .hp-watch__team {
+    flex-basis: 100%;
+  }
+  .hp-watch__player {
+    flex: 1;
+  }
+  .hp-watch__grid {
+    grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  }
+  .hp-watch__player .hp-watch__pop {
+    left: 0;
+    right: auto;
+  }
+  span.hp-watch__hikka {
+    display: none;
+  }
+}
+
+/* Сенсорні екрани: більші цілі дотику, без залежності від hover. */
+@media (pointer: coarse) {
+  .hp-watch__opt {
+    min-height: 44px;
+  }
+  .hp-watch__fav {
+    width: 40px;
+    height: 40px;
+    margin: -8px -6px -8px 0;
+  }
+  .hp-watch__ep {
+    height: 44px;
+  }
+  .hp-watch__nav .hp-btn--icon {
+    height: 44px;
+  }
+  .hp-watch .hp-header__actions .hp-btn--sm {
+    height: 40px;
+    min-width: 40px;
+  }
+  .hp-watch__menu .hp-switch {
+    transform: scale(1.15);
+  }
+}
+/* На вузькому екрані блок уже на всю ширину — «Ширше» не потрібне (у плеєрів є свій повний екран). */
+@media (max-width: 900px) {
+  .hp-watch__wide {
+    display: none;
+  }
+}
+.hp-watch__menu {
+  max-width: min(360px, calc(100vw - 32px));
+}
+/* Місце для плеєра «Ширше» над колонками: відступ лише коли там є плеєр. */
+.hp-theater:not(:empty) {
+  margin-bottom: 32px;
+}
+.hp-watch__epname > span:first-child {
+  white-space: nowrap;
+}

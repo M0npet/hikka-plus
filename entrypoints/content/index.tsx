@@ -1,7 +1,8 @@
 import './style.css';
 import { browser, defineContentScript, injectScript } from '#imports';
 import { Mounter, mountOverlay } from '@/src/core/mount';
-import { parseTitlePage } from '@/src/core/page';
+import { parseAnimePage, parseTitlePage } from '@/src/core/page';
+import { AnimeWatch, TheaterSlot, animePageStore } from '@/src/watch/watch-root';
 import { ChaptersBlock } from '@/src/features/chapters-block';
 import { ReadButton } from '@/src/features/read-button';
 import { Reader } from '@/src/features/reader/reader';
@@ -37,6 +38,7 @@ export default defineContentScript({
     const syncPage = () => {
       if (location.pathname === lastPath) return;
       lastPath = location.pathname;
+      animePageStore.set(parseAnimePage()?.slug ?? null);
       const page = parseTitlePage();
       if (page) void loadTitle(page);
       else resetTitle();
@@ -62,6 +64,24 @@ export default defineContentScript({
           { selector: '#content-center', append: 'first' },
         ],
         render: () => <ChaptersBlock />,
+      },
+      {
+        // Плеєр аніме: між «Опис» і «Головні персонажі».
+        name: 'hikka-plus-watch',
+        shouldMount: () => !!parseAnimePage(),
+        anchors: [
+          { selector: '#content-description', append: 'after' },
+          { selector: '#content-characters', append: 'before' },
+          { selector: '#content-center', append: 'first' },
+        ],
+        render: () => <AnimeWatch />,
+      },
+      {
+        // Місце для плеєра в режимі «Ширше» — над колонками сторінки (порожнє, поки режим вимкнений).
+        name: 'hikka-plus-theater',
+        shouldMount: () => !!parseAnimePage(),
+        anchors: [{ selector: 'div:has(> #content-left-side)', append: 'before' }],
+        render: () => <TheaterSlot />,
       },
     ]);
 

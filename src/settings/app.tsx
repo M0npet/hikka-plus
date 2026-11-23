@@ -10,6 +10,7 @@ import { DEFAULT_SETTINGS, updateSettings, useSettings } from '../core/store';
 import { syncOnItem } from '../core/sync-flag';
 import { MangaFields, NovelFields } from '../features/reader/settings-panel';
 import { autoSyncItem } from '../features/hikka-sync';
+import { useWatchPrefs } from '../watch/watch-store';
 import { LINK_SOURCES } from '../sources/links';
 import { SOURCES } from '../sources/registry';
 import { IconExternal, IconLeft, IconReset, IconRight } from '../ui/icons';
@@ -268,6 +269,32 @@ function ReaderSection() {
           hint="З'являються знову при прокрутці вгору або кліку"
           checked={s.autoHideBars}
           onChange={(autoHideBars) => void updateSettings((x) => ({ ...x, autoHideBars }))}
+        />
+      </div>
+      <PlayerFields />
+    </>
+  );
+}
+
+/** Плеєр аніме (блок «Перегляд» на сторінці аніме). */
+function PlayerFields() {
+  const [w, setW] = useWatchPrefs();
+  return (
+    <>
+      <Header title="Плеєр аніме" />
+      <div className="hp-set__fields">
+        <SwitchRow
+          label="Показувати плеєр"
+          hint="Блок «Перегляд» на сторінці аніме: серії з Mikai та AnimeON"
+          checked={w.enabled}
+          onChange={(enabled) => setW({ enabled })}
+        />
+        <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної" checked={w.autoNext} onChange={(autoNext) => setW({ autoNext })} />
+        <SwitchRow
+          label="Відмічати серії в Hikka"
+          hint="Серія зараховується, коли дійшли до ендингу (або за 1:30 до кінця)"
+          checked={w.hikkaSync}
+          onChange={(hikkaSync) => setW({ hikkaSync })}
         />
       </div>
     </>

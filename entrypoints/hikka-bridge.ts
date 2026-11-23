@@ -35,6 +35,8 @@ export default defineUnlistedScript(() => {
   document.addEventListener(READ_CHANGED_EVENT, (e) => {
     const slug = (e as CustomEvent<unknown>).detail;
     if (typeof slug !== 'string' || !slug) return;
+    // «watch:<slug>» — змінився список перегляду (серії), інакше — читання.
+    const re = slug.startsWith('watch:') ? /watch/i : /read/i;
     client ??= findClient();
     if (!client) return;
     void client
@@ -43,7 +45,7 @@ export default defineUnlistedScript(() => {
           const k = q.queryKey[0] as { _id?: unknown } | undefined;
           // Лише запити про читання: запис у списку (readGet — віджет зліва), getReadFollowing,
           // списки й статистика читання. Опис, коментарі тощо не перезапитуємо.
-          return !!k && typeof k === 'object' && /read/i.test(String(k._id ?? ''));
+          return !!k && typeof k === 'object' && re.test(String(k._id ?? ''));
         },
       })
       .catch(() => {

@@ -29,6 +29,7 @@
 - `src/core/store.ts` — налаштування, прив'язки (`hp:bind2:*`, по кожному джерелу + команди), прогрес
   (`hp:progress2:*`, ключ — номер розділу, щоб не губився при зміні джерела/команди).
 - `src/features/reader-url.ts` — відкритий розділ у `#read=джерело:id` (Hikka — SPA на TanStack Router, pushState безпечний).
+- Плеєр аніме — `src/watch/` (блок «Перегляд» на /anime/<slug> після `#content-description`; host «Ширше» `hikka-plus-theater` перед `div:has(> #content-left-side)`): `providers.ts` (Mikai + AnimeON за id з посилань «Перегляд» Hikka, злиття команд), `adapters.ts` (позиція Ashdi/Moon/Fenix через їхній postMessage — свої скрипти у фрейми не вставляємо, m3u8 не витягуємо; iframe лише з `FRAME_HOSTS`), `threshold.ts` (серія зараховується з початку ED: мітка плеєра → AniSkip з перевіркою → за 90 с до кінця), `hikka-watch.ts` (PUT /watch лише вгору; дозволи watchlist — окремий вхід `startHikkaLogin(true)`, помилка прав → `error:'scope'`, токен не скидаємо), `watch-store.ts`, `watch-root.tsx`, `watch-block.tsx`. Tortuga — прибрано; Dawn — лише посилання на Mikai.
 - CI (`.github/workflows/build.yml`): на тегу — реліз; якщо є секрети `AMO_API_KEY`/`AMO_API_SECRET` — `web-ext sign --channel unlisted` + `.xpi` у реліз. Архів вихідників без `.env*` і `CLAUDE.md` (`zip.excludeSources`).
 - Картинки з manga.in.ua мають hotlink-захист — завжди `referrerPolicy="no-referrer"`.
 
