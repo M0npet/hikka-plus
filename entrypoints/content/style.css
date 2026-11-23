@@ -1630,12 +1630,6 @@ select {
 }
 
 /* Рамка плеєра 16:9 (iframe як є). */
-.hp-watch__stage {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
 .hp-watch__frame {
   position: relative;
   width: 100%;
@@ -1679,14 +1673,6 @@ select {
 .hp-watch__stage--wide .hp-watch__frame {
   max-width: calc((100vh - 140px) * 16 / 9);
   margin-inline: auto;
-}
-.hp-watch__stagebar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 14px;
-  color: var(--hp-muted-fg);
 }
 
 .hp-watch__nav {

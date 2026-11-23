@@ -15,6 +15,8 @@ export type TapScheme = 'l' | 'lr' | 'tb' | 'off';
 export type ImageQuality = 'original' | 'high' | 'medium' | 'low';
 
 export interface ReaderSettings {
+  /** Показувати читалку: кнопку «Читати» і блок «Розділи» на сторінках манґи й ранобе. */
+  enabled: boolean;
   novel: {
     fontSize: number; // px
     lineHeight: number;
@@ -53,6 +55,7 @@ export interface ReaderSettings {
 }
 
 export const DEFAULT_SETTINGS: ReaderSettings = {
+  enabled: true,
   novel: {
     fontSize: 18,
     lineHeight: 1.7,
@@ -129,6 +132,9 @@ export async function updateSettings(fn: (s: ReaderSettings) => ReaderSettings) 
   await settingsTimeItem.setValue(u);
   pushSettings({ s: next, u });
 }
+
+/** Стежити за налаштуваннями (зміни у вікні налаштувань розширення). */
+export const watchSettings = (cb: (s: ReaderSettings) => void) => settingsItem.watch((v) => cb(mergeSettings(v)));
 
 export function useSettings(): ReaderSettings {
   const [s, setS] = useState<ReaderSettings>(DEFAULT_SETTINGS);

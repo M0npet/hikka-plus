@@ -23,6 +23,8 @@ export type WatchPrefs = {
   autoNext: boolean;
   hikkaSync: boolean;
   favPlayer?: string;
+  /** Режим «Ширше» — запам'ятовується між тайтлами. */
+  wide?: boolean;
 };
 
 export const DEFAULT_WATCH_PREFS: WatchPrefs = { enabled: true, autoNext: true, hikkaSync: true };

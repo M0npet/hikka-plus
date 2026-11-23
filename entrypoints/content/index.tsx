@@ -12,6 +12,7 @@ import { AUTH_PATH } from '@/src/core/hikka-auth';
 import { finishHikkaLogin } from '@/src/features/hikka-sync';
 import { initSourcePrefs, watchSourcePrefs } from '@/src/core/source-prefs';
 import { trackSiteTheme } from '@/src/core/site-theme';
+import { getSettings, watchSettings } from '@/src/core/store';
 
 export default defineContentScript({
   matches: ['https://hikka.io/*'],
@@ -31,6 +32,8 @@ export default defineContentScript({
     trackSiteTheme((fn) => ctx.onInvalidated(fn));
     // Увімкнені джерела та їх порядок (вікно налаштувань розширення).
     await initSourcePrefs();
+    // Читалку можна вимкнути у вікні налаштувань — тоді ні кнопки, ні блоку, ні запитів до джерел.
+    let readerOn = (await getSettings()).enabled;
     // Стан тайтлу береться з поточного шляху. Перевіряємо його ідемпотентно з кількох місць:
     // подія WXT про зміну адреси (через Navigation API) приходить ДО того, як location оновився,
     // тож самої події мало — додатково звіряємо шлях після мутацій DOM і раз на пів секунди.
@@ -39,7 +42,7 @@ export default defineContentScript({
       if (location.pathname === lastPath) return;
       lastPath = location.pathname;
       animePageStore.set(parseAnimePage()?.slug ?? null);
-      const page = parseTitlePage();
+      const page = readerOn ? parseTitlePage() : null;
       if (page) void loadTitle(page);
       else resetTitle();
     };
@@ -47,7 +50,7 @@ export default defineContentScript({
     const mounter = new Mounter(ctx, [
       {
         name: 'hikka-plus-read-button',
-        shouldMount: () => !!parseTitlePage(),
+        shouldMount: () => readerOn && !!parseTitlePage(),
         anchors: [
           // Ліва колонка: під кнопкою «Додати у список».
           { selector: '#content-left-side > div:first-child', append: 'last' },
@@ -57,7 +60,7 @@ export default defineContentScript({
       },
       {
         name: 'hikka-plus-chapters',
-        shouldMount: () => !!parseTitlePage(),
+        shouldMount: () => readerOn && !!parseTitlePage(),
         anchors: [
           // Центральна колонка: одразу після опису.
           { selector: '#content-description', append: 'after' },
@@ -115,6 +118,17 @@ export default defineContentScript({
       syncPage();
     });
     ctx.onInvalidated(unPrefs);
+    ctx.onInvalidated(
+      watchSettings((s) => {
+        if (s.enabled === readerOn) return;
+        readerOn = s.enabled;
+        if (!readerOn && readerStore.get()) readerStore.set(null);
+        resetTitle();
+        lastPath = null;
+        syncPage();
+        mounter.schedule();
+      }),
+    );
 
     // Читалка — оверлей, відкривається на запит із кнопки/блоку.
     let removeReader: (() => void) | null = null;

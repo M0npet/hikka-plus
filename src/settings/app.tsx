@@ -243,6 +243,14 @@ function ReaderSection() {
           Скинути
         </Button>
       </Header>
+      <div className="hp-set__fields">
+        <SwitchRow
+          label="Показувати читалку"
+          hint="Кнопка «Читати» і блок «Розділи» на сторінках манґи й ранобе"
+          checked={s.enabled}
+          onChange={(enabled) => void updateSettings((x) => ({ ...x, enabled }))}
+        />
+      </div>
       <Tabs
         value={tab}
         options={[
@@ -292,6 +300,12 @@ function PlayerFields() {
           hint="Блок «Перегляд» на сторінці аніме: серії з Mikai та AnimeON"
           checked={w.enabled}
           onChange={(enabled) => setW({ enabled })}
+        />
+        <SwitchRow
+          label="На всю ширину"
+          hint="Режим «Ширше»: блок на всю ширину сторінки під верхніми картками; запам'ятовується між тайтлами"
+          checked={!!w.wide}
+          onChange={(wide) => setW({ wide })}
         />
         <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної" checked={w.autoNext} onChange={(autoNext) => setW({ autoNext })} />
         <SwitchRow

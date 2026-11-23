@@ -156,14 +156,14 @@ export function WatchBlock(p: WatchBlockProps) {
   const [teamId, setTeamId] = useState<string | undefined>(init?.team);
   const [playerId, setPlayerId] = useState<string | undefined>(init?.player);
   const [ep, setEp] = useState(init?.ep && init.ep > 0 ? init.ep : 1);
-  const [wide, setWide] = useState(false);
+  const [wide, setWide] = useState(!!p.prefs.wide);
   const [menu, setMenu] = useState(false);
   const [range, setRange] = useState('0');
   // З якої секунди почати після (пере)завантаження iframe.
   const startAt = useRef(init?.t ?? 0);
   const frameRef = useRef<HTMLDivElement>(null);
-  const stageRef = useRef<HTMLDivElement | null>(null);
-  const [stageEl, setStageEl] = useState<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLElement | null>(null);
+  const [stageEl, setStageEl] = useState<HTMLElement | null>(null);
   const [slotEl, setSlotEl] = useState<HTMLDivElement | null>(null);
   const [full, setFull] = useState(false);
   const canFull = typeof document !== 'undefined' && document.fullscreenEnabled !== false;
@@ -195,7 +195,12 @@ export function WatchBlock(p: WatchBlockProps) {
   const toggleWide = (v: boolean) => {
     startAt.current = p.resumeAt?.() ?? startAt.current;
     setWide(v);
+    p.onPrefs({ wide: v });
   };
+  // «Ширше» — спільне для всіх тайтлів (налаштування могли дочитатися пізніше або змінитися у вікні налаштувань).
+  useEffect(() => {
+    if (p.prefs.wide !== undefined) setWide(p.prefs.wide);
+  }, [p.prefs.wide]);
   const lay = useWideLayout(wide && !!p.theater, slotEl, stageEl, p.theater ?? null, () => setWide(false));
   // Після перемикання «Ширше» — прокрутити до плеєра.
   useEffect(() => {
@@ -247,54 +252,184 @@ export function WatchBlock(p: WatchBlockProps) {
   const st = p.episodes[ep];
   const ed = p.edInfo && p.edInfo.ep === ep ? p.edInfo : null;
   const frame = (
-    <div
-      ref={(el) => {
-        stageRef.current = el;
-        setStageEl(el);
-      }}
-      className={cx('hp-watch__stage', wide && 'hp-watch__stage--wide')}
-    >
-      <div ref={frameRef} className="hp-watch__frame">
-        {p.renderFrame ? (
-          p.renderFrame(player, ep)
-        ) : (
-          <PlayerFrame
-            key={`${player.id}:${ep}`}
-            player={player}
-            ep={ep}
-            startAt={startAt}
-            onTime={(t, d) => p.onTime?.(ep, t, d)}
-            onEdStart={(s) => p.onEdStart?.(ep, s)}
-            onEnded={() => {
-              p.onEnded?.(ep);
-              if (p.prefs.autoNext && ep < count && has(ep + 1)) goEp(ep + 1);
-            }}
-            onEpisode={(n) => n !== ep && has(n) && goEp(n)}
-          />
-        )}
-      </div>
-      {wide && (
-        <div className="hp-watch__stagebar">
-          <span className="hp-ellipsis">
-            {team.name} · {PLAYER_NAMES[player.kind]} · Серія {ep}
-          </span>
-          <Button variant="secondary" size="sm" onClick={() => toggleWide(false)}>
-            <IconShrink />
-            Звичайний розмір
-          </Button>
-        </div>
+    <div ref={frameRef} className="hp-watch__frame">
+      {p.renderFrame ? (
+        p.renderFrame(player, ep)
+      ) : (
+        <PlayerFrame
+          key={`${player.id}:${ep}`}
+          player={player}
+          ep={ep}
+          startAt={startAt}
+          onTime={(t, d) => p.onTime?.(ep, t, d)}
+          onEdStart={(s) => p.onEdStart?.(ep, s)}
+          onEnded={() => {
+            p.onEnded?.(ep);
+            if (p.prefs.autoNext && ep < count && has(ep + 1)) goEp(ep + 1);
+          }}
+          onEpisode={(n) => n !== ep && has(n) && goEp(n)}
+        />
       )}
     </div>
   );
   const portal = wide && p.theater;
+  const stageCb = (el: HTMLElement | null) => {
+    stageRef.current = el;
+    setStageEl(el);
+  };
 
   const ranges = Math.ceil(count / RANGE);
   const from = ranges > 1 ? Number(range) * RANGE + 1 : 1;
   const to = ranges > 1 ? Math.min(count, from + RANGE - 1) : count;
   const h = p.hikka;
 
-  return (
-    <section className="hp-section hp-watch">
+  const bar = (
+    <div className="hp-watch__bar">
+      <Picker
+        className="hp-watch__team"
+        label="Команда"
+        items={p.teams}
+        value={team}
+        keyOf={(t) => t.id}
+        trigger={<TeamLine t={team} />}
+        item={(t) => <TeamLine t={t} full />}
+        onPick={(t) => {
+          startAt.current = 0;
+          setTeamId(t.id);
+          setPlayerId(undefined);
+        }}
+      />
+      <Picker
+        className="hp-watch__player"
+        label="Плеєр"
+        items={players}
+        value={player}
+        keyOf={(x) => x.id}
+        trigger={<span className="hp-ellipsis">{PLAYER_NAMES[player.kind]}</span>}
+        item={(x) => (
+          <>
+            <span className="hp-grow hp-ellipsis">{x.label || PLAYER_NAMES[x.kind]}</span>
+            <span className="hp-option__hint">
+              {[x.noAds && 'Без реклами', dupKind(x) && SITE_NAMES[x.site]].filter(Boolean).join(' · ')}
+            </span>
+            <button
+              type="button"
+              className={cx('hp-watch__fav', p.prefs.favPlayer === x.kind && 'hp-watch__fav--on')}
+              aria-label="Улюблений плеєр"
+              aria-pressed={p.prefs.favPlayer === x.kind}
+              title="Улюблений плеєр — обирати першим"
+              onClick={(e) => {
+                e.stopPropagation();
+                p.onPrefs({ favPlayer: p.prefs.favPlayer === x.kind ? undefined : x.kind });
+              }}
+            >
+              <IconHeart />
+            </button>
+          </>
+        )}
+        onPick={(x) => {
+          startAt.current = p.resumeAt?.() ?? 0;
+          setPlayerId(x.id);
+        }}
+      />
+      {team.dawn && (
+        <a className={btn('outline', 'lg', false, 'hp-watch__dawn')} href={team.dawn(ep)} target="_blank" rel="noreferrer noopener" title="Dawn не вбудовується — відкриється ця серія на Mikai">
+          Dawn
+          <IconExternal />
+        </a>
+      )}
+    </div>
+  );
+  const rest = (
+    <>
+
+      <div className="hp-watch__nav">
+        <Button variant="secondary" size="md" icon aria-label="Попередня серія" disabled={ep <= 1} onClick={() => goEp(ep - 1)}>
+          <IconLeft />
+        </Button>
+        <div className="hp-watch__epname">
+          <span>
+            Серія {ep}
+            <span className="hp-header__count"> з {count}</span>
+          </span>
+          <span className="hp-watch__hint">
+            {st?.watched ? (
+              <>
+                <IconEye /> Переглянуто
+              </>
+            ) : ed?.ed ? (
+              `Зарахується з ${fmt(ed.at)} — ендинг`
+            ) : (
+              'Зарахується за 1:30 до кінця'
+            )}
+          </span>
+        </div>
+        <Button variant="secondary" size="md" icon aria-label="Наступна серія" disabled={ep >= count || !has(ep + 1)} onClick={() => goEp(ep + 1)}>
+          <IconRight />
+        </Button>
+        {h?.kind === 'count' && (
+          <span className="hp-watch__hikka">
+            Hikka: {h.n} / {p.total ?? count}
+          </span>
+        )}
+        {h?.kind === 'connect' && (
+          <Button variant="ghost" size="sm" className="hp-watch__hikka" title="Увійти в Hikka з дозволом на список перегляду" onClick={h.onClick}>
+            Відмічати в Hikka
+          </Button>
+        )}
+        {h?.kind === 'error' && (
+          <span className="hp-watch__hikka" title={h.message}>
+            Hikka: помилка
+          </span>
+        )}
+      </div>
+
+      <div className="hp-sep" />
+
+      <div className="hp-col hp-col--tight">
+        <div className="hp-watch__epsHead">
+          <span className="hp-setrow__label">Епізоди</span>
+          {ranges > 1 && (
+            <ChipTabs
+              label="Діапазон серій"
+              value={range}
+              onPick={setRange}
+              options={Array.from({ length: ranges }, (_, i) => ({
+                value: String(i),
+                label: `${i * RANGE + 1}–${Math.min(count, (i + 1) * RANGE)}`,
+              }))}
+            />
+          )}
+        </div>
+        <div className="hp-watch__grid" role="list">
+          {Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => {
+            const n = from + i;
+            const s = p.episodes[n];
+            const on = n === ep;
+            return (
+              <button
+                key={n}
+                type="button"
+                role="listitem"
+                className={cx(btn(on ? 'default' : 'secondary', 'md'), 'hp-watch__ep', s?.watched && !on && 'hp-watch__ep--seen')}
+                disabled={!has(n)}
+                aria-current={on || undefined}
+                title={!has(n) ? `Серії ${n} ще немає в цього плеєра` : s?.watched ? `Серія ${n} — переглянуто` : s?.pos ? `Серія ${n} — ${Math.round(s.pos * 100)}%` : `Серія ${n}`}
+                onClick={() => goEp(n)}
+              >
+                {s?.watched && <IconEye />}
+                {n}
+                {!s?.watched && s?.pos ? <span className="hp-watch__epbar" style={{ width: `${s.pos * 100}%` }} /> : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+
+  const body = (
+    <>
       <Header title="Перегляд">
         {anitube}
         <div className="hp-select">
@@ -333,160 +468,37 @@ export function WatchBlock(p: WatchBlockProps) {
           </Button>
         )}
       </Header>
-
       <div className="hp-card">
-        <div className="hp-watch__bar">
-          <Picker
-            className="hp-watch__team"
-            label="Команда"
-            items={p.teams}
-            value={team}
-            keyOf={(t) => t.id}
-            trigger={<TeamLine t={team} />}
-            item={(t) => <TeamLine t={t} full />}
-            onPick={(t) => {
-              startAt.current = 0;
-              setTeamId(t.id);
-              setPlayerId(undefined);
-            }}
-          />
-          <Picker
-            className="hp-watch__player"
-            label="Плеєр"
-            items={players}
-            value={player}
-            keyOf={(x) => x.id}
-            trigger={<span className="hp-ellipsis">{PLAYER_NAMES[player.kind]}</span>}
-            item={(x) => (
-              <>
-                <span className="hp-grow hp-ellipsis">{x.label || PLAYER_NAMES[x.kind]}</span>
-                <span className="hp-option__hint">
-                  {[x.noAds && 'Без реклами', dupKind(x) && SITE_NAMES[x.site]].filter(Boolean).join(' · ')}
-                </span>
-                <button
-                  type="button"
-                  className={cx('hp-watch__fav', p.prefs.favPlayer === x.kind && 'hp-watch__fav--on')}
-                  aria-label="Улюблений плеєр"
-                  aria-pressed={p.prefs.favPlayer === x.kind}
-                  title="Улюблений плеєр — обирати першим"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    p.onPrefs({ favPlayer: p.prefs.favPlayer === x.kind ? undefined : x.kind });
-                  }}
-                >
-                  <IconHeart />
-                </button>
-              </>
-            )}
-            onPick={(x) => {
-              startAt.current = p.resumeAt?.() ?? 0;
-              setPlayerId(x.id);
-            }}
-          />
-          {team.dawn && (
-            <a className={btn('outline', 'lg', false, 'hp-watch__dawn')} href={team.dawn(ep)} target="_blank" rel="noreferrer noopener" title="Dawn не вбудовується — відкриється ця серія на Mikai">
-              Dawn
-              <IconExternal />
-            </a>
-          )}
-        </div>
-
-        {portal ? (
-          // Місце під плеєр «Ширше»: сам плеєр лежить поверх сітки (wide-layout.ts), тут — лише його висота.
-          <div
-            ref={setSlotEl}
-            className="hp-watch__slot"
-            style={{ paddingTop: lay.offset, height: lay.offset + lay.height }}
-            aria-hidden="true"
-          />
-        ) : (
-          frame
-        )}
-        {portal && createPortal(frame, p.theater!)}
-
-        <div className="hp-watch__nav">
-          <Button variant="secondary" size="md" icon aria-label="Попередня серія" disabled={ep <= 1} onClick={() => goEp(ep - 1)}>
-            <IconLeft />
-          </Button>
-          <div className="hp-watch__epname">
-            <span>
-              Серія {ep}
-              <span className="hp-header__count"> з {count}</span>
-            </span>
-            <span className="hp-watch__hint">
-              {st?.watched ? (
-                <>
-                  <IconEye /> Переглянуто
-                </>
-              ) : ed?.ed ? (
-                `Зарахується з ${fmt(ed.at)} — ендинг`
-              ) : (
-                'Зарахується за 1:30 до кінця'
-              )}
-            </span>
-          </div>
-          <Button variant="secondary" size="md" icon aria-label="Наступна серія" disabled={ep >= count || !has(ep + 1)} onClick={() => goEp(ep + 1)}>
-            <IconRight />
-          </Button>
-          {h?.kind === 'count' && (
-            <span className="hp-watch__hikka">
-              Hikka: {h.n} / {p.total ?? count}
-            </span>
-          )}
-          {h?.kind === 'connect' && (
-            <Button variant="ghost" size="sm" className="hp-watch__hikka" title="Увійти в Hikka з дозволом на список перегляду" onClick={h.onClick}>
-              Відмічати в Hikka
-            </Button>
-          )}
-          {h?.kind === 'error' && (
-            <span className="hp-watch__hikka" title={h.message}>
-              Hikka: помилка
-            </span>
-          )}
-        </div>
-
-        <div className="hp-sep" />
-
-        <div className="hp-col hp-col--tight">
-          <div className="hp-watch__epsHead">
-            <span className="hp-setrow__label">Епізоди</span>
-            {ranges > 1 && (
-              <ChipTabs
-                label="Діапазон серій"
-                value={range}
-                onPick={setRange}
-                options={Array.from({ length: ranges }, (_, i) => ({
-                  value: String(i),
-                  label: `${i * RANGE + 1}–${Math.min(count, (i + 1) * RANGE)}`,
-                }))}
-              />
-            )}
-          </div>
-          <div className="hp-watch__grid" role="list">
-            {Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => {
-              const n = from + i;
-              const s = p.episodes[n];
-              const on = n === ep;
-              return (
-                <button
-                  key={n}
-                  type="button"
-                  role="listitem"
-                  className={cx(btn(on ? 'default' : 'secondary', 'md'), 'hp-watch__ep', s?.watched && !on && 'hp-watch__ep--seen')}
-                  disabled={!has(n)}
-                  aria-current={on || undefined}
-                  title={!has(n) ? `Серії ${n} ще немає в цього плеєра` : s?.watched ? `Серія ${n} — переглянуто` : s?.pos ? `Серія ${n} — ${Math.round(s.pos * 100)}%` : `Серія ${n}`}
-                  onClick={() => goEp(n)}
-                >
-                  {s?.watched && <IconEye />}
-                  {n}
-                  {!s?.watched && s?.pos ? <span className="hp-watch__epbar" style={{ width: `${s.pos * 100}%` }} /> : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        {bar}
+        {frame}
+        {rest}
       </div>
+    </>
+  );
+
+  // «Ширше» (рішення MK 2026-11-23, 03:06): увесь блок — на ширину сітки, на місці плеєра під верхніми картками
+  // бічних колонок (host над сіткою, wide-layout.ts); у центральній колонці лишається лише місце потрібної висоти.
+  if (portal)
+    return (
+      <section className="hp-section hp-watch">
+        <div
+          ref={setSlotEl}
+          className="hp-watch__slot"
+          style={{ paddingTop: lay.offset, height: lay.offset + lay.height }}
+          aria-hidden="true"
+        />
+        {createPortal(
+          <section ref={stageCb} className="hp-section hp-watch hp-watch__stage hp-watch__stage--wide">
+            {body}
+          </section>,
+          p.theater!,
+        )}
+      </section>
+    );
+
+  return (
+    <section ref={stageCb} className="hp-section hp-watch hp-watch__stage">
+      {body}
     </section>
   );
 }
