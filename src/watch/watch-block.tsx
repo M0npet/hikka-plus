@@ -4,12 +4,13 @@
  * «Ширше» — увесь блок на ширину сітки сторінки (wide-layout.ts); блок не переїжджає в DOM, iframe не перезавантажується.
  */
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Button, Check, ChipTabs, Header, Slider, SwitchRow, btn } from '../ui/kit';
+import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
 import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv } from '../ui/icons';
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
 import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
-import { DEFAULT_AMBIENT_LEVEL, type WatchPrefs } from './watch-store';
+import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, type WatchPrefs } from './watch-store';
+import { AmbientFields } from './ambient-fields';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 const RANGE = 50;
@@ -339,7 +340,12 @@ export function WatchBlock(p: WatchBlockProps) {
         ref={setGlowEl}
         className="hp-watch__glow"
         aria-hidden="true"
-        style={{ '--hp-glow': String((p.prefs.ambientLevel ?? DEFAULT_AMBIENT_LEVEL) / 100) } as CSSProperties}
+        style={
+          {
+            '--hp-glow': String((p.prefs.ambientLevel ?? DEFAULT_AMBIENT_LEVEL) / 100),
+            '--hp-glow-b': String((p.prefs.ambientBright ?? DEFAULT_AMBIENT_BRIGHT) / 100),
+          } as CSSProperties
+        }
       />
     )}
     <div ref={frameRef} className={`hp-watch__frame hp-watch__frame--${player.kind}`}>
@@ -569,15 +575,7 @@ export function WatchBlock(p: WatchBlockProps) {
               <SwitchRow label="Відмічати в Hikka" hint="Серія зараховується, коли дійшли до ендингу" checked={p.prefs.hikkaSync} onChange={(v) => p.onPrefs({ hikkaSync: v })} />
               <SwitchRow label="Підсвітка" hint="Кольори з відео навколо плеєра" checked={ambient} onChange={(v) => p.onPrefs({ ambient: v })} />
               {ambient && (
-                <Slider
-                  label="Яскравість підсвітки"
-                  value={p.prefs.ambientLevel ?? DEFAULT_AMBIENT_LEVEL}
-                  min={10}
-                  max={100}
-                  step={5}
-                  format={(v) => `${v}%`}
-                  onChange={(ambientLevel) => p.onPrefs({ ambientLevel })}
-                />
+                <AmbientFields prefs={p.prefs} onPrefs={p.onPrefs} />
               )}
             </div>
           )}

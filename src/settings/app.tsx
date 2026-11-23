@@ -10,11 +10,12 @@ import { DEFAULT_SETTINGS, updateSettings, useSettings } from '../core/store';
 import { syncOnItem } from '../core/sync-flag';
 import { MangaFields, NovelFields } from '../features/reader/settings-panel';
 import { autoSyncItem } from '../features/hikka-sync';
-import { DEFAULT_AMBIENT_LEVEL, useWatchPrefs } from '../watch/watch-store';
+import { useWatchPrefs } from '../watch/watch-store';
+import { AmbientFields } from '../watch/ambient-fields';
 import { LINK_SOURCES } from '../sources/links';
 import { SOURCES } from '../sources/registry';
 import { IconExternal, IconLeft, IconReset, IconRight } from '../ui/icons';
-import { Button, Header, Slider, Switch, SwitchRow, Tabs } from '../ui/kit';
+import { Button, Header, Switch, SwitchRow, Tabs } from '../ui/kit';
 import { dataStats, exportData, importData, resetAll, resetBindings, resetProgress, type DataStats } from './data';
 
 export type SettingsMode = 'popup' | 'page';
@@ -326,15 +327,7 @@ function PlayerFields() {
           onChange={(ambient) => setW({ ambient })}
         />
         {w.ambient !== false && (
-          <Slider
-            label="Яскравість підсвітки"
-            value={w.ambientLevel ?? DEFAULT_AMBIENT_LEVEL}
-            min={10}
-            max={100}
-            step={5}
-            format={(v) => `${v}%`}
-            onChange={(ambientLevel) => setW({ ambientLevel })}
-          />
+          <AmbientFields prefs={w} onPrefs={setW} />
         )}
         <SwitchRow
           label="Відмічати серії в Hikka"
