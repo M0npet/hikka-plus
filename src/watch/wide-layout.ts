@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react';
 
 const GAP = 32; // gap-8 у колонках Hikka
+const TOP_CARDS = 2; // скільки верхніх карток бічної колонки завжди над блоком
 const SIDES = ['#content-left-side', '#content-right-side'] as const;
 
 /** Відступ над плеєром у центральному блоці (px) — скільки опустити плеєр під бічні картки. */
@@ -57,12 +58,12 @@ export function useWideLayout(
         const kids = [...col.children].filter((k) => k.tagName.toLowerCase() !== 'hikka-plus-gap' && shown(k));
         let prevBottom = pageTop(col) - GAP;
         let before: Element | null = null;
-        for (const k of kids) {
-          const t = pageTop(k);
+        for (const [i, k] of kids.entries()) {
           const b = pageBottom(k);
-          // Картка на рівні плеєра: більша частина вище — лишається над ним (плеєр опускаємо під неї),
-          // інакше з'їжджає під плеєр разом з рештою колонки.
-          if (t >= slotTop - 1 || (b > slotTop && slotTop - t < (b - t) / 2)) {
+          // Рішення MK (03:20): «щоб завжди однаково». Над блоком — завжди дві верхні картки кожної бічної колонки
+          // (зліва обкладинка з кнопками й оцінка/серії, справа оцінка MAL та інфо) і все, що повністю вище місця блоку
+          // (довгий опис); решта з'їжджає під блок. Від довжини опису розкладка не залежить.
+          if (i >= TOP_CARDS && b > slotTop + 1) {
             before = k;
             break;
           }

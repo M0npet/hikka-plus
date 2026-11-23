@@ -10,7 +10,7 @@ import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
 import { IconExpand, IconExternal, IconEye, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv } from '../ui/icons';
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
-import { PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
+import { PANEL_MSG, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
 import type { WatchPrefs } from './watch-store';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -39,6 +39,8 @@ export type WatchBlockProps = {
   initial?: { team?: string; player?: string; ep?: number; t?: number };
   /** Поточна секунда (для повернення після перезавантаження iframe). */
   resumeAt?: () => number;
+  /** Перша непереглянута серія після останньої переглянутої (Hikka або наші відмітки). */
+  nextEp?: number;
   onSelect?: (s: { team: string; player: string; ep: number }) => void;
   onTime?: (ep: number, t: number, duration: number) => void;
   onEdStart?: (ep: number, sec: number) => void;
@@ -156,6 +158,12 @@ export function WatchBlock(p: WatchBlockProps) {
   const [teamId, setTeamId] = useState<string | undefined>(init?.team);
   const [playerId, setPlayerId] = useState<string | undefined>(init?.player);
   const [ep, setEp] = useState(init?.ep && init.ep > 0 ? init.ep : 1);
+  // Серія, з якою завантажено iframe. Fenix сам перемикає серії у своєму списку — тоді міняємо лише ep (сітка, лічильник),
+  // а iframe не перезавантажуємо.
+  const [frameEp, setFrameEp] = useState(ep);
+  const selfSwitch = useRef(0);
+  const picked = useRef(false); // серію вже вибрано (користувачем або автоматично) — не перестрибувати
+
   const [wide, setWide] = useState(!!p.prefs.wide);
   const [menu, setMenu] = useState(false);
   const [range, setRange] = useState('0');
@@ -188,10 +196,37 @@ export function WatchBlock(p: WatchBlockProps) {
   }, [team?.id, player?.id, ep]);
 
   const goEp = (n: number) => {
-    if (n === ep) return;
+    picked.current = true;
+    if (n === ep && n === frameEp) return;
+    startAt.current = 0;
+    setEp(n);
+    setFrameEp(n);
+  };
+  /** Плеєр сам перейшов на серію n (Fenix): лише відмічаємо, iframe лишається. */
+  const playerEp = (n: number) => {
+    if (n === ep || !has(n)) return;
+    picked.current = true;
+    selfSwitch.current = Date.now();
     startAt.current = 0;
     setEp(n);
   };
+  // Інший плеєр/команда — вантажимо ту серію, яку зараз видно (після самоперемикання Fenix вона новіша за frameEp).
+  useEffect(() => {
+    setFrameEp(ep);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [team?.id, player?.id]);
+  // Заходимо на тайтл: якщо поточна серія вже переглянута — стаємо на першу непереглянуту (лічильник Hikka
+  // приходить не одразу). Лише доки користувач сам нічого не вибрав.
+  useEffect(() => {
+    const n = p.nextEp;
+    if (picked.current || !n || n === ep || !player || !has(n)) return;
+    if (!p.episodes[ep]?.watched) return; // почата й не дограна — лишаємо
+    picked.current = true;
+    goEp(n);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.nextEp, player?.id]);
+  const goEpRef = useRef(goEp);
+  goEpRef.current = goEp;
   const toggleWide = (v: boolean) => {
     startAt.current = p.resumeAt?.() ?? startAt.current;
     setWide(v);
@@ -257,17 +292,24 @@ export function WatchBlock(p: WatchBlockProps) {
         p.renderFrame(player, ep)
       ) : (
         <PlayerFrame
-          key={`${player.id}:${ep}`}
+          key={`${player.id}:${frameEp}`}
           player={player}
-          ep={ep}
+          ep={frameEp}
           startAt={startAt}
           onTime={(t, d) => p.onTime?.(ep, t, d)}
           onEdStart={(s) => p.onEdStart?.(ep, s)}
           onEnded={() => {
-            p.onEnded?.(ep);
-            if (p.prefs.autoNext && ep < count && has(ep + 1)) goEp(ep + 1);
+            const cur = ep;
+            p.onEnded?.(cur);
+            if (!p.prefs.autoNext || cur >= count || !has(cur + 1)) return;
+            if (player.kind !== 'fenix') return goEp(cur + 1);
+            // Fenix може й сам перейти на наступну (episode_change) — тоді не перезавантажуємо.
+            const at = Date.now();
+            setTimeout(() => {
+              if (selfSwitch.current < at) goEpRef.current(cur + 1);
+            }, 3000);
           }}
-          onEpisode={(n) => n !== ep && has(n) && goEp(n)}
+          onEpisode={playerEp}
         />
       )}
     </div>
@@ -535,6 +577,38 @@ export function PlayerFrame(p: {
       off = true;
     };
   }, [p.player, p.ep]);
+
+  // Moon у Firefox ставить панель під відео — рамку робимо вищою на цю панель (міряє entrypoints/player-frame.content.ts).
+  useEffect(() => {
+    const f = ref.current;
+    const box = f?.parentElement;
+    if (!src || !f || !box) return;
+    let extra = 0;
+    const apply = () => {
+      if (extra > 0) {
+        box.classList.add('hp-watch__frame--fit');
+        box.style.setProperty('--hp-frame-h', `${Math.round((box.clientWidth * 9) / 16 + extra)}px`);
+      } else {
+        box.classList.remove('hp-watch__frame--fit');
+        box.style.removeProperty('--hp-frame-h');
+      }
+    };
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { type?: unknown; extra?: unknown } | null;
+      if (e.source !== f.contentWindow || !d || d.type !== PANEL_MSG || typeof d.extra !== 'number') return;
+      extra = Math.max(0, Math.min(200, d.extra));
+      apply();
+    };
+    const ro = new ResizeObserver(apply);
+    ro.observe(box);
+    window.addEventListener('message', onMsg);
+    return () => {
+      window.removeEventListener('message', onMsg);
+      ro.disconnect();
+      extra = 0;
+      apply();
+    };
+  }, [src]);
 
   useEffect(() => {
     const f = ref.current;

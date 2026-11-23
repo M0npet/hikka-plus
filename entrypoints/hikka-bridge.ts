@@ -1,5 +1,5 @@
 import { defineUnlistedScript } from '#imports';
-import { HIKKA_LIST_EVENT, READ_CHANGED_EVENT } from '@/src/core/bridge';
+import { HIKKA_LIST_EVENT, READ_CHANGED_EVENT, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '@/src/core/bridge';
 
 /**
  * Виконується в контексті сторінки hikka.io (не в ізольованому світі content script).
@@ -11,13 +11,17 @@ import { HIKKA_LIST_EVENT, READ_CHANGED_EVENT } from '@/src/core/bridge';
 interface QueryLike {
   queryKey: unknown[];
 }
+interface QueryStateLike extends QueryLike {
+  state?: { status?: string; dataUpdatedAt?: number; data?: unknown; error?: unknown };
+}
 interface CacheEvent {
   type: string;
-  query: QueryLike & { state?: { status?: string; dataUpdatedAt?: number } };
+  query: QueryStateLike;
   action?: { type?: string };
 }
 interface QueryCacheLike {
   subscribe(cb: (e: CacheEvent) => void): () => void;
+  getAll?(): QueryStateLike[];
 }
 interface QueryClientLike {
   getQueryCache(): QueryCacheLike;
@@ -43,6 +47,20 @@ export default defineUnlistedScript(() => {
   // Зворотний бік: Hikka сама змінила свій запис (напр. «+/−» у віджеті «у списку») — кажемо content script
   // перечитати число з Hikka. Ловимо успішні оновлення запитів читання/перегляду в кеші TanStack Query.
   let unsub: (() => void) | null = null;
+
+  /** Запит `watchGet` (віджет «у списку» аніме) → лічильник серій для content script. */
+  function reportWatch(q: QueryStateLike, want?: string) {
+    const k = q.queryKey[0] as { _id?: unknown; path?: { slug?: unknown } } | undefined;
+    if (!k || typeof k !== 'object' || k._id !== 'watchGet') return;
+    const slug = typeof k.path?.slug === 'string' ? k.path.slug : '';
+    if (!slug || (want && slug !== want)) return;
+    const st = q.state;
+    let n: number | null = null;
+    if (st?.status === 'success') n = Number((st.data as { episodes?: unknown } | null)?.episodes ?? 0) || 0;
+    else if (st?.status === 'error') n = 0; // тайтлу немає в списку
+    if (n === null) return;
+    document.dispatchEvent(new CustomEvent(WATCH_COUNT_EVENT, { detail: `${slug}\n${n}` }));
+  }
   const last = new Map<string, number>();
   function watchCache() {
     if (unsub) return;
@@ -50,6 +68,7 @@ export default defineUnlistedScript(() => {
     if (!client) return;
     unsub = client.getQueryCache().subscribe((ev) => {
       if (ev.type !== 'updated' || ev.action?.type !== 'success') return;
+      reportWatch(ev.query);
       const k = ev.query.queryKey[0] as { _id?: unknown } | undefined;
       const id = k && typeof k === 'object' ? String(k._id ?? '') : '';
       // Лише сам запис у списку (віджет «у списку»), не статистика й «читають друзі».
@@ -69,6 +88,17 @@ export default defineUnlistedScript(() => {
     watchCache();
   }, 1000);
   setTimeout(() => clearInterval(retry), 60_000);
+
+  document.addEventListener(WATCH_COUNT_REQ, (e) => {
+    const slug = (e as CustomEvent<unknown>).detail;
+    if (typeof slug !== 'string' || !slug) return;
+    client ??= findClient();
+    try {
+      client?.getQueryCache().getAll?.().forEach((q) => reportWatch(q, slug));
+    } catch {
+      client = null;
+    }
+  });
 
   document.addEventListener(READ_CHANGED_EVENT, (e) => {
     const slug = (e as CustomEvent<unknown>).detail;

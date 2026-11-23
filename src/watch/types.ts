@@ -68,3 +68,6 @@ export function safeFrameSrc(raw: string | null | undefined, kind: PlayerKind): 
     return null;
   }
 }
+
+/** Повідомлення з нашого фрейму плеєра (entrypoints/player-frame.content.ts): скільки висоти займає панель під відео. */
+export const PANEL_MSG = 'hikka-plus:panel';

@@ -19,3 +19,11 @@ export function notifyHikkaWatchChanged(slug: string) {
  * — оновити число з Hikka в блоці «Розділи». detail — рядок `read` або `watch`.
  */
 export const HIKKA_LIST_EVENT = 'hikka-plus:hikka-list-changed';
+
+/**
+ * Лічильник серій із віджета «у списку» самої Hikka (кеш запиту `watchGet` на сторінці) — щоб сітка серій
+ * показувала переглянуте без нашого входу з дозволом watchlist. Сторінка → content script: detail `<slug>\n<episodes>`.
+ */
+export const WATCH_COUNT_EVENT = 'hikka-plus:watch-count';
+/** Content script → сторінка: «повідом лічильник для <slug>», detail — slug. */
+export const WATCH_COUNT_REQ = 'hikka-plus:watch-count-req';

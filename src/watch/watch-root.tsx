@@ -9,6 +9,7 @@ import { startHikkaLogin } from '../features/hikka-sync';
 import { animeonTeams, mergeTeams, mikaiTeams, parseWatchLinks } from './providers';
 import { aniskipRaw, edFromAniskip, watchedAt } from './threshold';
 import { getWatchSaved, updateWatchSaved, useWatchPrefs, type WatchSaved } from './watch-store';
+import { HIKKA_LIST_EVENT, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '../core/bridge';
 import { loadHikkaWatch, markHikkaEpisodes, type HikkaWatchState } from './hikka-watch';
 import { WatchBlock, type HikkaLine } from './watch-block';
 import type { EpisodeState, WatchTeam } from './types';
@@ -106,15 +107,39 @@ export function WatchRoot({ slug }: { slug: string }) {
     };
   }, [slug]);
 
+  // Лічильник серій із віджета Hikka на сторінці (кеш самої Hikka через hikka-bridge) — без нашого входу.
+  const [pageN, setPageN] = useState(0);
+  useEffect(() => {
+    setPageN(0);
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<unknown>).detail;
+      if (typeof d !== 'string') return;
+      const [s, n] = d.split('\n');
+      if (s === slug) setPageN(Number(n) || 0);
+    };
+    document.addEventListener(WATCH_COUNT_EVENT, on);
+    // Запит міг завантажитися ще до нас, а міст — знайти застосунок не одразу: питаємо кілька разів.
+    const ask = () => document.dispatchEvent(new CustomEvent(WATCH_COUNT_REQ, { detail: slug }));
+    const ts = [0, 1500, 4000].map((ms) => setTimeout(ask, ms));
+    return () => {
+      document.removeEventListener(WATCH_COUNT_EVENT, on);
+      ts.forEach(clearTimeout);
+    };
+  }, [slug]);
+
   // Лічильник у Hikka.
   const reloadHikka = useCallback(() => void loadHikkaWatch(slug).then(setHikka), [slug]);
   useEffect(() => {
     reloadHikka();
     const u1 = tokenItem.watch(reloadHikka);
     const u2 = watchScopeItem.watch(reloadHikka);
+    // «+/−» у віджеті Hikka (міст hikka-bridge) — оновити лічильник і відмітки в сітці без F5.
+    const onList = (e: Event) => (e as CustomEvent).detail === 'watch' && reloadHikka();
+    document.addEventListener(HIKKA_LIST_EVENT, onList);
     return () => {
       u1();
       u2();
+      document.removeEventListener(HIKKA_LIST_EVENT, onList);
     };
   }, [reloadHikka]);
 
@@ -184,6 +209,12 @@ export function WatchRoot({ slug }: { slug: string }) {
 
   const episodes: Record<number, EpisodeState> = {};
   for (const [k, v] of Object.entries(saved?.eps ?? {})) episodes[Number(k)] = { pos: v.pos, watched: !!v.w };
+  // Переглянуте в списку Hikka (дивився деінде) — теж відмічаємо в сітці 1–N (лише показ, локально не пишемо).
+  const hikkaN = Math.max(hikka.status === 'ok' ? hikka.episodes : 0, pageN);
+  for (let n = 1; n <= hikkaN; n++) if (!episodes[n]?.watched) episodes[n] = { pos: 1, watched: true };
+  // Перша непереглянута після останньої переглянутої — на неї стаємо при заході.
+  const lastSeen = Math.max(0, ...Object.entries(episodes).filter(([, v]) => v.watched).map(([k]) => Number(k)));
+  const nextEp = lastSeen > 0 && (!total || lastSeen < total) ? lastSeen + 1 : undefined;
 
   const hikkaLine: HikkaLine =
     hikka.status === 'ok'
@@ -210,6 +241,7 @@ export function WatchRoot({ slug }: { slug: string }) {
       theater={theater}
       initial={saved ? { team: saved.team, player: saved.player, ep: saved.ep, t: saved.t } : undefined}
       resumeAt={() => live.current.t}
+      nextEp={nextEp}
       onSelect={onSelect}
       onTime={onTime}
       onEdStart={onEdStart}

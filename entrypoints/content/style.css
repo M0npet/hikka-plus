@@ -1658,6 +1658,11 @@ select {
 .hp-watch__stage {
   scroll-margin-top: 72px;
 }
+/* Рамка вища на панель плеєра під відео (Moon у Firefox); висоту рахує PlayerFrame. */
+.hp-watch__frame.hp-watch__frame--fit {
+  aspect-ratio: auto;
+  height: var(--hp-frame-h);
+}
 /* Повний екран: рамка на весь екран, без рамки й заокруглень. */
 .hp-watch__frame:fullscreen {
   width: 100%;
@@ -1668,7 +1673,8 @@ select {
   border-radius: 0;
 }
 .hp-watch__stage--wide {
-  background: var(--hp-bg);
+  /* Під блоком нічого немає (у колонках — наші відступи), тож фон прозорий: градієнт верху сторінки Hikka не перекриваємо. */
+  background: transparent;
 }
 .hp-watch__stage--wide .hp-watch__frame {
   max-width: calc((100vh - 140px) * 16 / 9);
