@@ -3,6 +3,8 @@ import { isAllowedUrl, XHR_HOSTS } from '@/src/core/hosts';
 import type { FetchRequest, FetchResponse } from '@/src/core/net';
 import type { HikkaRequest } from '@/src/core/hikka-auth';
 import { handleHikka } from '@/src/core/hikka-api';
+import { onLightsFrame, stopLights, watchLightsConf } from '@/src/lights/engine';
+import type { LightsMsg } from '@/src/lights/types';
 
 const TIMEOUT_MS = 20_000;
 const MAX_FORM = 32_768;
@@ -40,12 +42,19 @@ async function handle(msg: FetchRequest): Promise<FetchResponse> {
 }
 
 export default defineBackground(() => {
+  watchLightsConf();
   browser.runtime.onMessage.addListener((raw, sender, sendResponse) => {
-    const msg = raw as FetchRequest | HikkaRequest;
-    if (msg?.type !== 'hp-fetch' && msg?.type !== 'hp-hikka') return;
+    const msg = raw as FetchRequest | HikkaRequest | LightsMsg;
+    if (msg?.type !== 'hp-fetch' && msg?.type !== 'hp-hikka' && msg?.type !== 'hp-lights') return;
     // Приймаємо запити лише від нашого content script на hikka.io.
     const from = sender.url ? new URL(sender.url).host : '';
-    if (sender.id !== browser.runtime.id || !/(^|\.)hikka\.io$/.test(from)) {
+    const trusted = sender.id === browser.runtime.id && /(^|\.)hikka\.io$/.test(from);
+    // Підсвітка пристроїв: кадр або stop, відповіді немає.
+    if (msg.type === 'hp-lights') {
+      if (trusted) void (msg.stop ? stopLights() : msg.frame && onLightsFrame(msg.frame));
+      return;
+    }
+    if (!trusted) {
       sendResponse({ ok: false, status: 0, body: '', error: 'Заборонене джерело' });
       return;
     }

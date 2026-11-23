@@ -102,3 +102,35 @@
   margin: 4px 0 0;
   text-align: center;
 }
+
+/* Підсвітка пристроїв (src/lights/settings.tsx). */
+.hp-lights {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hp-lights__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--hp-border);
+  border-radius: var(--hp-r-md);
+  background: var(--hp-surface);
+}
+.hp-lights__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.hp-lights__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hp-lights__card .hp-link {
+  color: var(--hp-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

@@ -1890,6 +1890,10 @@ select {
   span.hp-watch__hikka {
     display: none;
   }
+  /* «›» — біля правого краю, а не одразу за текстом. */
+  .hp-watch__epname {
+    flex: 1;
+  }
 }
 
 /* Сенсорні екрани: більші цілі дотику, без залежності від hover. */
@@ -1904,6 +1908,16 @@ select {
   }
   .hp-watch__ep {
     height: 44px;
+  }
+  /* Глазок і номер — дві окремі цілі дотику: ширші плитки, щоб «⊘10» не злипалось. */
+  .hp-watch__grid {
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  }
+  .hp-watch__eye {
+    width: 30px;
+  }
+  .hp-watch__cell > .hp-watch__ep {
+    padding-left: 28px;
   }
   .hp-watch__nav .hp-btn--icon {
     height: 44px;

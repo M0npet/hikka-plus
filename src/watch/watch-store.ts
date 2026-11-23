@@ -31,6 +31,8 @@ export type WatchPrefs = {
   ambientLevel?: number;
   /** Яскравість кольорів підсвітки, 50–200 %. undefined — 100 (MK 16:07). */
   ambientBright?: number;
+  /** Підсвітка пристроїв від відео (src/lights/: Philips TV, WLED, Hue, Razer) — експериментально, за замовчуванням вимк. */
+  devices?: boolean;
 };
 
 export const DEFAULT_AMBIENT_LEVEL = 20;

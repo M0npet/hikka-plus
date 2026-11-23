@@ -3,6 +3,7 @@
  * Команда → плеєр → iframe самого плеєра; кнопка Dawn веде на Mikai (вбудовування немає);
  * «Ширше» — увесь блок на ширину сітки сторінки (wide-layout.ts); блок не переїжджає в DOM, iframe не перезавантажується.
  */
+import { browser } from '#imports';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
 import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv } from '../ui/icons';
@@ -11,6 +12,7 @@ import { useWideLayout } from './wide-layout';
 import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
 import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, type WatchPrefs } from './watch-store';
 import { AmbientFields } from './ambient-fields';
+import type { LightsMsg } from '../lights/types';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 const RANGE = 50;
@@ -372,6 +374,7 @@ export function WatchBlock(p: WatchBlockProps) {
           }}
           onEpisode={playerEp}
           glow={ambient ? glowEl : null}
+          devices={!!p.prefs.devices}
         />
       )}
     </div>
@@ -634,6 +637,8 @@ export function PlayerFrame(p: {
   onEpisode: (n: number) => void;
   /** Canvas підсвітки за рамкою; null — підсвітку вимкнено. */
   glow?: HTMLCanvasElement | null;
+  /** Слати кадри ще й у background для пристроїв (src/lights/). */
+  devices?: boolean;
 }) {
   const [src, setSrc] = useState<string | null | undefined>(undefined);
   const [err, setErr] = useState(false);
@@ -669,7 +674,11 @@ export function PlayerFrame(p: {
     } catch {
       return;
     }
-    const on = !!c;
+    const devices = !!p.devices;
+    const on = !!c || devices;
+    // Пристрої: не частіше ніж 10 кадрів/с (повільні пристрої пропускають ще й самі, src/lights/engine.ts).
+    let devAt = 0;
+    const toDevices = (m: LightsMsg) => void browser.runtime.sendMessage(m).catch(() => {});
     // Поки у фреймі ще порожня about:blank (джерело — hikka.io), postMessage з origin плеєра лише сипле помилку в консоль.
     // Чужу сторінку прочитати не можна — отже, плеєр уже завантажився; до того питає сам скрипт фрейму ({ready}) і подія load.
     const loaded = () => {
@@ -698,12 +707,19 @@ export function PlayerFrame(p: {
       if (d.ready) return ask();
       // Moon з панеллю «Під кадром» (його налаштування): рамка вища, див. .hp-watch__frame--below у style.css.
       if (typeof d.bar === 'string') return void f.parentElement?.classList.toggle('hp-watch__frame--below', d.bar === 'below');
-      if (!c || !ctx || !tctx || !pctx) return;
-      if (d.off) return c.classList.remove('is-on');
+      if (d.off) {
+        if (devices) toDevices({ type: 'hp-lights', stop: true });
+        return c?.classList.remove('is-on');
+      }
       const w = Number(d.w);
       const h = Number(d.h);
       const rgb = d.rgb;
       if (typeof rgb !== 'string' || !(w > 0 && w <= 64 && h > 0 && h <= 64) || rgb.length !== w * h * 3) return;
+      if (devices && Date.now() - devAt >= 100) {
+        devAt = Date.now();
+        toDevices({ type: 'hp-lights', frame: { w, h, rgb } });
+      }
+      if (!c || !ctx || !tctx || !pctx) return;
       const P = GLOW_PAD;
       if (tmp.width !== w || tmp.height !== h) {
         tmp.width = w;
@@ -744,6 +760,7 @@ export function PlayerFrame(p: {
       f.removeEventListener('load', ask);
       f.parentElement?.classList.remove('hp-watch__frame--below');
       c?.classList.remove('is-on');
+      if (devices) toDevices({ type: 'hp-lights', stop: true });
       if (!on || !loaded()) return;
       try {
         f.contentWindow?.postMessage({ type: AMBIENT_REQ, on: false }, origin);
@@ -751,7 +768,7 @@ export function PlayerFrame(p: {
         /* фрейм уже прибрано */
       }
     };
-  }, [src, p.glow]);
+  }, [src, p.glow, p.devices]);
 
   useEffect(() => {
     const f = ref.current;

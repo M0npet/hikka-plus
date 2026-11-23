@@ -12,6 +12,7 @@ import { MangaFields, NovelFields } from '../features/reader/settings-panel';
 import { autoSyncItem } from '../features/hikka-sync';
 import { useWatchPrefs } from '../watch/watch-store';
 import { AmbientFields } from '../watch/ambient-fields';
+import { DeviceLights } from '../lights/settings';
 import { LINK_SOURCES } from '../sources/links';
 import { SOURCES } from '../sources/registry';
 import { IconExternal, IconLeft, IconReset, IconRight } from '../ui/icons';
@@ -72,7 +73,7 @@ export function SettingsApp({ mode }: { mode: SettingsMode }) {
         {section === 'sources' && <SourcesSection />}
         {section === 'hikka' && <HikkaSection mode={mode} />}
         {section === 'reader' && <ReaderSection />}
-        {section === 'player' && <PlayerFields />}
+        {section === 'player' && <PlayerFields mode={mode} />}
         {section === 'data' && <DataSection mode={mode} />}
       </div>
       <p className="hp-xs hp-muted hp-set__foot">
@@ -301,7 +302,7 @@ function ReaderSection() {
 }
 
 /** Плеєр аніме (блок «Перегляд» на сторінці аніме). */
-function PlayerFields() {
+function PlayerFields({ mode }: { mode: SettingsMode }) {
   const [w, setW] = useWatchPrefs();
   return (
     <>
@@ -329,6 +330,13 @@ function PlayerFields() {
         {w.ambient !== false && (
           <AmbientFields prefs={w} onPrefs={setW} />
         )}
+        <SwitchRow
+          label="Підсвітка пристроїв (експериментально)"
+          hint="Кольори з відео на Philips TV Ambilight, WLED, Philips Hue, Razer Chroma у вашій мережі. Перевірено лише за документацією"
+          checked={!!w.devices}
+          onChange={(devices) => setW({ devices })}
+        />
+        {w.devices && <DeviceLights mode={mode} />}
         <SwitchRow
           label="Відмічати серії в Hikka"
           hint="Серія зараховується, коли дійшли до ендингу (або за 1:30 до кінця)"

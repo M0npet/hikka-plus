@@ -4,12 +4,18 @@ import { API_HOSTS } from './src/core/hosts';
 // https://wxt.dev/api/config.html
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
-  manifest: ({ browser }) => ({
+  manifest: ({ browser, manifestVersion }) => ({
     name: 'Hikka Plus',
     description:
       'Читалка ранобе та манґи прямо на сторінці тайтлу hikka.io. Неофіційне розширення.',
     permissions: ['storage'],
     host_permissions: ['https://hikka.io/*', ...API_HOSTS.map((h) => `${h}/*`)],
+    // Підсвітка пристроїв (src/lights/): адреса ТВ/моста/WLED у домашній мережі наперед невідома —
+    // дозвіл на конкретний хост просимо кнопкою у вкладці «Плеєр»; Razer — localhost.
+    // MV2 (Firefox) не знає optional_host_permissions — там хости йдуть в optional_permissions.
+    ...(manifestVersion === 2
+      ? { optional_permissions: ['http://*/*', 'https://*/*'] }
+      : { optional_host_permissions: ['http://*/*', 'https://*/*'] }),
     // Скрипт-міст у контексті сторінки (entrypoints/hikka-bridge.ts) — лише для hikka.io.
     web_accessible_resources: [{ resources: ['hikka-bridge.js'], matches: ['https://hikka.io/*'] }],
     ...(browser === 'firefox' && {
