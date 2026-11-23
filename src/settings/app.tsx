@@ -10,7 +10,7 @@ import { DEFAULT_SETTINGS, updateSettings, useSettings } from '../core/store';
 import { syncOnItem } from '../core/sync-flag';
 import { MangaFields, NovelFields } from '../features/reader/settings-panel';
 import { autoSyncItem } from '../features/hikka-sync';
-import { DEFAULT_WIDE_ANIM, SCAN_HINT, useWatchPrefs } from '../watch/watch-store';
+import { DEFAULT_WIDE_ANIM, useWatchPrefs } from '../watch/watch-store';
 import { useCardsPrefs } from '../cards/prefs';
 import { AmbientFields } from '../watch/ambient-fields';
 import { DeviceLights } from '../lights/settings';
@@ -356,7 +356,7 @@ function PlayerFields({ mode }: { mode: SettingsMode }) {
         <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної" checked={w.autoNext} onChange={(autoNext) => setW({ autoNext })} />
         <SwitchRow
           label="Мітки опенінгу й ендингу"
-          hint="Смужка під плеєром і кнопка «Пропустити». Якщо плеєр не дає міток, Hikka Plus сам знаходить OP/ED, порівнюючи кадри серій (лише на вашому пристрої)"
+          hint="Смужка під плеєром і кнопка «Пропустити» — мітки з плеєра, інакше приблизні з AniSkip"
           checked={w.marks !== false}
           onChange={(marks) => setW({ marks })}
         />
@@ -364,7 +364,6 @@ function PlayerFields({ mode }: { mode: SettingsMode }) {
           <>
             <SwitchRow label="Пропускати опенінг сам" checked={!!w.skipOp} onChange={(skipOp) => setW({ skipOp })} />
             <SwitchRow label="Пропускати ендинг сам" hint="Серія все одно зараховується" checked={!!w.skipEd} onChange={(skipEd) => setW({ skipEd })} />
-            <SwitchRow label="Сканувати серії наперед" hint={SCAN_HINT} checked={!!w.scan} onChange={(scan) => setW({ scan })} />
           </>
         )}
         <SwitchRow

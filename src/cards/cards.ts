@@ -117,10 +117,13 @@ export function initCards(ctx: ContentScriptContext) {
     }
     for (const h of document.querySelectorAll(TAG)) if (!seen.has(h)) h.remove();
   };
+  // Hikka міняє DOM часто (таймери, коментарі, плеєр поруч) — перебираємо картки не частіше ніж раз на 250 мс
+  // (0.6.0, було на кожному кадрі зі змінами). Плашки вимкнені й на сторінці їх немає — нічого не робимо.
   const schedule_ = () => {
     if (scheduled) return;
+    if (!prefs.on && !document.querySelector(TAG)) return;
     scheduled = true;
-    requestAnimationFrame(render);
+    window.setTimeout(render, 250);
   };
 
   const onCards = (e: Event) => {

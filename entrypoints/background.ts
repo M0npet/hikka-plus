@@ -41,7 +41,19 @@ async function handle(msg: FetchRequest): Promise<FetchResponse> {
   }
 }
 
+/** Відбитки кадрів для міток OP/ED (0.5.19–0.5.23, прибрано в 0.6.0) — прибрати зі сховища, щоб не лежали мертвим вантажем. */
+async function dropOldFingerprints() {
+  try {
+    const all = await browser.storage.local.get(null);
+    const old = Object.keys(all).filter((k) => k.startsWith('hp:fp:') || k === 'hp:fpIndex');
+    if (old.length) await browser.storage.local.remove(old);
+  } catch {
+    /* немає доступу до сховища — не страшно */
+  }
+}
+
 export default defineBackground(() => {
+  void dropOldFingerprints();
   watchLightsConf();
   browser.runtime.onMessage.addListener((raw, sender, sendResponse) => {
     const msg = raw as FetchRequest | HikkaRequest | LightsMsg;

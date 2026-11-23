@@ -71,16 +71,8 @@ export function safeFrameSrc(raw: string | null | undefined, kind: PlayerKind): 
 
 /**
  * Підсвітка навколо плеєра (entrypoints/player-frame.content.ts ↔ PlayerFrame):
- * AMBIENT_MSG — з фрейму: {ready} | {w, h, rgb: рядок, по символу на байт RGB} | {off} (кадр недоступний);
- * AMBIENT_REQ — з hikka.io у фрейм: {on: boolean}.
+ * AMBIENT_MSG — з фрейму: {ready} | {w, h, rgb: рядок, по символу на байт RGB} | {off} (кадр недоступний) | {bar} (Moon);
+ * AMBIENT_REQ — з hikka.io у фрейм: {on: boolean} | {seek: сек}.
  */
-/**
- * Сканер міток (0.5.22): прогнати шматок серії ep у прихованому фреймі (from/to — сек; from < 0 — від кінця; to = 0 — до кінця).
- * kind — для чого (у плані watch-root).
- */
-export type ScanJob = { ep: number; from: number; to: number; kind: 'op' | 'ed' };
-/** Як закінчився скан: ok — дійшли до to; stall — плеєр не пішов (реклама, мережа); off — кадр читати не можна. */
-export type ScanEnd = 'ok' | 'stall' | 'off';
-
 export const AMBIENT_MSG = 'hikka-plus:ambient';
 export const AMBIENT_REQ = 'hikka-plus:ambient-req';

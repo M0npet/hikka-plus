@@ -4,9 +4,13 @@ import { useEffect, useRef } from 'react';
 const GLOW_W = 48;
 /** Наскільки ширшою за сторінку малюємо її копію (кольори виходять за краї й м'яко гаснуть). */
 const SPREAD = 1.8;
-/** Плавність: частка нового кадру за один крок і скільки кроків малювати після зміни (~0,5 с). */
-const BLEND = 0.18;
-const FRAMES = 28;
+/**
+ * Плавність і навантаження (0.6.0, MK 22:37 — «грузит проц»): малюємо не частіше ніж раз на STEP мс (було щокадру,
+ * 60/с — і щоразу браузер перераховував розмиття на весь екран); частка нового кадру BLEND, після зміни — ще HOLD мс.
+ */
+const STEP = 80;
+const BLEND = 0.45;
+const HOLD = 600;
 
 /**
  * Підсвітка читалки манґи/манхви (MK 22:18–22:20): кольори видимої частини сторінки м'яко
@@ -46,8 +50,11 @@ export function ReaderGlow({
     tctx.imageSmoothingQuality = 'high';
 
     let raf = 0;
-    let left = 0;
+    let until = 0;
+    let last = 0;
     let first = true;
+    // Колір фону читалки — не з getComputedStyle на кожному кадрі (це перерахунок стилів).
+    let bg = '';
 
     const size = () => {
       const r = root.getBoundingClientRect();
@@ -65,12 +72,14 @@ export function ReaderGlow({
       const cw = tgt.width;
       const ch = tgt.height;
       tctx.globalAlpha = 1;
-      tctx.fillStyle = getComputedStyle(root).backgroundColor || '#000';
+      if (!bg || first) bg = getComputedStyle(root).backgroundColor || '#000';
+      tctx.fillStyle = bg;
       tctx.fillRect(0, 0, cw, ch);
       const H = box.height;
       for (const img of scroll.querySelectorAll<HTMLImageElement>('.hp-page img, .hp-strip__pg img')) {
         if (!img.complete || !img.naturalWidth) continue;
         const r = img.getBoundingClientRect();
+        if (r.top - box.top >= H) break; // сторінки йдуть згори вниз — далі лише невидимі
         const top = Math.max(r.top - box.top, 0);
         const bot = Math.min(r.bottom - box.top, H);
         if (bot <= top || r.height < 1) continue;
@@ -101,16 +110,23 @@ export function ReaderGlow({
       first = false;
     };
 
-    const loop = () => {
+    const loop = (now: number) => {
       raf = 0;
-      draw();
-      if (--left > 0) raf = requestAnimationFrame(loop);
+      if (document.hidden) return;
+      if (now - last >= STEP) {
+        last = now;
+        draw();
+      }
+      if (now < until) raf = requestAnimationFrame(loop);
     };
     const dirty = () => {
-      left = FRAMES;
+      until = performance.now() + HOLD;
       if (!raf) raf = requestAnimationFrame(loop);
     };
-    kick.current = dirty;
+    kick.current = () => {
+      bg = ''; // гортання / зміна налаштувань читалки (тема) — перечитати фон
+      dirty();
+    };
 
     // load не спливає — ловимо на фазі перехоплення.
     scroll.addEventListener('scroll', dirty, { passive: true });

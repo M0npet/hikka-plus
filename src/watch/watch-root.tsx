@@ -8,12 +8,12 @@ import { hikkaConfigured, watchScopeItem, tokenItem } from '../core/hikka-auth';
 import { startHikkaLogin } from '../features/hikka-sync';
 import { animeonTeams, mergeTeams, mikaiTeams, parseWatchLinks } from './providers';
 import { aniskipRaw, watchedAt, type AniSkip } from './threshold';
-import { FLAT, FP_RATE, learnEpisode, storedEpisodes, liveFind, loadFp, mergeMarks, rememberMark, segsFromAniskip, setManualMark, templateFromManual, templates, type Marks, type Seg } from './skip-marks';
-import { getWatchSaved, scanAllowedByNetwork, updateWatchSaved, useWatchPrefs, type WatchSaved } from './watch-store';
+import { mergeMarks, segsFromAniskip, type Marks, type Seg } from './skip-marks';
+import { getWatchSaved, updateWatchSaved, useWatchPrefs, type WatchSaved } from './watch-store';
 import { HIKKA_LIST_EVENT, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '../core/bridge';
 import { loadHikkaWatch, lowerHikkaEpisodes, markHikkaEpisodes, type HikkaWatchState } from './hikka-watch';
 import { WatchBlock, type HikkaLine } from './watch-block';
-import type { EpisodeState, ScanEnd, ScanJob, WatchTeam } from './types';
+import type { EpisodeState, WatchTeam } from './types';
 
 type HikkaAnime = {
   slug: string;
@@ -52,8 +52,8 @@ type Load = { status: 'loading' } | { status: 'ready'; teams: WatchTeam[]; anime
 
 const SAVE_EVERY_MS = 5000;
 
-/** Мітки OP/ED поточної серії для блоку: framesOff — кадри плеєра читати не можна (лише мітки плеєра/AniSkip). */
-export type MarksInfo = { ep: number; d: number; m: Marks; framesOff: boolean; learned: number };
+/** Мітки OP/ED поточної серії для блоку (плеєр → AniSkip). */
+export type MarksInfo = { ep: number; d: number; m: Marks };
 type SegPair = { op?: Seg; ed?: Seg };
 
 export function WatchRoot({ slug }: { slug: string }) {
@@ -137,21 +137,6 @@ export function WatchRoot({ slug }: { slug: string }) {
     aniskip: new Map<number, AniSkip | null | undefined>(),
     marked: new Set<number>(),
     blocked: new Set<number>(),
-    // Мітки OP/ED, знайдені самі (src/watch/skip-marks.ts): відбитки кадрів серій, зразки тайтлу, мітки серій.
-    fp: new Map<number, (number | undefined)[]>(),
-    fpD: new Map<number, number>(),
-    learnedAt: new Map<number, number>(),
-    auto: {} as Record<string, SegPair>,
-    tpl: { op: null as number[] | null, ed: null as number[] | null },
-    framesOff: false,
-    learnedEps: 0,
-    // «Тут опенінг» / «Тут ендинг»: позначки серій і шматки, з яких ще треба взяти зразок (коли плеєр їх програє).
-    manual: {} as Record<string, SegPair>,
-    pendTpl: new Map<string, { ep: number; kind: 'op' | 'ed'; seg: Seg }>(),
-    // Сканер (0.5.22): уже проскановані шматки (ep:from) і вимкнення на цей захід (кадри недоступні / двічі застряг).
-    scanned: new Set<string>(),
-    scanFails: 0,
-    scanOff: false,
   });
   const anime = load.status === 'ready' ? load.anime : null;
   const total = anime?.episodes_total || anime?.episodes_released || null;
@@ -169,209 +154,24 @@ export function WatchRoot({ slug }: { slug: string }) {
     [slug, prefs.hikkaSync, hikka.status, total],
   );
 
-  // Збережені відбитки/зразки/мітки тайтлу.
-  useEffect(() => {
-    void loadFp(slug).then((st) => {
-      const L = live.current;
-      L.auto = { ...st.marks, ...L.auto };
-      L.manual = { ...st.man, ...L.manual };
-      L.tpl = templates(st);
-      L.learnedEps = Object.keys(st.eps).length;
-      // Відбитки серій з минулих заходів — щоб сканер не ганяв те, що вже є.
-      for (const { ep, a, d } of storedEpisodes(st)) {
-        if (L.fp.has(ep)) continue;
-        const arr = a.map((v) => (v === FLAT ? undefined : v));
-        L.fp.set(ep, arr);
-        if (d > 0 && !L.fpD.has(ep)) L.fpD.set(ep, d);
-        L.learnedAt.set(ep, arr.filter((v) => v !== undefined).length);
-      }
-    });
-  }, [slug]);
-
   /** Злити мітки поточної серії й оновити блок і поріг зарахування. Повертає початок ED (або null). */
   const refreshMarks = useCallback((ep: number, d: number): Marks => {
     const L = live.current;
-    const m = mergeMarks(d, L.playerSegs.get(ep) ?? {}, L.auto[ep] ?? {}, segsFromAniskip(L.aniskip.get(ep) ?? null, d), L.manual[ep] ?? {});
+    const m = mergeMarks(d, L.playerSegs.get(ep) ?? {}, segsFromAniskip(L.aniskip.get(ep) ?? null, d));
     setMarks((x) => {
-      const nx: MarksInfo = { ep, d, m, framesOff: L.framesOff, learned: L.learnedEps };
+      const nx: MarksInfo = { ep, d, m };
       return x && JSON.stringify(x) === JSON.stringify(nx) ? x : nx;
     });
     return m;
   }, []);
 
-  // Порівняти відбитки серії з іншими збереженими й запам'ятати (на кінці серії, при зміні серії, при закритті).
-  const learn = useCallback(
-    (ep: number, force = false) => {
-      const L = live.current;
-      const arr = L.fp.get(ep);
-      const d = L.fpD.get(ep) ?? L.d;
-      if (!arr || !(d > 0)) return;
-      const have = arr.filter((v) => v !== undefined).length;
-      const prev = L.learnedAt.get(ep) ?? 0;
-      if (have - prev < (force ? 1 : 120)) return; // менше хвилини нового — не варто (кінець скану — завжди)
-      L.learnedAt.set(ep, have);
-      void learnEpisode(slug, ep, arr, d).then((st) => {
-        L.auto = { ...L.auto, ...st.marks };
-        L.tpl = templates(st);
-        L.learnedEps = Object.keys(st.eps).length;
-        // Порівняння могло знайти мітки й для серії, яку дивимось (якщо вчилися на сусідній — сканер).
-        const cd = L.ep === ep ? d : (L.fpD.get(L.ep) ?? L.d);
-        if (L.ep && cd > 0) refreshMarks(L.ep, cd);
-      });
-    },
-    [slug, refreshMarks],
-  );
-  const learnRef = useRef(learn);
-  learnRef.current = learn;
-  useEffect(() => {
-    const onHide = () => document.visibilityState === 'hidden' && learnRef.current(live.current.ep);
-    document.addEventListener('visibilitychange', onHide);
-    return () => {
-      document.removeEventListener('visibilitychange', onHide);
-      learnRef.current(live.current.ep);
-    };
-  }, []);
-
-  // Відбитки кадрів із фрейму: накопичуємо й упізнаємо зразки OP/ED тайтлу вже в цій серії.
-  const onFp = useCallback(
-    (ep: number, fp: string, d: number) => {
-      const L = live.current;
-      if (d > 0) L.fpD.set(ep, d);
-      let arr = L.fp.get(ep);
-      if (!arr) L.fp.set(ep, (arr = []));
-      const dur = d || L.d;
-      let changed = false;
-      for (const part of fp.split(';')) {
-        if (!part) continue;
-        const [a, b] = part.split(',');
-        const i = Number(a);
-        const h = Number(b);
-        if (!(i >= 0 && i < 4 * 3600 * FP_RATE) || !Number.isFinite(h)) continue;
-        arr[i] = h;
-        for (const kind of ['op', 'ed'] as const) {
-          const tpl = L.tpl[kind];
-          if (!tpl || L.auto[ep]?.[kind] || L.manual[ep]?.[kind] || L.playerSegs.get(ep)?.[kind]) continue;
-          const at = liveFind(arr, i, tpl);
-          if (at === null || !(dur > 0)) continue;
-          const seg = { s: Math.max(0, at / FP_RATE), e: Math.min(dur, (at + tpl.length) / FP_RATE) };
-          // OP — у перших 65 % серії (буває й посередині), ED — у другій половині; інакше це збіг з іншим шматком (анонс, повтор).
-          if (kind === 'op' ? seg.s > dur * 0.65 : seg.s < dur * 0.5) continue;
-          L.auto[ep] = { ...L.auto[ep], [kind]: seg };
-          void rememberMark(slug, ep, kind, seg);
-          changed = true;
-        }
-      }
-      if (changed && L.ep === ep && dur > 0) refreshMarks(ep, dur);
-      // Ручна позначка: щойно плеєр програв позначений шматок — його кадри стають зразком тайтлу.
-      for (const [key, pt] of L.pendTpl) {
-        if (pt.ep !== ep || arr.length < Math.floor(pt.seg.e * FP_RATE)) continue;
-        L.pendTpl.delete(key);
-        void templateFromManual(slug, ep, pt.kind, arr, pt.seg).then((st) => {
-          if (st) L.tpl = templates(st);
-          else if (!L.pendTpl.has(key) && L.manual[ep]?.[pt.kind]) L.pendTpl.set(key, pt); // кадрів мало — ще раз, коли додадуться
-        });
-      }
-      // Порівнювати з іншими серіями й по ходу перегляду — раз на хвилину нових кадрів (а не лише в кінці / при зміні серії).
-      learn(ep);
-    },
-    [slug, refreshMarks, learn],
-  );
-
-  /** «Тут опенінг» / «Тут ендинг» (seg) або прибрати позначку (null). */
-  const onManualMark = useCallback(
-    (ep: number, kind: 'op' | 'ed', seg: Seg | null) => {
-      const L = live.current;
-      const key = `${ep}:${kind}`;
-      const cur = { ...L.manual[ep] };
-      if (seg) cur[kind] = seg;
-      else delete cur[kind];
-      L.manual = { ...L.manual, [ep]: cur };
-      if (seg && !L.framesOff) L.pendTpl.set(key, { ep, kind, seg });
-      else L.pendTpl.delete(key);
-      void setManualMark(slug, ep, kind, seg).then((st) => {
-        L.tpl = templates(st);
-      });
-      const d = L.fpD.get(ep) ?? L.d;
-      if (L.ep === ep && d > 0) refreshMarks(ep, d);
-    },
-    [slug, refreshMarks],
-  );
-
-  /**
-   * Сканер міток (0.5.22, plan-marks-v2 §3): що прогнати наступним у прихованому фреймі. null — нічого.
-   * Немає зразка OP/ED тайтлу — скануємо цей шматок (OP: 0–6 хв, ED: останні 5 хв) у поточній і сусідній серії
-   * → learnEpisode знаходить спільний шматок. Зразок є — скануємо поточну серію наперед лише за увімкненого автопропуску
-   * (без нього liveFind і так упізнає OP/ED за ~4 с від початку, а автопропуск спрацьовує лише в перші 3 с).
-   */
-  const nextScan = useCallback(
-    (ep: number, has: (n: number) => boolean): ScanJob | null => {
-      const L = live.current;
-      if (!prefs.scan || prefs.marks === false || L.framesOff || L.scanOff || !scanAllowedByNetwork()) return null;
-      if (L.ep !== ep || L.t < 5 || !(L.d > 0)) return null; // спершу хай піде основний плеєр (реклама, буфер)
-      const nb = has(ep + 1) ? ep + 1 : has(ep - 1) ? ep - 1 : null;
-      const hasMark = (e: number, k: 'op' | 'ed') => !!(L.manual[e]?.[k] || L.auto[e]?.[k] || L.playerSegs.get(e)?.[k]);
-      // Шматок уже є у відбитках (переглянуто чи проскановано раніше) — ≥ 80 % кроків.
-      const covered = (e: number, a: number, b: number) => {
-        const arr = L.fp.get(e);
-        if (!arr || b <= a) return false;
-        let n = 0;
-        for (let i = Math.floor(a * FP_RATE); i < Math.floor(b * FP_RATE); i++) if (arr[i] !== undefined) n++;
-        return n >= (b - a) * FP_RATE * 0.8;
-      };
-      // Третій шматок — якщо OP немає в перших 6 хв обох серій: опенінг буває й посередині (до 65 % серії).
-      const plan: [kind: 'op' | 'ed', from: number, to: number][] = [
-        ['op', 0, 360],
-        ['ed', -300, 0],
-        ['op', 360, Math.round(L.d * 0.65)],
-      ];
-      for (const [kind, from, to] of plan) {
-        if (hasMark(ep, kind) || to > 0 && to <= from) continue;
-        let eps: (number | null)[];
-        if (L.tpl[kind]) {
-          if (!(kind === 'op' ? prefs.skipOp : prefs.skipEd)) continue;
-          if (kind === 'op' && L.t > to) continue; // опенінг уже позаду
-          eps = [ep];
-        } else eps = nb ? [ep, nb] : []; // одна серія — порівнювати нема з чим
-        for (const e of eps) {
-          if (e === null) continue;
-          const d = e === ep ? L.d : L.fpD.get(e);
-          if (d && d > 0 && covered(e, from < 0 ? Math.max(0, d + from) : from, to <= 0 ? d : Math.min(to, d))) continue;
-          const key = `${e}:${from}`;
-          if (L.scanned.has(key)) continue;
-          return { ep: e, from, to, kind };
-        }
-      }
-      return null;
-    },
-    [prefs.scan, prefs.marks, prefs.skipOp, prefs.skipEd],
-  );
-
-  const onScanDone = useCallback(
-    (job: ScanJob, how: ScanEnd) => {
-      const L = live.current;
-      L.scanned.add(`${job.ep}:${job.from}`);
-      if (how === 'off') L.scanOff = true;
-      else if (how === 'stall' && ++L.scanFails >= 2) L.scanOff = true;
-      else if (how === 'ok') learn(job.ep, true);
-    },
-    [learn],
-  );
-
-  const onFramesOff = useCallback(() => {
-    const L = live.current;
-    if (L.framesOff) return;
-    L.framesOff = true;
-    if (L.d > 0) refreshMarks(L.ep, L.d);
-  }, [refreshMarks]);
-
   const onTime = useCallback(
     (ep: number, t: number, d: number) => {
       const L = live.current;
-      if (ep !== L.ep && L.ep) learn(L.ep);
       L.ep = ep;
       L.t = t;
       L.d = d;
-      // Мітки: плеєр → знайдені самі → AniSkip (з перевіркою); поріг — початок ED, інакше за 90 с до кінця.
+      // Мітки: плеєр → AniSkip (з перевіркою); поріг — початок ED, інакше за 90 с до кінця.
       if (anime?.mal_id && !L.aniskip.has(ep)) {
         L.aniskip.set(ep, undefined);
         void aniskipRaw(anime.mal_id, ep).then((a) => {
@@ -387,8 +187,6 @@ export function WatchRoot({ slug }: { slug: string }) {
       // Після «Скасувати» серію не відмічаємо знову, доки позиція не повернеться нижче порогу.
       if (t < at) L.blocked.delete(ep);
       else markWatched(ep);
-      // Майже кінець — саме час порівняти відбитки (ED уже пройшов).
-      if (t > d * 0.97) learn(ep);
       const now = Date.now();
       if (now - L.lastSave > SAVE_EVERY_MS) {
         L.lastSave = now;
@@ -399,7 +197,7 @@ export function WatchRoot({ slug }: { slug: string }) {
         }).then(() => getWatchSaved(slug).then(setSaved));
       }
     },
-    [slug, anime?.mal_id, markWatched, refreshMarks, learn],
+    [slug, anime?.mal_id, markWatched, refreshMarks],
   );
 
   // Позначити вручну (глазок у сітці): як дійти до кінця — локально + лічильник Hikka до n.
@@ -448,14 +246,10 @@ export function WatchRoot({ slug }: { slug: string }) {
   const onSelect = useCallback(
     (sel: { team: string; player: string; ep: number }) => {
       const L = live.current;
-      if (sel.ep !== L.ep) {
-        learn(L.ep);
-        L.t = 0;
-      }
-      L.framesOff = false; // інший плеєр може віддавати кадри
+      if (sel.ep !== L.ep) L.t = 0;
       void updateWatchSaved(slug, (s) => ({ ...s, team: sel.team, player: sel.player, ep: sel.ep, t: sel.ep === s.ep ? s.t : 0 }));
     },
-    [slug, learn],
+    [slug],
   );
 
   if (!prefs.enabled) return null;
@@ -500,11 +294,6 @@ export function WatchRoot({ slug }: { slug: string }) {
       onTime={onTime}
       onSegs={onSegs}
       marks={marks}
-      onFp={onFp}
-      onFramesOff={onFramesOff}
-      nextScan={nextScan}
-      onScanDone={onScanDone}
-      onManualMark={onManualMark}
       onEnded={markWatched}
       canUnwatch={canUnwatch}
       onUnwatch={unwatch}

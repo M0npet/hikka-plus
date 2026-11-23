@@ -1760,20 +1760,6 @@ select {
   filter: blur(80px) saturate(1.6) brightness(var(--hp-glow-b, 1));
 }
 
-/* Сканер міток (ScanFrame, 0.5.22): другий плеєр під основним — у видимій області (невидимі/позаекранні чужі фрейми
-   браузери пригальмовують), але його не видно й не клікнути. Малий розмір — плеєр бере нижчу якість (менше трафіку). */
-.hp-watch__scan {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  z-index: -2;
-  width: 160px;
-  height: 90px;
-  border: 0;
-  opacity: 0.01;
-  pointer-events: none;
-}
-
 /* Мітки OP/ED (src/watch/skip-marks.ts): кнопка «Пропустити» поверх плеєра — над панеллю керування плеєра, справа. */
 .hp-watch__skip {
   position: absolute;
@@ -1860,29 +1846,6 @@ select {
 }
 .hp-watch__legend .hp-muted {
   color: var(--hp-muted-fg);
-}
-.hp-watch__manual {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-left: auto;
-}
-.hp-watch__tag {
-  padding: 2px 8px;
-  border: 1px solid var(--hp-border);
-  border-radius: 6px;
-  background: none;
-  color: var(--hp-muted-fg);
-  font: inherit;
-  cursor: pointer;
-}
-.hp-watch__tag:hover {
-  color: var(--hp-fg);
-}
-.hp-watch__tag--on {
-  border-color: transparent;
-  background: var(--hp-primary);
-  color: var(--hp-primary-fg);
 }
 
 .hp-watch__nav {

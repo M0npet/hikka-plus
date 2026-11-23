@@ -34,8 +34,7 @@ Hikka Plus додає на сторінки тайтлів hikka.io те, чог
 <b>Аніме — блок «Перегляд»</b>
 • Плеєри українських озвучок прямо на сторінці аніме (дані — з Mikai та AnimeON, плеєри Ashdi, Moon, Fenix).
 • Сітка серій із позначками переглянутого, перемикання команд озвучки, «Ширше» на всю ширину сторінки і «На весь екран».
-• Опенінг і ендинг видно на смужці під плеєром, кнопка «Пропустити» (або пропуск сам); якщо плеєр не дає міток, Hikka Plus знаходить їх сам, порівнюючи кадри серій. Можна позначити й самому — «Тут опенінг» / «Тут ендинг» в одній серії, і далі мітки з'являться в усіх серіях тайтлу.
-• Експериментально: «Сканувати серії наперед» — мітки одразу, без перегляду двох серій (вимкнено за замовчуванням: трафік і навантаження на процесор).
+• Опенінг і ендинг видно на смужці під плеєром (мітки самого плеєра, інакше приблизні з AniSkip), кнопка «Пропустити» (або пропуск сам).
 • На картках аніме в каталозі, календарі та «Моїх списках» — плашки «▶ N нових» (для «Дивлюсь») і «N серія через X дн.».
 • «Вимкнути світло» — затемнити все навколо плеєра.
 • Серія зараховується з початку ендингу; за бажанням лічильник у вашому списку Hikka оновлюється сам.
@@ -85,8 +84,7 @@ Hikka Plus brings watching and reading into the title pages of hikka.io, the Ukr
 <b>Anime — "Watch" block</b>
 • Ukrainian-dub players right on the anime page (episode data from Mikai and AnimeON; Ashdi, Moon and Fenix players).
 • Episode grid with watched marks, dub team switching, "Wider" layout and full screen.
-• Opening and ending shown on a bar under the player, "Skip" button (or auto-skip); when the player has no marks, Hikka Plus finds them itself by comparing frames of episodes. You can also mark them yourself — "Opening here" / "Ending here" in one episode, and the marks then appear in every episode of the title.
-• Experimental: "Scan episodes ahead" — marks right away, without watching two episodes (off by default: uses traffic and CPU).
+• Opening and ending shown on a bar under the player (the player's own marks, otherwise approximate ones from AniSkip), "Skip" button (or auto-skip).
 • Badges on anime cards in the catalogue, calendar and "My lists": "▶ N new" (for "Watching") and "Episode N in X days".
 • "Lights off" — dim everything around the player.
 • An episode counts as watched from the start of the ending; optionally your Hikka list is updated automatically.

@@ -10,8 +10,8 @@ import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, Ico
 import { useLightsOff } from './lights-off';
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
-import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type ScanEnd, type ScanJob, type WatchPlayer, type WatchTeam } from './types';
-import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_WIDE_ANIM, SCAN_HINT, type WatchPrefs } from './watch-store';
+import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
+import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_WIDE_ANIM, type WatchPrefs } from './watch-store';
 import { AmbientFields } from './ambient-fields';
 import type { LightsMsg } from '../lights/types';
 import type { MarkSrc, Seg } from './skip-marks';
@@ -53,15 +53,8 @@ export type WatchBlockProps = {
   onTime?: (ep: number, t: number, duration: number) => void;
   onSegs?: (ep: number, segs: { op?: Seg; ed?: Seg }) => void;
   onEnded?: (ep: number) => void;
-  /** Мітки OP/ED поточної серії (watch-root: плеєр → знайдені за кадрами → AniSkip). */
+  /** Мітки OP/ED поточної серії (watch-root: плеєр → AniSkip). */
   marks?: MarksInfo | null;
-  onFp?: (ep: number, fp: string, d: number) => void;
-  onFramesOff?: () => void;
-  /** Сканер міток (watch-root): наступний шматок для прихованого фрейму (has — серія є в команди) і кінець скану. */
-  nextScan?: (ep: number, has: (n: number) => boolean) => ScanJob | null;
-  onScanDone?: (job: ScanJob, how: ScanEnd) => void;
-  /** «Тут опенінг» / «Тут ендинг» (seg) або прибрати ручну позначку (null). */
-  onManualMark?: (ep: number, kind: 'op' | 'ed', seg: Seg | null) => void;
   /** Вміст рамки замість iframe (стенд). */
   renderFrame?: (p: WatchPlayer, ep: number) => ReactNode;
 };
@@ -209,7 +202,7 @@ export function WatchBlock(p: WatchBlockProps) {
   const [range, setRange] = useState('0');
   // З якої секунди почати після (пере)завантаження iframe.
   const startAt = useRef(init?.t ?? 0);
-  // Поточна позиція для смужки міток і кнопки «Пропустити» (з кроком 0,5 с — щоб не перемальовувати зайве).
+  // Поточна позиція для смужки міток і кнопки «Пропустити» (з кроком 1 с — щоб не перемальовувати блок зайвий раз).
   const [pos, setPos] = useState<{ ep: number; t: number; d: number } | null>(null);
   const seekRef = useRef<((sec: number) => void) | null>(null);
   const skipped = useRef(new Set<string>());
@@ -350,27 +343,6 @@ export function WatchBlock(p: WatchBlockProps) {
     doSkip(skipNow.kind, skipNow.seg.e);
   }, [skipNow?.kind, skipNow?.seg.s, ep]);
 
-  // Сканер міток: по одному шматку за раз у прихованому фреймі (ScanFrame); план — у watch-root.
-  const [scanJob, setScanJob] = useState<ScanJob | null>(null);
-  const [scanVer, setScanVer] = useState(0);
-  const pos5 = now ? Math.floor(now.t / 5) : -1;
-  useEffect(() => {
-    if (scanJob || !p.nextScan || p.renderFrame || !player) return;
-    const j = p.nextScan(ep, teamHas);
-    if (j) setScanJob(j);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scanJob, scanVer, ep, pos5, p.marks, p.prefs.scan, p.prefs.marks, p.prefs.skipOp, p.prefs.skipEd, player?.id]);
-  const endScan = (job: ScanJob, how: ScanEnd) => {
-    p.onScanDone?.(job, how);
-    setScanJob(null);
-    setScanVer((v) => v + 1);
-  };
-  // Вимкнули сканер — прибрати фрейм одразу.
-  useEffect(() => {
-    if (!p.prefs.scan || p.prefs.marks === false) setScanJob(null);
-  }, [p.prefs.scan, p.prefs.marks]);
-  const scanPlayer = scanJob ? playerFor(scanJob.ep) : undefined;
-
   if (p.status === 'loading')
     return (
       <section className="hp-section">
@@ -430,13 +402,10 @@ export function WatchBlock(p: WatchBlockProps) {
             // на початку ендингу блок перемикав на наступну посеред ендингу).
             if (t > 3) picked.current = true;
             p.onTime?.(ep, t, d);
-            const tt = Math.floor(t * 2) / 2;
+            const tt = Math.floor(t);
             setPos((x) => (x && x.ep === ep && x.t === tt && x.d === d ? x : { ep, t: tt, d }));
           }}
           onSegs={(m) => p.onSegs?.(ep, m)}
-          scan={marksOn}
-          onFp={(fp, d) => p.onFp?.(ep, fp, d)}
-          onFramesOff={p.onFramesOff}
           seekRef={seekRef}
           onEnded={() => {
             const cur = ep;
@@ -455,15 +424,6 @@ export function WatchBlock(p: WatchBlockProps) {
         />
       )}
     </div>
-    {scanJob && scanPlayer && (
-      <ScanFrame
-        key={`${scanPlayer.id}:${scanJob.ep}:${scanJob.from}`}
-        player={scanPlayer}
-        job={scanJob}
-        onFp={(fp, d) => p.onFp?.(scanJob.ep, fp, d)}
-        onDone={(how) => endScan(scanJob, how)}
-      />
-    )}
     {skipNow && (
       <button type="button" className={cx(btn('secondary', 'sm'), 'hp-watch__skip')} onClick={() => doSkip(skipNow.kind, skipNow.seg.e)}>
         {skipNow.kind === 'op' ? 'Пропустити опенінг' : 'Пропустити ендинг'} <IconRight />
@@ -667,12 +627,11 @@ export function WatchBlock(p: WatchBlockProps) {
             <div className="hp-popover hp-popover--end hp-watch__menu">
               <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної" checked={p.prefs.autoNext} onChange={(v) => p.onPrefs({ autoNext: v })} />
               <SwitchRow label="Відмічати в Hikka" hint="Серія зараховується, коли дійшли до ендингу" checked={p.prefs.hikkaSync} onChange={(v) => p.onPrefs({ hikkaSync: v })} />
-              <SwitchRow label="Мітки опенінгу й ендингу" hint="Смужка під плеєром і кнопка «Пропустити»" checked={marksOn} onChange={(v) => p.onPrefs({ marks: v })} />
+              <SwitchRow label="Мітки опенінгу й ендингу" hint="З плеєра, інакше приблизні з AniSkip" checked={marksOn} onChange={(v) => p.onPrefs({ marks: v })} />
               {marksOn && (
                 <>
                   <SwitchRow label="Пропускати опенінг сам" checked={!!p.prefs.skipOp} onChange={(v) => p.onPrefs({ skipOp: v })} />
                   <SwitchRow label="Пропускати ендинг сам" checked={!!p.prefs.skipEd} onChange={(v) => p.onPrefs({ skipEd: v })} />
-                  <SwitchRow label="Сканувати серії наперед" hint={SCAN_HINT} checked={!!p.prefs.scan} onChange={(v) => p.onPrefs({ scan: v })} />
                 </>
               )}
               <SwitchRow label="Підсвітка" hint="Кольори з відео навколо плеєра" checked={ambient} onChange={(v) => p.onPrefs({ ambient: v })} />
@@ -722,15 +681,8 @@ export function WatchBlock(p: WatchBlockProps) {
       <div className="hp-card">
         {bar}
         {frame}
-        {marksOn && now && now.d > 0 && (
-          <MarksBar
-            key={ep}
-            info={mk}
-            t={now.t}
-            d={now.d}
-            onSeek={(sec) => seekRef.current?.(sec)}
-            onManual={p.onManualMark ? (kind, seg) => p.onManualMark!(ep, kind, seg) : undefined}
-          />
+        {mk && (mk.m.op || mk.m.ed) && now && now.d > 0 && (
+          <MarksBar key={ep} info={mk} t={now.t} d={now.d} onSeek={(sec) => seekRef.current?.(sec)} />
         )}
         {rest}
       </div>
@@ -748,50 +700,14 @@ export function WatchBlock(p: WatchBlockProps) {
 
 /* ---------- Смужка міток OP/ED під плеєром ---------- */
 
-const SRC_NAMES: Record<MarkSrc, string> = { manual: 'позначено вами', player: 'з плеєра', auto: 'знайдено за кадрами', aniskip: 'AniSkip, приблизно' };
+const SRC_NAMES: Record<MarkSrc, string> = { player: 'з плеєра', aniskip: 'AniSkip, приблизно' };
 const KIND_NAMES = { op: 'Опенінг', ed: 'Ендинг' } as const;
 
-/** Де насправді OP і ED у цій серії: смужка на всю тривалість, клік — перемотка; під нею — час і звідки мітка. */
-/** Ручна позначка без кінця — до другого натискання вважаємо 90 с (типова довжина OP/ED). */
-const MANUAL_LEN = 90;
-
-export function MarksBar({
-  info,
-  t,
-  d,
-  onSeek,
-  onManual,
-}: {
-  info: MarksInfo | null;
-  t: number;
-  d: number;
-  onSeek: (sec: number) => void;
-  onManual?: (kind: 'op' | 'ed', seg: Seg | null) => void;
-}) {
+/** Де OP і ED у цій серії: смужка на всю тривалість, клік — перемотка; під нею — час і звідки мітка. Показуємо, лише коли мітки є. */
+export function MarksBar({ info, t, d, onSeek }: { info: MarksInfo | null; t: number; d: number; onSeek: (sec: number) => void }) {
   const m = info?.m ?? {};
-  // Позначили початок, чекаємо «Кінець…» (серія змінилась — компонент перемонтовується за key).
-  const [open, setOpen] = useState<{ kind: 'op' | 'ed'; s: number } | null>(null);
-  const start = (kind: 'op' | 'ed') => {
-    const s = Math.max(0, Math.round(t));
-    setOpen({ kind, s });
-    onManual?.(kind, { s, e: Math.min(d, s + MANUAL_LEN) });
-  };
-  const finish = () => {
-    if (!open) return;
-    const e = Math.round(t);
-    // Кінець раніше початку або шматок < 10 с — лишаємо +90 с.
-    if (e > open.s + 10) onManual?.(open.kind, { s: open.s, e: Math.min(d, e) });
-    setOpen(null);
-  };
   const pct = (x: number) => `${Math.max(0, Math.min(100, (x / d) * 100))}%`;
   const segs = (['op', 'ed'] as const).filter((k) => m[k]);
-  const hint = segs.length
-    ? null
-    : info?.framesOff
-      ? 'Міток немає: цей плеєр не дає читати кадри, а AniSkip не знає цієї серії'
-      : (info?.learned ?? 0) < 2
-        ? 'Опенінг і ендинг з’являться, коли подивитеся 2 серії — Hikka Plus порівнює кадри серій'
-        : 'Опенінг і ендинг ще шукаються';
   const onBar = (e: { currentTarget: HTMLElement; clientX: number }) => {
     const r = e.currentTarget.getBoundingClientRect();
     if (r.width > 0) onSeek(((e.clientX - r.left) / r.width) * d);
@@ -802,7 +718,7 @@ export function MarksBar({
         {segs.map((k) => (
           <span
             key={k}
-            className={`hp-watch__seg hp-watch__seg--${k}${m[k]!.src === 'aniskip' || open?.kind === k ? ' hp-watch__seg--rough' : ''}`}
+            className={`hp-watch__seg hp-watch__seg--${k}${m[k]!.src === 'aniskip' ? ' hp-watch__seg--rough' : ''}`}
             style={{ left: pct(m[k]!.s), width: `calc(${pct(m[k]!.e)} - ${pct(m[k]!.s)})` }}
           />
         ))}
@@ -816,148 +732,8 @@ export function MarksBar({
             <span className="hp-muted"> · {SRC_NAMES[m[k]!.src]}</span>
           </button>
         ))}
-        {hint && !open && <span className="hp-muted">{hint}</span>}
-        {onManual && (
-          <span className="hp-watch__manual">
-            {open ? (
-              <button type="button" className="hp-watch__tag hp-watch__tag--on" onClick={finish} title="Позначити, де закінчився шматок">
-                Кінець {open.kind === 'op' ? 'опенінгу' : 'ендингу'} тут
-              </button>
-            ) : (
-              (['op', 'ed'] as const).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  className="hp-watch__tag"
-                  onClick={() => start(k)}
-                  title={`Позначити: ${KIND_NAMES[k].toLowerCase()} починається з цієї секунди — далі Hikka Plus упізнає його в інших серіях`}
-                >
-                  Тут {k === 'op' ? 'опенінг' : 'ендинг'}
-                </button>
-              ))
-            )}
-            {(['op', 'ed'] as const)
-              .filter((k) => m[k]?.src === 'manual' && open?.kind !== k)
-              .map((k) => (
-                <button
-                  key={`x${k}`}
-                  type="button"
-                  className="hp-watch__tag"
-                  onClick={() => onManual(k, null)}
-                  title={`Прибрати вашу позначку: ${KIND_NAMES[k].toLowerCase()}`}
-                >
-                  × {KIND_NAMES[k].toLowerCase()}
-                </button>
-              ))}
-          </span>
-        )}
       </div>
     </div>
-  );
-}
-
-/** Команда «грати» в API плеєра (Ashdi створює відео лише після неї). Звук не вимикаємо: на 16× браузер глушить його сам. */
-function playCmd(kind: WatchPlayer['kind'], n: number): unknown {
-  if (kind === 'ashdi') return { api: 'play' };
-  if (kind === 'moon') return { ns: 'ma', v: 2, id: `hps${n}`, command: 'player_play' };
-  if (kind === 'fenix') return { action: 'player_play' };
-  return null;
-}
-
-/**
- * Сканер міток (0.5.22): другий наш iframe того самого плеєра, прозорий і під основним (у видимій області — інакше
- * браузери пригальмовують невидимі чужі фрейми). Скрипт фрейму (entrypoints/player-frame.content.ts, name="hikka-plus-scan")
- * за {sweep} проганяє шматок на 16× і шле відбитки; ми кладемо їх у серію job.ep. Після скану фрейм прибираємо.
- */
-export function ScanFrame(p: { player: WatchPlayer; job: ScanJob; onFp: (fp: string, d: number) => void; onDone: (how: ScanEnd) => void }) {
-  const [src, setSrc] = useState<string | null | undefined>(undefined);
-  const ref = useRef<HTMLIFrameElement>(null);
-  const cb = useRef(p);
-  cb.current = p;
-
-  useEffect(() => {
-    let off = false;
-    p.player
-      .src(p.job.ep)
-      .then((s) => !off && (s ? setSrc(s) : cb.current.onDone('stall')))
-      .catch(() => !off && cb.current.onDone('stall'));
-    return () => {
-      off = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const f = ref.current;
-    if (!src || !f) return;
-    let origin = '';
-    try {
-      origin = new URL(src).origin;
-    } catch {
-      cb.current.onDone('stall');
-      return;
-    }
-    let done = false;
-    let got = false;
-    const finish = (how: ScanEnd) => {
-      if (done) return;
-      done = true;
-      cb.current.onDone(how);
-    };
-    const post = (m: unknown) => {
-      try {
-        f.contentWindow?.postMessage(m, origin);
-      } catch {
-        /* ще about:blank */
-      }
-    };
-    const { from, to } = cb.current.job;
-    const ask = () => post({ type: AMBIENT_REQ, sweep: { from, to, rate: 16 } });
-    const onMsg = (e: MessageEvent) => {
-      if (e.source !== f.contentWindow || e.origin !== origin) return;
-      const d = e.data as { type?: unknown; ready?: unknown; fp?: unknown; d?: unknown; swept?: unknown } | null;
-      if (!d || d.type !== AMBIENT_MSG) return;
-      if (d.ready) return ask();
-      if (typeof d.fp === 'string') {
-        got = true;
-        return cb.current.onFp(d.fp, Number(d.d) || 0);
-      }
-      if (d.swept === 'ok' || d.swept === 'stall' || d.swept === 'off') finish(d.swept);
-    };
-    window.addEventListener('message', onMsg);
-    f.addEventListener('load', ask);
-    // Плеєр сам не стартує (Ashdi — лише після play) — штовхаємо, доки не підуть відбитки.
-    let n = 0;
-    const kick = window.setInterval(() => {
-      if (got) return;
-      const m = playCmd(cb.current.player.kind, ++n);
-      if (m) post(m);
-    }, 2000);
-    // Запобіжник: 11 хв на 16× — це ~45 с; 4 хв — точно щось не так (реклама, мережа).
-    const guard = window.setTimeout(() => finish('stall'), 4 * 60_000);
-    return () => {
-      done = true;
-      window.removeEventListener('message', onMsg);
-      f.removeEventListener('load', ask);
-      clearInterval(kick);
-      clearTimeout(guard);
-    };
-  }, [src]);
-
-  if (!src) return null;
-  return (
-    <iframe
-      ref={ref}
-      src={src}
-      className="hp-watch__scan"
-      // За name скрипт entrypoints/player-frame.content.ts пізнає фрейм сканера.
-      name="hikka-plus-scan"
-      title="Hikka Plus: пошук міток"
-      aria-hidden="true"
-      tabIndex={-1}
-      allow="autoplay"
-      referrerPolicy="origin"
-    />
   );
 }
 
@@ -974,11 +750,6 @@ export function PlayerFrame(p: {
   glow?: HTMLCanvasElement | null;
   /** Слати кадри ще й у background для пристроїв (src/lights/). */
   devices?: boolean;
-  /** Просити відбитки кадрів для міток OP/ED (src/watch/skip-marks.ts). */
-  scan?: boolean;
-  onFp?: (fp: string, d: number) => void;
-  /** Кадр цього плеєра читати не можна (відео без CORS) — ні підсвітки, ні авто-міток. */
-  onFramesOff?: () => void;
   /** Сюди кладемо функцію перемотки (кнопки «Пропустити», смужка міток). */
   seekRef?: { current: ((sec: number) => void) | null };
 }) {
@@ -1017,8 +788,10 @@ export function PlayerFrame(p: {
       return;
     }
     const devices = !!p.devices;
-    const on = !!c || devices;
-    const scan = !!p.scan;
+    const want = !!c || devices;
+    // Плеєр прокрутили з екрана — підсвітку не рахуємо (пристроям кадри потрібні завжди).
+    let visible = true;
+    const on = () => want && (visible || devices);
     // Пристрої: не частіше ніж 10 кадрів/с (повільні пристрої пропускають ще й самі, src/lights/engine.ts).
     let devAt = 0;
     const toDevices = (m: LightsMsg) => void browser.runtime.sendMessage(m).catch(() => {});
@@ -1033,7 +806,7 @@ export function PlayerFrame(p: {
       }
     };
     const ask = () => {
-      if (loaded()) f.contentWindow?.postMessage({ type: AMBIENT_REQ, on, scan }, origin);
+      if (loaded()) f.contentWindow?.postMessage({ type: AMBIENT_REQ, on: on() }, origin);
     };
     const ctx = c?.getContext('2d') ?? null;
     const tmp = document.createElement('canvas');
@@ -1043,16 +816,15 @@ export function PlayerFrame(p: {
     const pad = document.createElement('canvas');
     const pctx = pad.getContext('2d');
     let first = true;
+    let img: ImageData | null = null;
     const onMsg = (e: MessageEvent) => {
       if (e.source !== f.contentWindow || e.origin !== origin) return;
-      const d = e.data as { type?: unknown; ready?: unknown; off?: unknown; w?: unknown; h?: unknown; rgb?: unknown; bar?: unknown; fp?: unknown; d?: unknown } | null;
+      const d = e.data as { type?: unknown; ready?: unknown; off?: unknown; w?: unknown; h?: unknown; rgb?: unknown; bar?: unknown } | null;
       if (!d || d.type !== AMBIENT_MSG) return;
       if (d.ready) return ask();
-      if (typeof d.fp === 'string') return cb.current.onFp?.(d.fp, Number(d.d) || 0);
       // Moon з панеллю «Під кадром» (його налаштування): рамка вища, див. .hp-watch__frame--below у style.css.
       if (typeof d.bar === 'string') return void f.parentElement?.classList.toggle('hp-watch__frame--below', d.bar === 'below');
       if (d.off) {
-        cb.current.onFramesOff?.();
         if (devices) toDevices({ type: 'hp-lights', stop: true });
         return c?.classList.remove('is-on');
       }
@@ -1073,7 +845,7 @@ export function PlayerFrame(p: {
         pad.height = c.height = h + 2 * P;
         first = true;
       }
-      const img = tctx.createImageData(w, h);
+      if (!img || img.width !== w || img.height !== h) img = tctx.createImageData(w, h);
       for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
         img.data[j] = rgb.charCodeAt(i);
         img.data[j + 1] = rgb.charCodeAt(i + 1);
@@ -1092,28 +864,40 @@ export function PlayerFrame(p: {
       pctx.drawImage(tmp, 0, h - 1, 1, 1, 0, P + h, P, P);
       pctx.drawImage(tmp, w - 1, h - 1, 1, 1, P + w, P + h, P, P);
       // Плавна зміна кольорів: новий кадр поверх старого з прозорістю.
-      ctx.globalAlpha = first ? 1 : 0.25;
+      // Кадри йдуть 5 разів на секунду (0.6.0, було 10) — частка нового кадру більша, плавність та сама (~1 с).
+      ctx.globalAlpha = first ? 1 : 0.4;
       ctx.drawImage(pad, 0, 0);
       if (first) c.classList.add('is-on');
       first = false;
     };
     window.addEventListener('message', onMsg);
     f.addEventListener('load', ask);
+    const io =
+      want && typeof IntersectionObserver !== 'undefined'
+        ? new IntersectionObserver(([en]) => {
+            const v = !!en?.isIntersecting;
+            if (v === visible) return;
+            visible = v;
+            ask();
+          })
+        : null;
+    io?.observe(f);
     ask();
     return () => {
+      io?.disconnect();
       window.removeEventListener('message', onMsg);
       f.removeEventListener('load', ask);
       f.parentElement?.classList.remove('hp-watch__frame--below');
       c?.classList.remove('is-on');
       if (devices) toDevices({ type: 'hp-lights', stop: true });
-      if ((!on && !scan) || !loaded()) return;
+      if (!want || !loaded()) return;
       try {
-        f.contentWindow?.postMessage({ type: AMBIENT_REQ, on: false, scan: false }, origin);
+        f.contentWindow?.postMessage({ type: AMBIENT_REQ, on: false }, origin);
       } catch {
         /* фрейм уже прибрано */
       }
     };
-  }, [src, p.glow, p.devices, p.scan]);
+  }, [src, p.glow, p.devices]);
 
   useEffect(() => {
     const f = ref.current;
