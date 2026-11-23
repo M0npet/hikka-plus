@@ -93,6 +93,11 @@
 .hp-set__msg {
   margin: 0;
 }
+.hp-set__foot .hp-link {
+  color: var(--hp-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .hp-set__foot {
   margin: 4px 0 0;
   text-align: center;

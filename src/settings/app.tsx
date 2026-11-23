@@ -1,6 +1,6 @@
 /**
  * Вікно налаштувань Hikka Plus: по іконці розширення (popup) і окремою вкладкою (options).
- * Розділи: Джерела, Hikka (вхід і синхронізація), Читалка, Дані. Компоненти — ті самі, що на сайті (ui/kit).
+ * Розділи: Джерела, Hikka (вхід і синхронізація), Читалка, Плеєр, Дані. Компоненти — ті самі, що на сайті (ui/kit).
  */
 import { browser } from '#imports';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -18,12 +18,16 @@ import { Button, Header, Slider, Switch, SwitchRow, Tabs } from '../ui/kit';
 import { dataStats, exportData, importData, resetAll, resetBindings, resetProgress, type DataStats } from './data';
 
 export type SettingsMode = 'popup' | 'page';
-type Section = 'sources' | 'hikka' | 'reader' | 'data';
+
+/** Репозиторій розширення (MK 2026-11-23: посилання, версія й розробник у вікні налаштувань). */
+const REPO_URL = 'https://github.com/M0npet/hikka-plus';
+type Section = 'sources' | 'hikka' | 'reader' | 'player' | 'data';
 
 const SECTIONS: [Section, string][] = [
   ['sources', 'Джерела'],
   ['hikka', 'Hikka'],
   ['reader', 'Читалка'],
+  ['player', 'Плеєр'],
   ['data', 'Дані'],
 ];
 
@@ -67,9 +71,17 @@ export function SettingsApp({ mode }: { mode: SettingsMode }) {
         {section === 'sources' && <SourcesSection />}
         {section === 'hikka' && <HikkaSection mode={mode} />}
         {section === 'reader' && <ReaderSection />}
+        {section === 'player' && <PlayerFields />}
         {section === 'data' && <DataSection mode={mode} />}
       </div>
-      <p className="hp-xs hp-muted hp-set__foot">Неофіційне розширення для hikka.io. Не пов'язане з командою Hikka.</p>
+      <p className="hp-xs hp-muted hp-set__foot">
+        Hikka Plus v{version} · розробник M0npet ·{' '}
+        <a className="hp-link" href={REPO_URL} target="_blank" rel="noreferrer noopener">
+          GitHub
+        </a>
+        <br />
+        Неофіційне розширення для hikka.io. Не пов'язане з командою Hikka.
+      </p>
     </div>
   );
 }
@@ -283,7 +295,6 @@ function ReaderSection() {
           onChange={(autoHideBars) => void updateSettings((x) => ({ ...x, autoHideBars }))}
         />
       </div>
-      <PlayerFields />
     </>
   );
 }

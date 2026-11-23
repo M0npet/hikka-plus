@@ -171,6 +171,26 @@ export function WatchBlock(p: WatchBlockProps) {
 
   const [wide, setWide] = useState(!!p.prefs.wide);
   const [menu, setMenu] = useState(false);
+  const menuWrap = useRef<HTMLDivElement>(null);
+  // Меню налаштувань закривається кліком поза ним, Esc і кліком у плеєр (iframe забирає фокус — у вікна blur).
+  useEffect(() => {
+    if (!menu || !menuWrap.current) return;
+    const root = menuWrap.current.getRootNode() as Document | ShadowRoot;
+    const close = () => setMenu(false);
+    const onRoot = (e: Event) => !menuWrap.current?.contains(e.target as Node) && close();
+    const onDoc = (e: Event) => root instanceof ShadowRoot && e.target !== root.host && close();
+    const onEsc = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    root.addEventListener('pointerdown', onRoot, true);
+    if (root !== document) document.addEventListener('pointerdown', onDoc, true);
+    window.addEventListener('keydown', onEsc, true);
+    window.addEventListener('blur', close);
+    return () => {
+      root.removeEventListener('pointerdown', onRoot, true);
+      document.removeEventListener('pointerdown', onDoc, true);
+      window.removeEventListener('keydown', onEsc, true);
+      window.removeEventListener('blur', close);
+    };
+  }, [menu]);
   const [range, setRange] = useState('0');
   // З якої секунди почати після (пере)завантаження iframe.
   const startAt = useRef(init?.t ?? 0);
@@ -530,7 +550,7 @@ export function WatchBlock(p: WatchBlockProps) {
     <>
       <Header title="Перегляд">
         {anitube}
-        <div className="hp-select">
+        <div className="hp-select" ref={menuWrap}>
           <Button variant="ghost" size="sm" icon aria-label="Налаштування плеєра" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
             <IconSettings />
           </Button>
@@ -667,9 +687,11 @@ export function PlayerFrame(p: {
     let first = true;
     const onMsg = (e: MessageEvent) => {
       if (e.source !== f.contentWindow || e.origin !== origin) return;
-      const d = e.data as { type?: unknown; ready?: unknown; off?: unknown; w?: unknown; h?: unknown; rgb?: unknown } | null;
+      const d = e.data as { type?: unknown; ready?: unknown; off?: unknown; w?: unknown; h?: unknown; rgb?: unknown; bar?: unknown } | null;
       if (!d || d.type !== AMBIENT_MSG) return;
       if (d.ready) return ask();
+      // Moon з панеллю «Під кадром» (його налаштування): рамка вища, див. .hp-watch__frame--below у style.css.
+      if (typeof d.bar === 'string') return void f.parentElement?.classList.toggle('hp-watch__frame--below', d.bar === 'below');
       if (!c || !ctx || !tctx) return;
       if (d.off) return c.classList.remove('is-on');
       const w = Number(d.w);
@@ -699,6 +721,7 @@ export function PlayerFrame(p: {
     ask();
     return () => {
       window.removeEventListener('message', onMsg);
+      f.parentElement?.classList.remove('hp-watch__frame--below');
       c?.classList.remove('is-on');
       if (!on) return;
       try {

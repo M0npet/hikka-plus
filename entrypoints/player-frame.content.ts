@@ -6,6 +6,8 @@
  * Працює, лише коли hikka.io попросив (вимикач «Підсвітка» в налаштуваннях плеєра). Якщо кадр прочитати не можна
  * (відео з чужого сервера без CORS) — кажемо про це один раз і більше не пробуємо.
  *
+ * Для Moon ще кажемо, який вигляд панелі вибрано в самому плеєрі ({bar}) — рамка під «Під кадром» вища.
+ *
  * Раніше тут були обхід стилю Hikka Features (0.5.2–0.5.4; вони виправили в 3.1.22) і замір панелі Moon,
  * щоб рамка ставала вищою (0.5.4–0.5.5) — замір розгойдував розкладку Moon у вузькому блоці (панель блимала), прибрано.
  */
@@ -99,4 +101,18 @@ function ambient() {
   });
   // hikka.io міг надіслати запит раніше, ніж ми запустилися, — просимо повторити.
   send({ ready: true });
+
+  // Moon: вигляд панелі — налаштування самого плеєра (data-ma-bar на <html>, напр. "below" — «Під кадром»).
+  // Лише ЧИТАЄМО й кажемо hikka.io: при «Під кадром» рамка вища (інакше смуги, а на малій висоті у Firefox панель блимає).
+  if (location.hostname.startsWith('moonanime.')) {
+    let lastBar: string | null | undefined;
+    const report = () => {
+      const bar = document.documentElement.getAttribute('data-ma-bar');
+      if (bar === lastBar) return;
+      lastBar = bar;
+      send({ bar: bar ?? '' });
+    };
+    report();
+    new MutationObserver(report).observe(document.documentElement, { attributes: true, attributeFilter: ['data-ma-bar'] });
+  }
 }

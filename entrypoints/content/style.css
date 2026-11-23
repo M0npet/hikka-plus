@@ -1640,10 +1640,11 @@ select {
   border-radius: var(--hp-r-lg);
   background: #000;
 }
-/* Moon у Firefox на малій висоті блимає панеллю кнопок (перемикається між «панель поверх» і «панель під кадром»):
-   588×331 і 588×380 — блимає, 588×420 — стабільно, панель під кадром (MK 2026-11-23, голий iframe Moon). Тож рамка Moon
-   не нижча за 420 px (у вузькому блоці — вища за 16:9). Звіт для Moon — claude/todo-moon-report.md. */
-.hp-watch__frame--moon {
+/* Moon з виглядом панелі «Під кадром» (data-ma-bar="below" — налаштування в самому плеєрі Moon; читає player-frame.content.ts):
+   панель стоїть під відео — у рамці 16:9 смуги, а на малій висоті у Firefox панель блимає (588×331 і 588×380 — блимає,
+   588×420 — стабільно; MK 2026-11-23, голий iframe). Тож лише в цьому вигляді рамка Moon не нижча за 420 px.
+   Звіт для Moon — claude/todo-moon-report.md. */
+.hp-watch__frame--moon.hp-watch__frame--below {
   min-height: 420px;
 }
 .hp-watch__frame > iframe {
@@ -1685,7 +1686,7 @@ select {
 }
 .hp-watch__glow.is-on {
   /* Інтенсивність — повзунок «Інтенсивність підсвітки» (WatchPrefs.ambientLevel). */
-  opacity: var(--hp-glow, 0.85);
+  opacity: var(--hp-glow, 0.5);
 }
 /* Решта картки — над підсвіткою (інакше світіння лягає на вибір команди/плеєра й серії). */
 .hp-watch__bar,
