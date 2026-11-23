@@ -1640,10 +1640,11 @@ select {
   border-radius: var(--hp-r-lg);
   background: #000;
 }
-/* Moon нижче 380 px (їхня межа «малого плеєра»: max-height 379px) у Firefox блимає панеллю кнопок — перевірено MK
-   2026-11-23 на голому iframe Moon 588×331. Тож рамка Moon не нижча за 380 px (у вузькому блоці — трохи вища за 16:9). */
+/* Moon у Firefox на малій висоті блимає панеллю кнопок (перемикається між «панель поверх» і «панель під кадром»):
+   588×331 і 588×380 — блимає, 588×420 — стабільно, панель під кадром (MK 2026-11-23, голий iframe Moon). Тож рамка Moon
+   не нижча за 420 px (у вузькому блоці — вища за 16:9). Звіт для Moon — claude/todo-moon-report.md. */
 .hp-watch__frame--moon {
-  min-height: 380px;
+  min-height: 420px;
 }
 .hp-watch__frame > iframe {
   position: absolute;
@@ -1683,7 +1684,16 @@ select {
   transition: opacity 0.6s ease;
 }
 .hp-watch__glow.is-on {
-  opacity: 0.85;
+  /* Інтенсивність — повзунок «Інтенсивність підсвітки» (WatchPrefs.ambientLevel). */
+  opacity: var(--hp-glow, 0.85);
+}
+/* Решта картки — над підсвіткою (інакше світіння лягає на вибір команди/плеєра й серії). */
+.hp-watch__bar,
+.hp-watch__nav,
+.hp-watch__epsHead,
+.hp-watch__grid {
+  position: relative;
+  z-index: 1;
 }
 @media (prefers-reduced-motion: reduce) {
   .hp-watch__glow {

@@ -27,7 +27,11 @@ export type WatchPrefs = {
   wide?: boolean;
   /** Підсвітка навколо плеєра кольорами з відео (як Ambient mode на YouTube). undefined — увімкнено. */
   ambient?: boolean;
+  /** Інтенсивність підсвітки, 10–100 %. undefined — 85. */
+  ambientLevel?: number;
 };
+
+export const DEFAULT_AMBIENT_LEVEL = 85;
 
 export const DEFAULT_WATCH_PREFS: WatchPrefs = { enabled: true, autoNext: true, hikkaSync: true };
 

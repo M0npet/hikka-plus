@@ -4,14 +4,14 @@
  * «Ширше» переносить плеєр над колонками сторінки (portal у свій host), сітка серій лишається тут.
  * iframe при переносі перезавантажується — повертаємо його на ту саму секунду командою плеєра.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
+import { Button, Check, ChipTabs, Header, Slider, SwitchRow, btn } from '../ui/kit';
 import { IconExpand, IconExternal, IconEye, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv } from '../ui/icons';
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
 import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
-import type { WatchPrefs } from './watch-store';
+import { DEFAULT_AMBIENT_LEVEL, type WatchPrefs } from './watch-store';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 const RANGE = 50;
@@ -305,7 +305,14 @@ export function WatchBlock(p: WatchBlockProps) {
   const ed = p.edInfo && p.edInfo.ep === ep ? p.edInfo : null;
   const frame = (
     <div className="hp-watch__view">
-    {ambient && !p.renderFrame && <canvas ref={setGlowEl} className="hp-watch__glow" aria-hidden="true" />}
+    {ambient && !p.renderFrame && (
+      <canvas
+        ref={setGlowEl}
+        className="hp-watch__glow"
+        aria-hidden="true"
+        style={{ '--hp-glow': String((p.prefs.ambientLevel ?? DEFAULT_AMBIENT_LEVEL) / 100) } as CSSProperties}
+      />
+    )}
     <div ref={frameRef} className={`hp-watch__frame hp-watch__frame--${player.kind}`}>
       {p.renderFrame ? (
         p.renderFrame(player, ep)
@@ -532,6 +539,17 @@ export function WatchBlock(p: WatchBlockProps) {
               <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної" checked={p.prefs.autoNext} onChange={(v) => p.onPrefs({ autoNext: v })} />
               <SwitchRow label="Відмічати в Hikka" hint="Серія зараховується, коли дійшли до ендингу" checked={p.prefs.hikkaSync} onChange={(v) => p.onPrefs({ hikkaSync: v })} />
               <SwitchRow label="Підсвітка" hint="Кольори з відео навколо плеєра" checked={ambient} onChange={(v) => p.onPrefs({ ambient: v })} />
+              {ambient && (
+                <Slider
+                  label="Інтенсивність підсвітки"
+                  value={p.prefs.ambientLevel ?? DEFAULT_AMBIENT_LEVEL}
+                  min={10}
+                  max={100}
+                  step={5}
+                  format={(v) => `${v}%`}
+                  onChange={(ambientLevel) => p.onPrefs({ ambientLevel })}
+                />
+              )}
             </div>
           )}
         </div>
