@@ -1,5 +1,5 @@
 import { defineUnlistedScript } from '#imports';
-import { HIKKA_LIST_EVENT, READ_CHANGED_EVENT, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '@/src/core/bridge';
+import { HIKKA_LIST_EVENT, READ_CHANGED_EVENT, READ_COUNT_EVENT, READ_COUNT_REQ, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '@/src/core/bridge';
 
 /**
  * Виконується в контексті сторінки hikka.io (не в ізольованому світі content script).
@@ -61,6 +61,20 @@ export default defineUnlistedScript(() => {
     if (n === null) return;
     document.dispatchEvent(new CustomEvent(WATCH_COUNT_EVENT, { detail: `${slug}\n${n}` }));
   }
+  /** Запит `readGet` (віджет «у списку» манги/ранобе) → кількість прочитаних розділів для content script. */
+  function reportRead(q: QueryStateLike, want?: string) {
+    const k = q.queryKey[0] as { _id?: unknown; path?: { slug?: unknown; content_type?: unknown } } | undefined;
+    if (!k || typeof k !== 'object' || k._id !== 'readGet') return;
+    const slug = typeof k.path?.slug === 'string' ? k.path.slug : '';
+    const ct = typeof k.path?.content_type === 'string' ? k.path.content_type : '';
+    if (!slug || (want && slug !== want)) return;
+    const st = q.state;
+    let n: number | null = null;
+    if (st?.status === 'success') n = Number((st.data as { chapters?: unknown } | null)?.chapters ?? 0) || 0;
+    else if (st?.status === 'error') n = 0; // тайтлу немає в списку
+    if (n === null) return;
+    document.dispatchEvent(new CustomEvent(READ_COUNT_EVENT, { detail: `${ct}\n${slug}\n${n}` }));
+  }
   const last = new Map<string, number>();
   function watchCache() {
     if (unsub) return;
@@ -69,6 +83,7 @@ export default defineUnlistedScript(() => {
     unsub = client.getQueryCache().subscribe((ev) => {
       if (ev.type !== 'updated' || ev.action?.type !== 'success') return;
       reportWatch(ev.query);
+      reportRead(ev.query);
       const k = ev.query.queryKey[0] as { _id?: unknown } | undefined;
       const id = k && typeof k === 'object' ? String(k._id ?? '') : '';
       // Лише сам запис у списку (віджет «у списку»), не статистика й «читають друзі».
@@ -95,6 +110,17 @@ export default defineUnlistedScript(() => {
     client ??= findClient();
     try {
       client?.getQueryCache().getAll?.().forEach((q) => reportWatch(q, slug));
+    } catch {
+      client = null;
+    }
+  });
+
+  document.addEventListener(READ_COUNT_REQ, (e) => {
+    const slug = (e as CustomEvent<unknown>).detail;
+    if (typeof slug !== 'string' || !slug) return;
+    client ??= findClient();
+    try {
+      client?.getQueryCache().getAll?.().forEach((q) => reportRead(q, slug));
     } catch {
       client = null;
     }

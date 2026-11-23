@@ -2,11 +2,12 @@
  * Режим «Ширше» (рішення MK 2026-11-23, 01:59): плеєр на всю ширину сітки сторінки — на своєму місці,
  * під верхніми картками лівої й правої колонок; усе, що нижче, з'їжджає вниз.
  *
- * DOM Hikka не змінюємо: у бічні колонки вставляємо лише свої порожні відступи `hikka-plus-gap`,
- * у центрі місце тримає наш власний блок (slot), а сам плеєр лежить у нашому host `hikka-plus-theater`
- * з position:absolute поверх сітки. Перераховуємо при зміні розмірів і перебудові колонок.
+ * 0.5.12 (MK 15:54 «щоб плеєр не перезавантажувався» + анімація): наш host `hikka-plus-watch` НЕ переїжджає
+ * в DOM (перенесення iframe = перезавантаження) — він лишається на своєму місці в центральній колонці, лише стає
+ * position:absolute на ширину сітки. Місце під ним тримають наші порожні відступи `hikka-plus-gap`: у бічних колонках
+ * і в центрі. DOM Hikka не змінюємо. Перехід туди й назад — FLIP-анімація transform (без перерахунку розкладки щокадру).
  */
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect } from 'react';
 
 const GAP = 32; // gap-8 у колонках Hikka
 // Скільки верхніх карток бічної колонки завжди над блоком (hikka-next, content-detail-page.tsx):
@@ -17,44 +18,66 @@ const SIDES = [
   { sel: '#content-right-side', top: 2 },
 ] as const;
 const OWN = new Set(['hikka-plus-gap', 'hikka-plus-watch']);
+const ANIM_MS = 320;
 
-/** Відступ над плеєром у центральному блоці (px) — скільки опустити плеєр під бічні картки. */
-export function useWideLayout(
-  active: boolean,
-  slot: HTMLElement | null,
-  stage: HTMLElement | null,
-  theater: HTMLElement | null,
-  onUnavailable: () => void,
-) {
-  const [offset, setOffset] = useState(0);
-  const [height, setHeight] = useState(0);
-  const restoreRef = useRef<() => void>(() => {});
+/** FLIP: елемент уже на новому місці — показати перехід зі старого прямокутника `from`. */
+function flip(el: HTMLElement, from: DOMRect) {
+  if (!from.width || !from.height || typeof el.animate !== 'function') return;
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const to = el.getBoundingClientRect();
+  if (!to.width || !to.height) return;
+  const dx = from.left - to.left;
+  const dy = from.top - to.top;
+  const sx = from.width / to.width;
+  const sy = from.height / to.height;
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) return;
+  el.animate(
+    [
+      { transformOrigin: '0 0', transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
+      { transformOrigin: '0 0', transform: 'none' },
+    ],
+    { duration: ANIM_MS, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
+  );
+}
 
-  useEffect(() => {
-    if (!active || !slot || !stage || !theater) return;
-    const host = (theater.getRootNode() as ShadowRoot).host as HTMLElement | undefined;
+/**
+ * Увімкнути «Ширше» для блоку, у якому лежить `stage`. Нічого не повертає: усе робиться стилями нашого host
+ * і нашими відступами. `onUnavailable` — коли «Ширше» неможливе (вузький екран, колонки складені в одну).
+ */
+export function useWideLayout(active: boolean, stage: HTMLElement | null, onUnavailable: () => void) {
+  useLayoutEffect(() => {
+    if (!active || !stage) return;
+    const host = (stage.getRootNode() as ShadowRoot).host as HTMLElement | undefined;
     const grid = document.querySelector<HTMLElement>('div:has(> #content-left-side)');
-    // Наш блок у центральній колонці (у ньому лише slot) — його й пересуваємо нижче, щоб центр Hikka заповнив порожнечу.
-    const own = (slot.getRootNode() as ShadowRoot).host as HTMLElement | undefined;
-    if (!host || !grid || !own) return;
-    const home = { parent: own.parentNode, next: own.nextSibling };
-    /** Повернути наш блок на рідне місце (до перемикання назад, щоб iframe не переїжджав і не перезавантажувався). */
-    const restore = () => {
-      const desc = document.getElementById('content-description');
-      const want = desc?.parentNode === own.parentNode ? desc!.nextSibling : home.next?.parentNode === home.parent ? home.next : null;
-      if (own.previousSibling === desc || (!desc && own.nextSibling === want)) return;
-      if (desc && desc.parentNode) desc.parentNode.insertBefore(own, desc.nextSibling);
-      else if (home.parent) home.parent.insertBefore(own, want);
-    };
-    restoreRef.current = restore;
+    if (!host || !grid) return;
+    const from = host.getBoundingClientRect();
     const gaps = new Map<Element, HTMLElement>();
     let raf = 0;
-    let lastOffset = -1;
-    let lastH = -1;
+    let first = true;
 
     const pageTop = (el: Element) => el.getBoundingClientRect().top + window.scrollY;
     const pageBottom = (el: Element) => el.getBoundingClientRect().bottom + window.scrollY;
     const shown = (el: Element) => !(el instanceof HTMLElement) || (el.offsetParent !== null && el.getBoundingClientRect().height > 0);
+    const gapFor = (col: Element) => {
+      let gap = gaps.get(col);
+      if (!gap) {
+        gap = document.createElement('hikka-plus-gap');
+        gap.setAttribute('aria-hidden', 'true');
+        gap.style.cssText = 'display:block;flex:none;width:100%;pointer-events:none';
+        gaps.set(col, gap);
+      }
+      return gap;
+    };
+    const setH = (gap: HTMLElement, h: number) => {
+      if (gap.style.height !== `${h}px`) gap.style.height = `${h}px`;
+    };
+    /** Початок координат для position:absolute нашого host (padding box containing block), у координатах сторінки. */
+    const origin = () => {
+      const op = host.offsetParent as HTMLElement | null;
+      if (!op || (op === document.body && getComputedStyle(op).position === 'static')) return { x: 0, y: 0 };
+      const r = op.getBoundingClientRect();
+      return { x: r.left + window.scrollX + op.clientLeft, y: r.top + window.scrollY + op.clientTop };
+    };
 
     const run = () => {
       raf = 0;
@@ -64,12 +87,19 @@ export function useWideLayout(
         onUnavailable();
         return;
       }
-      const H = Math.round(stage.getBoundingClientRect().height);
-      const center = own.parentElement;
+      const center = host.parentElement;
       const desc = document.getElementById('content-description');
       const cGap = center ? parseFloat(getComputedStyle(center).rowGap) || GAP : GAP;
-      // Рідне місце блоку — одразу під описом (не залежить від того, куди ми його вже пересунули).
-      const slotTop = desc && desc.parentElement === center ? pageBottom(desc) + cGap : pageTop(slot);
+
+      // Сам блок: абсолютно, ширина сітки (висоту бере від ширини — рахуємо після).
+      const g = grid.getBoundingClientRect();
+      host.style.position = 'absolute';
+      host.style.zIndex = '1';
+      host.style.width = `${Math.round(g.width)}px`;
+      const H = Math.round(stage.getBoundingClientRect().height);
+
+      // Рідне місце блоку — одразу під описом.
+      const slotTop = desc && desc.parentElement === center ? pageBottom(desc) + cGap : center ? pageTop(center) : pageTop(grid);
 
       // Для кожної бічної колонки: дитина, що перетинає верх плеєра, і де вставити відступ.
       const plans: { col: Element; before: Element | null; prevBottom: number }[] = [];
@@ -77,7 +107,7 @@ export function useWideLayout(
       for (const { sel, top: topCards } of SIDES) {
         const col = document.querySelector(sel);
         if (!col) continue;
-        const kids = [...col.children].filter((k) => k.tagName.toLowerCase() !== 'hikka-plus-gap' && shown(k));
+        const kids = [...col.children].filter((k) => !OWN.has(k.tagName.toLowerCase()) && shown(k));
         let prevBottom = pageTop(col) - GAP;
         let before: Element | null = null;
         for (const [i, k] of kids.entries()) {
@@ -96,56 +126,41 @@ export function useWideLayout(
       }
 
       for (const { col, before, prevBottom } of plans) {
-        let gap = gaps.get(col);
-        if (!gap) {
-          gap = document.createElement('hikka-plus-gap');
-          gap.setAttribute('aria-hidden', 'true');
-          gap.style.cssText = 'display:block;flex:none;width:100%;pointer-events:none';
-          gaps.set(col, gap);
-        }
+        const gap = gapFor(col);
         const target = before && before.parentNode === col ? before : null;
         if (gap.parentNode !== col || gap.nextElementSibling !== target) col.insertBefore(gap, target);
         // Відступ починається на GAP нижче попередньої картки; наступна картка — на GAP нижче плеєра.
-        const h = Math.max(0, Math.round(top + H - (prevBottom + GAP)));
-        if (gap.style.height !== `${h}px`) gap.style.height = `${h}px`;
+        setH(gap, Math.max(0, Math.round(top + H - (prevBottom + GAP))));
       }
 
-      // Порожнеча в центрі над блоком (короткий опис) — MK 03:48 «щоб заповнювалося те, що влазить»:
-      // картки центру Hikka після опису («Головні персонажі», «Автори»…), що повністю влазять, лишаються над блоком —
-      // для цього пересуваємо НАШ блок нижче за них (DOM Hikka не чіпаємо).
-      if (center && desc && desc.parentElement === center) {
-        let y = pageBottom(desc);
-        let after: Element = desc;
-        for (let el = desc.nextElementSibling; el; el = el.nextElementSibling) {
-          if (el === own || OWN.has(el.tagName.toLowerCase())) continue;
+      // Центр: картки Hikka після опису («Головні персонажі», «Автори»…), що повністю влазять у порожнечу над блоком,
+      // лишаються над ним (MK 03:48); далі — наш відступ на висоту блоку.
+      if (center) {
+        let y = desc && desc.parentElement === center ? pageBottom(desc) : pageTop(center) - cGap;
+        let after: Element | null = desc && desc.parentElement === center ? desc : null;
+        for (let el = after ? after.nextElementSibling : center.firstElementChild; el; el = el.nextElementSibling) {
+          if (OWN.has(el.tagName.toLowerCase())) continue;
           if (!shown(el)) continue;
           const h = el.getBoundingClientRect().height;
           if (y + cGap + h + cGap > top + 1) break;
           y += cGap + h;
           after = el;
         }
-        if (own.previousElementSibling !== after || own.parentNode !== center) center.insertBefore(own, after.nextSibling);
-      }
-      const off = Math.max(0, Math.round(top - pageTop(slot)));
-      if (off !== lastOffset) {
-        lastOffset = off;
-        setOffset(off);
-      }
-      if (H !== lastH) {
-        lastH = H;
-        setHeight(H);
+        const gap = gapFor(center);
+        const next = after ? after.nextSibling : center.firstChild;
+        if (gap.parentNode !== center || (gap !== next && gap.previousElementSibling !== after)) center.insertBefore(gap, next);
+        setH(gap, Math.max(0, Math.round(top + H - (y + cGap))));
       }
 
-      // Сам плеєр: абсолютно, ширина сітки, верх = верх місця в центрі.
-      const g = grid.getBoundingClientRect();
-      host.style.position = 'absolute';
-      host.style.zIndex = '1';
-      host.style.width = `${Math.round(g.width)}px`;
-      const hr = host.getBoundingClientRect();
-      const curTop = parseFloat(host.style.top) || 0;
-      const curLeft = parseFloat(host.style.left) || 0;
-      host.style.top = `${Math.round(curTop + (top - window.scrollY) - hr.top)}px`;
-      host.style.left = `${Math.round(curLeft + g.left - hr.left)}px`;
+      // Позиція блоку: верх = під верхніми бічними картками, ліво = ліво сітки.
+      const o = origin();
+      host.style.top = `${Math.round(top - o.y)}px`;
+      host.style.left = `${Math.round(g.left + window.scrollX - o.x)}px`;
+
+      if (first) {
+        first = false;
+        flip(host, from);
+      }
     };
     const schedule = () => {
       if (!raf) raf = requestAnimationFrame(run);
@@ -173,15 +188,11 @@ export function useWideLayout(
       ro.disconnect();
       mo.disconnect();
       window.removeEventListener('resize', schedule);
+      const was = host.getBoundingClientRect();
       gaps.forEach((g) => g.remove());
-      restore();
-      restoreRef.current = () => {};
       for (const k of ['position', 'zIndex', 'width', 'top', 'left'] as const) host.style[k] = '';
-      setOffset(0);
-      setHeight(0);
+      if (host.isConnected) flip(host, was);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, slot, stage, theater]);
-
-  return { offset, height, restore: () => restoreRef.current() };
+  }, [active, stage]);
 }

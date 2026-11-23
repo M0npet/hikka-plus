@@ -27,3 +27,11 @@ export const HIKKA_LIST_EVENT = 'hikka-plus:hikka-list-changed';
 export const WATCH_COUNT_EVENT = 'hikka-plus:watch-count';
 /** Content script → сторінка: «повідом лічильник для <slug>», detail — slug. */
 export const WATCH_COUNT_REQ = 'hikka-plus:watch-count-req';
+
+/**
+ * Те саме для читання (MK 15:57: «18/? розділів» у віджеті Hikka, а в блоці 0 — без нашого входу числа не було):
+ * кеш запиту `readGet` на сторінці → content script, detail `<content_type>\n<slug>\n<chapters>`.
+ */
+export const READ_COUNT_EVENT = 'hikka-plus:read-count';
+/** Content script → сторінка: «повідом кількість розділів для <slug>», detail — slug. */
+export const READ_COUNT_REQ = 'hikka-plus:read-count-req';

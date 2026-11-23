@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { storage } from '#imports';
 import { logoutHikka, authErrorItem } from '../core/hikka-auth';
 import { chapterKey } from '../core/store';
+import { READ_COUNT_EVENT, READ_COUNT_REQ } from '../core/bridge';
 import {
   autoSyncItem,
   loadRemoteRead,
@@ -52,8 +53,29 @@ export function HikkaSyncBar({ state: s }: { state: TitleState }) {
     if (auth.connected && !remote) void loadRemoteRead(kind, slug);
   }, [auth.connected, remote, kind, slug]);
 
+  // Лічильник із віджета «у списку» самої Hikka на сторінці (кеш `readGet` через hikka-bridge) — працює й без нашого входу
+  // в Hikka (MK 15:57: у віджеті 18, а тут 0 з 18).
+  const [pageN, setPageN] = useState(0);
+  useEffect(() => {
+    setPageN(0);
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<unknown>).detail;
+      if (typeof d !== 'string') return;
+      const [ct, sl, n] = d.split('\n');
+      if (sl === slug && (!ct || ct === kind)) setPageN(Number(n) || 0);
+    };
+    document.addEventListener(READ_COUNT_EVENT, on);
+    // Запит Hikka міг завантажитися раніше за нас, а міст — знайти застосунок не одразу: питаємо кілька разів.
+    const ask = () => document.dispatchEvent(new CustomEvent(READ_COUNT_REQ, { detail: slug }));
+    const ts = [0, 1500, 4000].map((ms) => setTimeout(ask, ms));
+    return () => {
+      document.removeEventListener(READ_COUNT_EVENT, on);
+      ts.forEach(clearTimeout);
+    };
+  }, [kind, slug]);
+
   const here = remote && remote.kind === kind && remote.slug === slug ? remote : null;
-  const hikkaN = here?.status === 'ok' ? (here.read?.chapters ?? 0) : 0;
+  const hikkaN = Math.max(here?.status === 'ok' ? (here.read?.chapters ?? 0) : 0, pageN);
   // Розділи до hikkaN, які тут ще не позначені прочитаними.
   const behind =
     hikkaN > 0 &&

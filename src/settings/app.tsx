@@ -327,7 +327,7 @@ function PlayerFields() {
         />
         {w.ambient !== false && (
           <Slider
-            label="Інтенсивність підсвітки"
+            label="Яскравість підсвітки"
             value={w.ambientLevel ?? DEFAULT_AMBIENT_LEVEL}
             min={10}
             max={100}

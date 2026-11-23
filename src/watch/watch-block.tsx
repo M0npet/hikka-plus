@@ -1,13 +1,11 @@
 /*
  * Блок «Перегляд» на сторінці аніме (між «Опис» і «Головні персонажі»).
  * Команда → плеєр → iframe самого плеєра; кнопка Dawn веде на Mikai (вбудовування немає);
- * «Ширше» переносить плеєр над колонками сторінки (portal у свій host), сітка серій лишається тут.
- * iframe при переносі перезавантажується — повертаємо його на ту саму секунду командою плеєра.
+ * «Ширше» — увесь блок на ширину сітки сторінки (wide-layout.ts); блок не переїжджає в DOM, iframe не перезавантажується.
  */
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import { Button, Check, ChipTabs, Header, Slider, SwitchRow, btn } from '../ui/kit';
-import { IconExpand, IconExternal, IconEye, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv } from '../ui/icons';
+import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv } from '../ui/icons';
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
 import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
@@ -34,7 +32,6 @@ export type WatchBlockProps = {
   prefs: WatchPrefs;
   onPrefs: (p: Partial<WatchPrefs>) => void;
   /** Куди переносити плеєр у режимі «Ширше» (host над колонками сторінки). */
-  theater?: HTMLElement | null;
   /** Останній вибір і позиція (зі сховища). */
   initial?: { team?: string; player?: string; ep?: number; t?: number };
   /** Поточна секунда (для повернення після перезавантаження iframe). */
@@ -158,6 +155,9 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).p
 
 /* ---------- Сам блок ---------- */
 
+/** Скільки пікселів (кадр 32×18) додаємо з кожного боку для країв підсвітки; у style.css — ті самі пропорції (.hp-watch__glow). */
+const GLOW_PAD = 4;
+
 export function WatchBlock(p: WatchBlockProps) {
   const init = p.initial;
   const [teamId, setTeamId] = useState<string | undefined>(init?.team);
@@ -195,12 +195,13 @@ export function WatchBlock(p: WatchBlockProps) {
   // З якої секунди почати після (пере)завантаження iframe.
   const startAt = useRef(init?.t ?? 0);
   const frameRef = useRef<HTMLDivElement>(null);
+  // Повний екран — уся .hp-watch__view (рамка + підсвітка): на широкому екрані краї світяться (MK 15:39, «як у телеків»).
+  const viewRef = useRef<HTMLDivElement>(null);
   // Підсвітка: canvas за рамкою (поза .hp-watch__frame — та обрізає вміст).
   const [glowEl, setGlowEl] = useState<HTMLCanvasElement | null>(null);
   const ambient = p.prefs.ambient !== false;
   const stageRef = useRef<HTMLElement | null>(null);
   const [stageEl, setStageEl] = useState<HTMLElement | null>(null);
-  const [slotEl, setSlotEl] = useState<HTMLDivElement | null>(null);
   const [full, setFull] = useState(false);
   const canFull = typeof document !== 'undefined' && document.fullscreenEnabled !== false;
 
@@ -263,24 +264,25 @@ export function WatchBlock(p: WatchBlockProps) {
   const goEpRef = useRef(goEp);
   goEpRef.current = goEp;
   const toggleWide = (v: boolean) => {
-    startAt.current = p.resumeAt?.() ?? startAt.current;
-    // Наш блок у центрі міг стояти нижче (заповнення порожнечі) — повертаємо до того, як плеєр переїде в нього.
-    if (!v) layRef.current();
+    // iframe не перезавантажується (блок не переїжджає в DOM, wide-layout.ts) — позицію не чіпаємо.
     setWide(v);
     p.onPrefs({ wide: v });
   };
   // «Ширше» — спільне для всіх тайтлів (налаштування могли дочитатися пізніше або змінитися у вікні налаштувань).
   useEffect(() => {
     if (p.prefs.wide === undefined) return;
-    if (!p.prefs.wide) layRef.current();
     setWide(p.prefs.wide);
   }, [p.prefs.wide]);
-  const layRef = useRef<() => void>(() => {});
-  const lay = useWideLayout(wide && !!p.theater, slotEl, stageEl, p.theater ?? null, () => {
-    layRef.current();
+  // Moon — завжди «Ширше» (MK 15:39): у вузькому блоці його панель блимає у Firefox (баг Moon), а рамка 420 px дає смуги.
+  // Налаштування «Ширше» не змінюємо — для інших плеєрів лишається як вибрано. Якщо «Ширше» неможливе (вузьке вікно) —
+  // Moon у звичайному блоці з рамкою 420 px.
+  const [noWide, setNoWide] = useState(false);
+  const moonWide = player?.kind === 'moon' && !wide && !noWide;
+  const effWide = wide || moonWide;
+  useWideLayout(effWide, stageEl, () => {
     setWide(false);
+    setNoWide(true);
   });
-  layRef.current = lay.restore;
   // Після перемикання «Ширше» — прокрутити до плеєра.
   useEffect(() => {
     const t = setTimeout(() => stageRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);
@@ -289,7 +291,7 @@ export function WatchBlock(p: WatchBlockProps) {
   // Повний екран — рамка разом з iframe (сам iframe не перезавантажується, позиція й адаптер лишаються).
   useEffect(() => {
     const on = () => {
-      const el = frameRef.current;
+      const el = viewRef.current;
       setFull(!!el && (document.fullscreenElement === el || (el.getRootNode() as ShadowRoot).fullscreenElement === el));
     };
     document.addEventListener('fullscreenchange', on);
@@ -297,7 +299,7 @@ export function WatchBlock(p: WatchBlockProps) {
   }, []);
   const toggleFull = () => {
     if (full) void document.exitFullscreen?.().catch(() => {});
-    else void frameRef.current?.requestFullscreen?.().catch(() => {});
+    else void viewRef.current?.requestFullscreen?.().catch(() => {});
   };
 
   if (p.status === 'loading')
@@ -331,7 +333,7 @@ export function WatchBlock(p: WatchBlockProps) {
   const st = p.episodes[ep];
   const ed = p.edInfo && p.edInfo.ep === ep ? p.edInfo : null;
   const frame = (
-    <div className="hp-watch__view">
+    <div ref={viewRef} className="hp-watch__view">
     {ambient && !p.renderFrame && (
       <canvas
         ref={setGlowEl}
@@ -369,7 +371,6 @@ export function WatchBlock(p: WatchBlockProps) {
     </div>
     </div>
   );
-  const portal = wide && p.theater;
   const stageCb = (el: HTMLElement | null) => {
     stageRef.current = el;
     setStageEl(el);
@@ -542,7 +543,8 @@ export function WatchBlock(p: WatchBlockProps) {
                     disabled={lockSeen}
                     onClick={() => (seen ? p.onUnwatch?.(n) : p.onMark?.(n))}
                   >
-                    <IconEye />
+                    {/* Непереглянута — перекреслене око (MK 15:38), переглянута — відкрите. */}
+                    {seen ? <IconEye /> : <IconEyeOff />}
                   </button>
                 )}
               </div>
@@ -568,7 +570,7 @@ export function WatchBlock(p: WatchBlockProps) {
               <SwitchRow label="Підсвітка" hint="Кольори з відео навколо плеєра" checked={ambient} onChange={(v) => p.onPrefs({ ambient: v })} />
               {ambient && (
                 <Slider
-                  label="Інтенсивність підсвітки"
+                  label="Яскравість підсвітки"
                   value={p.prefs.ambientLevel ?? DEFAULT_AMBIENT_LEVEL}
                   min={10}
                   max={100}
@@ -585,9 +587,10 @@ export function WatchBlock(p: WatchBlockProps) {
           size="sm"
           icon
           className="hp-watch__wide"
-          aria-pressed={wide}
+          aria-pressed={effWide}
           aria-label={wide ? 'Звичайний розмір' : 'Ширше'}
-          title={wide ? 'Звичайний розмір' : 'Ширше'}
+          title={moonWide ? 'Moon завжди ширше: у вузькому блоці його панель блимає' : wide ? 'Звичайний розмір' : 'Ширше'}
+          disabled={player.kind === 'moon' && !noWide}
           onClick={() => toggleWide(!wide)}
         >
           <IconTv />
@@ -613,28 +616,10 @@ export function WatchBlock(p: WatchBlockProps) {
     </>
   );
 
-  // «Ширше» (рішення MK 2026-11-23, 03:06): увесь блок — на ширину сітки, на місці плеєра під верхніми картками
-  // бічних колонок (host над сіткою, wide-layout.ts); у центральній колонці лишається лише місце потрібної висоти.
-  if (portal)
-    return (
-      <section className="hp-section hp-watch">
-        <div
-          ref={setSlotEl}
-          className="hp-watch__slot"
-          style={{ paddingTop: lay.offset, height: lay.offset + lay.height }}
-          aria-hidden="true"
-        />
-        {createPortal(
-          <section ref={stageCb} className="hp-section hp-watch hp-watch__stage hp-watch__stage--wide">
-            {body}
-          </section>,
-          p.theater!,
-        )}
-      </section>
-    );
-
+  // «Ширше» (рішення MK 2026-11-23, 03:06): увесь блок — на ширину сітки, під верхніми картками бічних колонок.
+  // Блок лишається на своєму місці в DOM (iframe не перезавантажується), лише стає position:absolute — wide-layout.ts.
   return (
-    <section ref={stageCb} className="hp-section hp-watch hp-watch__stage">
+    <section ref={stageCb} className={cx('hp-section hp-watch hp-watch__stage', effWide && 'hp-watch__stage--wide')}>
       {body}
     </section>
   );
@@ -703,6 +688,10 @@ export function PlayerFrame(p: {
     const ctx = c?.getContext('2d') ?? null;
     const tmp = document.createElement('canvas');
     const tctx = tmp.getContext('2d');
+    // Як Ambilight у телевізорів (MK 15:39): навколо кадру — кольори його країв, витягнуті назовні (по GLOW_PAD пікселів
+    // з кожного боку). CSS ставить canvas так, що середина збігається з рамкою, і розмиває.
+    const pad = document.createElement('canvas');
+    const pctx = pad.getContext('2d');
     let first = true;
     const onMsg = (e: MessageEvent) => {
       if (e.source !== f.contentWindow || e.origin !== origin) return;
@@ -711,15 +700,18 @@ export function PlayerFrame(p: {
       if (d.ready) return ask();
       // Moon з панеллю «Під кадром» (його налаштування): рамка вища, див. .hp-watch__frame--below у style.css.
       if (typeof d.bar === 'string') return void f.parentElement?.classList.toggle('hp-watch__frame--below', d.bar === 'below');
-      if (!c || !ctx || !tctx) return;
+      if (!c || !ctx || !tctx || !pctx) return;
       if (d.off) return c.classList.remove('is-on');
       const w = Number(d.w);
       const h = Number(d.h);
       const rgb = d.rgb;
       if (typeof rgb !== 'string' || !(w > 0 && w <= 64 && h > 0 && h <= 64) || rgb.length !== w * h * 3) return;
+      const P = GLOW_PAD;
       if (tmp.width !== w || tmp.height !== h) {
-        tmp.width = c.width = w;
-        tmp.height = c.height = h;
+        tmp.width = w;
+        tmp.height = h;
+        pad.width = c.width = w + 2 * P;
+        pad.height = c.height = h + 2 * P;
         first = true;
       }
       const img = tctx.createImageData(w, h);
@@ -730,9 +722,19 @@ export function PlayerFrame(p: {
         img.data[j + 3] = 255;
       }
       tctx.putImageData(img, 0, 0);
+      // Кадр у середині, краї (по 1 px) — розтягнуті назовні, кути — кутовими пікселями.
+      pctx.drawImage(tmp, P, P);
+      pctx.drawImage(tmp, 0, 0, 1, h, 0, P, P, h);
+      pctx.drawImage(tmp, w - 1, 0, 1, h, P + w, P, P, h);
+      pctx.drawImage(tmp, 0, 0, w, 1, P, 0, w, P);
+      pctx.drawImage(tmp, 0, h - 1, w, 1, P, P + h, w, P);
+      pctx.drawImage(tmp, 0, 0, 1, 1, 0, 0, P, P);
+      pctx.drawImage(tmp, w - 1, 0, 1, 1, P + w, 0, P, P);
+      pctx.drawImage(tmp, 0, h - 1, 1, 1, 0, P + h, P, P);
+      pctx.drawImage(tmp, w - 1, h - 1, 1, 1, P + w, P + h, P, P);
       // Плавна зміна кольорів: новий кадр поверх старого з прозорістю.
       ctx.globalAlpha = first ? 1 : 0.25;
-      ctx.drawImage(tmp, 0, 0);
+      ctx.drawImage(pad, 0, 0);
       if (first) c.classList.add('is-on');
       first = false;
     };

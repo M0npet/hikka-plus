@@ -22,27 +22,6 @@ type HikkaAnime = {
   external: { url: string; type: string }[] | null;
 };
 
-/* ---------- Місце для плеєра в режимі «Ширше» (host над колонками сторінки) ---------- */
-
-let theaterEl: HTMLElement | null = null;
-const theaterSubs = new Set<() => void>();
-export const theaterStore = {
-  set(el: HTMLElement | null) {
-    if (el === theaterEl) return;
-    theaterEl = el;
-    theaterSubs.forEach((f) => f());
-  },
-  get: () => theaterEl,
-  subscribe(f: () => void) {
-    theaterSubs.add(f);
-    return () => theaterSubs.delete(f);
-  },
-};
-
-export function TheaterSlot() {
-  return <div className="hp-theater" ref={(el) => theaterStore.set(el)} />;
-}
-
 /* ---------- Поточна сторінка аніме (оновлює content script при навігації SPA) ---------- */
 
 let animeSlug: string | null = null;
@@ -78,7 +57,6 @@ export function WatchRoot({ slug }: { slug: string }) {
   const [saved, setSaved] = useState<WatchSaved | null>(null);
   const [hikka, setHikka] = useState<HikkaWatchState>({ status: 'loading' });
   const [edInfo, setEdInfo] = useState<{ ep: number; at: number; ed: boolean } | null>(null);
-  const theater = useSyncExternalStore(theaterStore.subscribe, theaterStore.get);
 
   // Дані тайтлу й серій.
   useEffect(() => {
@@ -276,7 +254,6 @@ export function WatchRoot({ slug }: { slug: string }) {
       edInfo={edInfo}
       prefs={prefs}
       onPrefs={setPrefs}
-      theater={theater}
       initial={saved ? { team: saved.team, player: saved.player, ep: saved.ep, t: saved.t } : undefined}
       resumeAt={() => live.current.t}
       nextEp={nextEp}
