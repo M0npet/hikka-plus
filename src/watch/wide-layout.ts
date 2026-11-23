@@ -7,7 +7,7 @@
  * position:absolute на ширину сітки. Місце під ним тримають наші порожні відступи `hikka-plus-gap`: у бічних колонках
  * і в центрі. DOM Hikka не змінюємо. Перехід туди й назад — FLIP-анімація transform (без перерахунку розкладки щокадру).
  */
-import { useLayoutEffect } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 
 const GAP = 32; // gap-8 у колонках Hikka
 // Скільки верхніх карток бічної колонки завжди над блоком (hikka-next, content-detail-page.tsx):
@@ -18,12 +18,11 @@ const SIDES = [
   { sel: '#content-right-side', top: 2 },
 ] as const;
 const OWN = new Set(['hikka-plus-gap', 'hikka-plus-watch']);
-const ANIM_MS = 320;
 
 /** FLIP: елемент уже на новому місці — показати перехід зі старого прямокутника `from`. */
-function flip(el: HTMLElement, from: DOMRect) {
-  if (!from.width || !from.height || typeof el.animate !== 'function') return;
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+/** prefers-reduced-motion не враховуємо — MK 16:45: «показувати завжди», тривалість — повзунком (0 = без анімації). */
+function flip(el: HTMLElement, from: DOMRect, ms: number) {
+  if (ms <= 0 || !from.width || !from.height || typeof el.animate !== 'function') return;
   const to = el.getBoundingClientRect();
   if (!to.width || !to.height) return;
   const dx = from.left - to.left;
@@ -36,7 +35,7 @@ function flip(el: HTMLElement, from: DOMRect) {
       { transformOrigin: '0 0', transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
       { transformOrigin: '0 0', transform: 'none' },
     ],
-    { duration: ANIM_MS, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
+    { duration: ms, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
   );
 }
 
@@ -44,7 +43,9 @@ function flip(el: HTMLElement, from: DOMRect) {
  * Увімкнути «Ширше» для блоку, у якому лежить `stage`. Нічого не повертає: усе робиться стилями нашого host
  * і нашими відступами. `onUnavailable` — коли «Ширше» неможливе (вузький екран, колонки складені в одну).
  */
-export function useWideLayout(active: boolean, stage: HTMLElement | null, onUnavailable: () => void) {
+export function useWideLayout(active: boolean, stage: HTMLElement | null, onUnavailable: () => void, animMs = 320) {
+  const anim = useRef(animMs);
+  anim.current = animMs;
   useLayoutEffect(() => {
     if (!active || !stage) return;
     const host = (stage.getRootNode() as ShadowRoot).host as HTMLElement | undefined;
@@ -159,7 +160,7 @@ export function useWideLayout(active: boolean, stage: HTMLElement | null, onUnav
 
       if (first) {
         first = false;
-        flip(host, from);
+        flip(host, from, anim.current);
       }
     };
     const schedule = () => {
@@ -191,7 +192,7 @@ export function useWideLayout(active: boolean, stage: HTMLElement | null, onUnav
       const was = host.getBoundingClientRect();
       gaps.forEach((g) => g.remove());
       for (const k of ['position', 'zIndex', 'width', 'top', 'left'] as const) host.style[k] = '';
-      if (host.isConnected) flip(host, was);
+      if (host.isConnected) flip(host, was, anim.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, stage]);

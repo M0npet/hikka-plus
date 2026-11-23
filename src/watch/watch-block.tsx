@@ -10,7 +10,7 @@ import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, Ico
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
 import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
-import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, type WatchPrefs } from './watch-store';
+import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_WIDE_ANIM, type WatchPrefs } from './watch-store';
 import { AmbientFields } from './ambient-fields';
 import type { LightsMsg } from '../lights/types';
 
@@ -282,10 +282,15 @@ export function WatchBlock(p: WatchBlockProps) {
   const [noWide, setNoWide] = useState(false);
   const moonWide = player?.kind === 'moon' && !wide && !noWide;
   const effWide = wide || moonWide;
-  useWideLayout(effWide, stageEl, () => {
-    setWide(false);
-    setNoWide(true);
-  });
+  useWideLayout(
+    effWide,
+    stageEl,
+    () => {
+      setWide(false);
+      setNoWide(true);
+    },
+    p.prefs.wideAnim ?? DEFAULT_WIDE_ANIM,
+  );
   // Після перемикання «Ширше» — прокрутити до плеєра.
   useEffect(() => {
     const t = setTimeout(() => stageRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);

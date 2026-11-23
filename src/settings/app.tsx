@@ -10,13 +10,13 @@ import { DEFAULT_SETTINGS, updateSettings, useSettings } from '../core/store';
 import { syncOnItem } from '../core/sync-flag';
 import { MangaFields, NovelFields } from '../features/reader/settings-panel';
 import { autoSyncItem } from '../features/hikka-sync';
-import { useWatchPrefs } from '../watch/watch-store';
+import { DEFAULT_WIDE_ANIM, useWatchPrefs } from '../watch/watch-store';
 import { AmbientFields } from '../watch/ambient-fields';
 import { DeviceLights } from '../lights/settings';
 import { LINK_SOURCES } from '../sources/links';
 import { SOURCES } from '../sources/registry';
 import { IconExternal, IconLeft, IconReset, IconRight } from '../ui/icons';
-import { Button, Header, Switch, SwitchRow, Tabs } from '../ui/kit';
+import { Button, Header, Slider, Switch, SwitchRow, Tabs } from '../ui/kit';
 import { dataStats, exportData, importData, resetAll, resetBindings, resetProgress, type DataStats } from './data';
 
 export type SettingsMode = 'popup' | 'page';
@@ -319,6 +319,15 @@ function PlayerFields({ mode }: { mode: SettingsMode }) {
           hint="Режим «Ширше»: блок на всю ширину сторінки під верхніми картками; запам'ятовується між тайтлами"
           checked={!!w.wide}
           onChange={(wide) => setW({ wide })}
+        />
+        <Slider
+          label="Анімація «Ширше»"
+          value={w.wideAnim ?? DEFAULT_WIDE_ANIM}
+          min={0}
+          max={800}
+          step={40}
+          format={(v) => (v ? `${v} мс` : 'вимк.')}
+          onChange={(wideAnim) => setW({ wideAnim })}
         />
         <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної" checked={w.autoNext} onChange={(autoNext) => setW({ autoNext })} />
         <SwitchRow

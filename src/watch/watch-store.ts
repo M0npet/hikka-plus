@@ -31,12 +31,15 @@ export type WatchPrefs = {
   ambientLevel?: number;
   /** Яскравість кольорів підсвітки, 50–200 %. undefined — 100 (MK 16:07). */
   ambientBright?: number;
+  /** Тривалість анімації «Ширше», мс (0 — без анімації). undefined — DEFAULT_WIDE_ANIM. Показуємо завжди, навіть за «менше руху» в системі (MK 16:45). */
+  wideAnim?: number;
   /** Підсвітка пристроїв від відео (src/lights/: Philips TV, WLED, Hue, Razer) — експериментально, за замовчуванням вимк. */
   devices?: boolean;
 };
 
 export const DEFAULT_AMBIENT_LEVEL = 20;
 export const DEFAULT_AMBIENT_BRIGHT = 100;
+export const DEFAULT_WIDE_ANIM = 320;
 
 export const DEFAULT_WATCH_PREFS: WatchPrefs = { enabled: true, autoNext: true, hikkaSync: true };
 
