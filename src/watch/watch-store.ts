@@ -35,6 +35,11 @@ export type WatchPrefs = {
   wideAnim?: number;
   /** Підсвітка пристроїв від відео (src/lights/: Philips TV, WLED, Hue, Razer) — експериментально, за замовчуванням вимк. */
   devices?: boolean;
+  /** Мітки OP/ED: смужка під плеєром, кнопка «Пропустити», пошук за кадрами (src/watch/skip-marks.ts). undefined — увімкнено. */
+  marks?: boolean;
+  /** Пропускати опенінг / ендинг самому (за замовчуванням — ні, лише кнопка). */
+  skipOp?: boolean;
+  skipEd?: boolean;
 };
 
 export const DEFAULT_AMBIENT_LEVEL = 20;

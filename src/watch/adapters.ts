@@ -11,12 +11,13 @@
  * Повідомлення приймаємо лише від contentWindow свого iframe.
  */
 import type { PlayerKind } from './types';
+import { segsFromPlayer, type Seg } from './skip-marks';
 
 export type PlayerEvents = {
   onTime: (time: number, duration: number) => void;
   onEnded: () => void;
-  /** Початок ендингу з міток самого плеєра (сек), якщо плеєр їх дає. */
-  onEdStart: (sec: number) => void;
+  /** Мітки OP/ED самого плеєра (сек), якщо плеєр їх дає. */
+  onSegs: (segs: { op?: Seg; ed?: Seg }) => void;
   /** Плеєр сам перемкнув серію (Fenix: свій список і автоперехід). */
   onEpisode?: (n: number) => void;
 };
@@ -24,23 +25,6 @@ export type PlayerEvents = {
 export type PlayerControl = { seek: (sec: number) => void; detach: () => void };
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() && Number.isFinite(+v) ? +v : NaN);
-
-/**
- * Знайти початок ED у мітках пропуску. Moon (перевірено 2026-11-23): get_skip_segments → data
- * [{t:'opening'|'ending', s, e, n}]; інші формати — на всяк випадок: {type|kind|name, start|from|startTime}.
- */
-export function edFromSegments(data: unknown): number | null {
-  const list: unknown[] = Array.isArray(data) ? data : data && typeof data === 'object' ? Object.values(data as object).flat() : [];
-  for (const s of list) {
-    if (!s || typeof s !== 'object') continue;
-    const o = s as Record<string, unknown>;
-    const type = String(o.t ?? o.type ?? o.kind ?? o.skipType ?? o.name ?? '').toLowerCase();
-    if (!/(^|[^a-z])(ed|ending|outro|credits)([^a-z]|$)/.test(type)) continue;
-    const start = num(o.s ?? o.start ?? o.from ?? o.startTime ?? o.begin ?? (o.interval as Record<string, unknown> | undefined)?.startTime);
-    if (start > 0) return start;
-  }
-  return null;
-}
 
 export function attachPlayer(frame: HTMLIFrameElement, kind: PlayerKind, ev: PlayerEvents): PlayerControl {
   const origin = (() => {
@@ -54,6 +38,10 @@ export function attachPlayer(frame: HTMLIFrameElement, kind: PlayerKind, ev: Pla
   let reqId = 0;
   const post = (msg: unknown) => frame.contentWindow?.postMessage(msg, origin || '*');
   const moon = (command: string, data?: Record<string, unknown>) => post({ ns: 'ma', v: 2, id: `hp${++reqId}`, command, ...data });
+  const segs = (data: unknown) => {
+    const m = segsFromPlayer(data);
+    if (m.op || m.ed) ev.onSegs(m);
+  };
   const time = (t: number, d?: number) => {
     if (d && d > 0) duration = d;
     if (t >= 0 && duration > 0) ev.onTime(t, duration);
@@ -93,15 +81,12 @@ export function attachPlayer(frame: HTMLIFrameElement, kind: PlayerKind, ev: Pla
       }
       if (evn === 'timeupdate') time(num(d.time ?? o.time), num(d.duration ?? o.duration));
       else if (evn === 'ended' || (evn === 'quartile' && num(d.percent ?? o.percent) === 100)) ev.onEnded();
-      else if (evn === 'skip_available') {
-        const ed = edFromSegments(d.segments ?? d);
-        if (ed) ev.onEdStart(ed);
-      } else if (o.id && o.status !== 'error') {
+      else if (evn === 'skip_available') segs(d.segments ?? d);
+      else if (o.id && o.status !== 'error') {
         // Відповіді на наші команди.
         const dur = num(d.duration ?? o.data);
         if (dur > 0 && !duration) duration = dur;
-        const ed = edFromSegments(d.segments ?? o.data);
-        if (ed) ev.onEdStart(ed);
+        segs(d.segments ?? o.data);
       }
     } else if (kind === 'fenix') {
       if (o.fenix !== true) return;
@@ -111,16 +96,13 @@ export function attachPlayer(frame: HTMLIFrameElement, kind: PlayerKind, ev: Pla
       else if (evn === 'episode_change') {
         const n = num(o.episode);
         if (n > 0) ev.onEpisode?.(n);
-      } else if (evn === 'skip_change') {
-        const ed = edFromSegments(o.skips ?? o.segments ?? o.value ?? o.data);
-        if (ed) ev.onEdStart(ed);
-      }
+      } else if (evn === 'skip_change') segs(o.skips ?? o.segments ?? o.value ?? o.data);
     } else if (o.hp === 1) {
       const evn = String(o.event ?? '');
       if (evn === 'timeupdate') time(num(o.time), num(o.duration));
       else if (evn === 'ended') ev.onEnded();
       const ed = num(o.edStart);
-      if (ed > 0) ev.onEdStart(ed);
+      if (ed > 0) ev.onSegs({ ed: { s: ed, e: NaN } });
     }
   };
   window.addEventListener('message', onMsg);

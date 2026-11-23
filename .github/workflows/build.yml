@@ -64,24 +64,53 @@ jobs:
           # Тестові збірки довго не тримаємо — бережемо безкоштовні 500 MB сховища.
           retention-days: 14
 
-      # Підпис для Firefox (AMO, unlisted — самостійне поширення, сторінки в каталозі немає).
+      # Підпис для Firefox (AMO). Канал — у файлі store/amo/channel:
+      #   unlisted — самостійне поширення (.xpi у реліз), сторінки в каталозі немає;
+      #   listed   — нова версія на сторінку AMO (вихідники + нотатки рецензенту з store/amo/reviewer-notes.md);
+      #              підписаний .xpi чекаємо до 15 хв — перевірка AMO буває довшою, тоді реліз іде без .xpi;
+      #   web      — CI не підписує: версію MK завантажує сам у формі AMO (перша listed-версія — опис і скріншоти там).
       # Ключі: addons.mozilla.org → Developer Hub → Manage API Keys → секрети репо AMO_API_KEY / AMO_API_SECRET.
       # Без секретів крок пропускається, реліз виходить як раніше (лише zip).
-      - name: Підпис Firefox (AMO unlisted)
+      - name: Підпис Firefox (AMO)
         if: startsWith(github.ref, 'refs/tags/v') && env.AMO_API_KEY != ''
         run: |
+          CHANNEL="$(tr -d '[:space:]' < store/amo/channel)"
+          echo "Канал AMO: $CHANNEL"
+          if [ "$CHANNEL" = "web" ]; then
+            echo "store/amo/channel = web — підпис у CI пропущено, версію завантажити у формі AMO."
+            exit 0
+          fi
+          if [ "$CHANNEL" != "listed" ] && [ "$CHANNEL" != "unlisted" ]; then
+            echo "Невідомий канал «$CHANNEL» у store/amo/channel (listed | unlisted | web)" >&2
+            exit 1
+          fi
           # Зайві пробіли/переноси при копіюванні ключів ламають підпис JWT («Error decoding signature»).
           KEY="$(printf '%s' "$AMO_API_KEY" | tr -d '[:space:]')"
           SECRET="$(printf '%s' "$AMO_API_SECRET" | tr -d '[:space:]')"
           echo "Довжина ключа: ${#KEY} (має бути на кшталт user:12345678:123), секрету: ${#SECRET} (зазвичай 64)"
+          EXTRA=()
+          if [ "$CHANNEL" = "listed" ]; then
+            # Для оновлень listed-версії — лише поля версії: ліцензія й нотатки рецензенту.
+            node -e "const fs=require('fs');fs.writeFileSync('.output/amo-metadata.json',JSON.stringify({version:{license:'MIT',approval_notes:fs.readFileSync('store/amo/reviewer-notes.md','utf8')}}))"
+            EXTRA=(--amo-metadata .output/amo-metadata.json)
+          fi
+          set +e
           npx --yes web-ext@10 sign \
             --source-dir .output/firefox-mv2 \
             --artifacts-dir .output/signed \
-            --channel unlisted \
+            --channel "$CHANNEL" \
+            "${EXTRA[@]}" \
             --upload-source-code "$(ls .output/*-sources.zip)" \
             --api-key "$KEY" \
             --api-secret "$SECRET" \
-            --approval-timeout 900000
+            --approval-timeout 900000 2>&1 | tee .output/sign.log
+          CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $CODE -ne 0 ]; then
+            # listed: версія вже на AMO, просто ще на перевірці (тайм-аут очікування) — реліз не валимо.
+            if [ "$CHANNEL" = "listed" ] && grep -qi 'timeout' .output/sign.log; then echo "::warning::AMO ще не підписав listed-версію — реліз без .xpi (з'явиться на AMO після перевірки)"; exit 0; fi
+            exit $CODE
+          fi
           # Зрозуміла назва замість випадкової від AMO.
           VER="$(node -p "require('./package.json').version")"
           mv .output/signed/*.xpi ".output/signed/hikka-plus-$VER-firefox-signed.xpi"

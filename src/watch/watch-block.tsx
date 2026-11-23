@@ -6,13 +6,16 @@
 import { browser } from '#imports';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
-import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv } from '../ui/icons';
+import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv, IconBulb } from '../ui/icons';
+import { useLightsOff } from './lights-off';
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
 import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
 import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_WIDE_ANIM, type WatchPrefs } from './watch-store';
 import { AmbientFields } from './ambient-fields';
 import type { LightsMsg } from '../lights/types';
+import type { MarkSrc, Seg } from './skip-marks';
+import type { MarksInfo } from './watch-root';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 const RANGE = 50;
@@ -48,8 +51,12 @@ export type WatchBlockProps = {
   onMark?: (ep: number) => void;
   onSelect?: (s: { team: string; player: string; ep: number }) => void;
   onTime?: (ep: number, t: number, duration: number) => void;
-  onEdStart?: (ep: number, sec: number) => void;
+  onSegs?: (ep: number, segs: { op?: Seg; ed?: Seg }) => void;
   onEnded?: (ep: number) => void;
+  /** Мітки OP/ED поточної серії (watch-root: плеєр → знайдені за кадрами → AniSkip). */
+  marks?: MarksInfo | null;
+  onFp?: (ep: number, fp: string, d: number) => void;
+  onFramesOff?: () => void;
   /** Вміст рамки замість iframe (стенд). */
   renderFrame?: (p: WatchPlayer, ep: number) => ReactNode;
 };
@@ -197,15 +204,24 @@ export function WatchBlock(p: WatchBlockProps) {
   const [range, setRange] = useState('0');
   // З якої секунди почати після (пере)завантаження iframe.
   const startAt = useRef(init?.t ?? 0);
+  // Поточна позиція для смужки міток і кнопки «Пропустити» (з кроком 0,5 с — щоб не перемальовувати зайве).
+  const [pos, setPos] = useState<{ ep: number; t: number; d: number } | null>(null);
+  const seekRef = useRef<((sec: number) => void) | null>(null);
+  const skipped = useRef(new Set<string>());
   const frameRef = useRef<HTMLDivElement>(null);
   // Повний екран — уся .hp-watch__view (рамка + підсвітка): на широкому екрані краї світяться (MK 15:39, «як у телеків»).
   const viewRef = useRef<HTMLDivElement>(null);
   // Підсвітка: canvas за рамкою (поза .hp-watch__frame — та обрізає вміст).
   const [glowEl, setGlowEl] = useState<HTMLCanvasElement | null>(null);
   const ambient = p.prefs.ambient !== false;
+  const marksOn = p.prefs.marks !== false;
   const stageRef = useRef<HTMLElement | null>(null);
   const [stageEl, setStageEl] = useState<HTMLElement | null>(null);
   const [full, setFull] = useState(false);
+  // «Вимкнути світло» — не запам'ятовуємо: щоразу вмикає сам користувач.
+  const [dark, setDark] = useState(false);
+  const [viewEl, setViewEl] = useState<HTMLDivElement | null>(null);
+  useLightsOff(viewEl, dark && !full, () => setDark(false));
   const canFull = typeof document !== 'undefined' && document.fullscreenEnabled !== false;
 
   const team = p.teams.find((t) => t.id === teamId) ?? p.teams[0];
@@ -310,6 +326,26 @@ export function WatchBlock(p: WatchBlockProps) {
     else void viewRef.current?.requestFullscreen?.().catch(() => {});
   };
 
+  // Мітки OP/ED: кнопка «Пропустити» поверх плеєра (і в повному екрані) та автопропуск, якщо ввімкнено.
+  const mk = marksOn && p.marks && p.marks.ep === ep ? p.marks : null;
+  const now = pos && pos.ep === ep ? pos : null;
+  const inSeg = (k: 'op' | 'ed') => {
+    const seg = mk?.m[k];
+    return seg && now && now.t >= seg.s && now.t < seg.e - 2 ? { kind: k, seg } : null;
+  };
+  const skipNow = inSeg('op') ?? inSeg('ed');
+  const doSkip = (kind: 'op' | 'ed', to: number) => {
+    skipped.current.add(`${ep}:${kind}`);
+    seekRef.current?.(to);
+  };
+  useEffect(() => {
+    if (!skipNow) return;
+    const auto = skipNow.kind === 'op' ? p.prefs.skipOp : p.prefs.skipEd;
+    // Сам — лише раз за серію і лише на початку шматка: якщо повернулися назад, щоб подивитися, — не заважаємо.
+    if (!auto || skipped.current.has(`${ep}:${skipNow.kind}`) || !now || now.t > skipNow.seg.s + 3) return;
+    doSkip(skipNow.kind, skipNow.seg.e);
+  }, [skipNow?.kind, skipNow?.seg.s, ep]);
+
   if (p.status === 'loading')
     return (
       <section className="hp-section">
@@ -341,7 +377,13 @@ export function WatchBlock(p: WatchBlockProps) {
   const st = p.episodes[ep];
   const ed = p.edInfo && p.edInfo.ep === ep ? p.edInfo : null;
   const frame = (
-    <div ref={viewRef} className="hp-watch__view">
+    <div
+      ref={(el) => {
+        viewRef.current = el;
+        if (el !== viewEl) setViewEl(el);
+      }}
+      className="hp-watch__view"
+    >
     {ambient && !p.renderFrame && (
       <canvas
         ref={setGlowEl}
@@ -364,8 +406,19 @@ export function WatchBlock(p: WatchBlockProps) {
           player={player}
           ep={frameEp}
           startAt={startAt}
-          onTime={(t, d) => p.onTime?.(ep, t, d)}
-          onEdStart={(s) => p.onEdStart?.(ep, s)}
+          onTime={(t, d) => {
+            // Почали дивитися — більше не перескакуємо самі на «першу непереглянуту» (інакше при заліку серії
+            // на початку ендингу блок перемикав на наступну посеред ендингу).
+            if (t > 3) picked.current = true;
+            p.onTime?.(ep, t, d);
+            const tt = Math.floor(t * 2) / 2;
+            setPos((x) => (x && x.ep === ep && x.t === tt && x.d === d ? x : { ep, t: tt, d }));
+          }}
+          onSegs={(m) => p.onSegs?.(ep, m)}
+          scan={marksOn}
+          onFp={(fp, d) => p.onFp?.(ep, fp, d)}
+          onFramesOff={p.onFramesOff}
+          seekRef={seekRef}
           onEnded={() => {
             const cur = ep;
             p.onEnded?.(cur);
@@ -383,6 +436,11 @@ export function WatchBlock(p: WatchBlockProps) {
         />
       )}
     </div>
+    {skipNow && (
+      <button type="button" className={cx(btn('secondary', 'sm'), 'hp-watch__skip')} onClick={() => doSkip(skipNow.kind, skipNow.seg.e)}>
+        {skipNow.kind === 'op' ? 'Пропустити опенінг' : 'Пропустити ендинг'} <IconRight />
+      </button>
+    )}
     </div>
   );
   const stageCb = (el: HTMLElement | null) => {
@@ -581,6 +639,13 @@ export function WatchBlock(p: WatchBlockProps) {
             <div className="hp-popover hp-popover--end hp-watch__menu">
               <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної" checked={p.prefs.autoNext} onChange={(v) => p.onPrefs({ autoNext: v })} />
               <SwitchRow label="Відмічати в Hikka" hint="Серія зараховується, коли дійшли до ендингу" checked={p.prefs.hikkaSync} onChange={(v) => p.onPrefs({ hikkaSync: v })} />
+              <SwitchRow label="Мітки опенінгу й ендингу" hint="Смужка під плеєром і кнопка «Пропустити»" checked={marksOn} onChange={(v) => p.onPrefs({ marks: v })} />
+              {marksOn && (
+                <>
+                  <SwitchRow label="Пропускати опенінг сам" checked={!!p.prefs.skipOp} onChange={(v) => p.onPrefs({ skipOp: v })} />
+                  <SwitchRow label="Пропускати ендинг сам" checked={!!p.prefs.skipEd} onChange={(v) => p.onPrefs({ skipEd: v })} />
+                </>
+              )}
               <SwitchRow label="Підсвітка" hint="Кольори з відео навколо плеєра" checked={ambient} onChange={(v) => p.onPrefs({ ambient: v })} />
               {ambient && (
                 <AmbientFields prefs={p.prefs} onPrefs={p.onPrefs} />
@@ -588,6 +653,17 @@ export function WatchBlock(p: WatchBlockProps) {
             </div>
           )}
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon
+          aria-pressed={dark}
+          aria-label={dark ? 'Увімкнути світло' : 'Вимкнути світло'}
+          title={dark ? 'Увімкнути світло' : 'Вимкнути світло — затемнити все навколо плеєра'}
+          onClick={() => setDark((x) => !x)}
+        >
+          <IconBulb />
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -617,6 +693,9 @@ export function WatchBlock(p: WatchBlockProps) {
       <div className="hp-card">
         {bar}
         {frame}
+        {marksOn && now && now.d > 0 && (
+          <MarksBar info={mk} t={now.t} d={now.d} onSeek={(sec) => seekRef.current?.(sec)} />
+        )}
         {rest}
       </div>
     </>
@@ -631,19 +710,73 @@ export function WatchBlock(p: WatchBlockProps) {
   );
 }
 
+/* ---------- Смужка міток OP/ED під плеєром ---------- */
+
+const SRC_NAMES: Record<MarkSrc, string> = { player: 'з плеєра', auto: 'знайдено за кадрами', aniskip: 'AniSkip, приблизно' };
+const KIND_NAMES = { op: 'Опенінг', ed: 'Ендинг' } as const;
+
+/** Де насправді OP і ED у цій серії: смужка на всю тривалість, клік — перемотка; під нею — час і звідки мітка. */
+export function MarksBar({ info, t, d, onSeek }: { info: MarksInfo | null; t: number; d: number; onSeek: (sec: number) => void }) {
+  const m = info?.m ?? {};
+  const pct = (x: number) => `${Math.max(0, Math.min(100, (x / d) * 100))}%`;
+  const segs = (['op', 'ed'] as const).filter((k) => m[k]);
+  const hint = segs.length
+    ? null
+    : info?.framesOff
+      ? 'Міток немає: цей плеєр не дає читати кадри, а AniSkip не знає цієї серії'
+      : (info?.learned ?? 0) < 2
+        ? 'Опенінг і ендинг з’являться, коли подивитеся 2 серії — Hikka Plus порівнює кадри серій'
+        : 'Опенінг і ендинг ще шукаються';
+  const onBar = (e: { currentTarget: HTMLElement; clientX: number }) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    if (r.width > 0) onSeek(((e.clientX - r.left) / r.width) * d);
+  };
+  return (
+    <div className="hp-watch__marks">
+      <div className="hp-watch__track" role="presentation" onClick={onBar} title="Перемотати">
+        {segs.map((k) => (
+          <span
+            key={k}
+            className={`hp-watch__seg hp-watch__seg--${k}${m[k]!.src === 'aniskip' ? ' hp-watch__seg--rough' : ''}`}
+            style={{ left: pct(m[k]!.s), width: `calc(${pct(m[k]!.e)} - ${pct(m[k]!.s)})` }}
+          />
+        ))}
+        <span className="hp-watch__now" style={{ left: pct(t) }} />
+      </div>
+      <div className="hp-watch__legend">
+        {segs.map((k) => (
+          <button key={k} type="button" className="hp-watch__mark" onClick={() => onSeek(m[k]!.s)} title={`Перейти на початок: ${KIND_NAMES[k].toLowerCase()}`}>
+            <span className={`hp-watch__dot hp-watch__dot--${k}`} />
+            {KIND_NAMES[k]} {fmt(m[k]!.s)}–{fmt(m[k]!.e)}
+            <span className="hp-muted"> · {SRC_NAMES[m[k]!.src]}</span>
+          </button>
+        ))}
+        {hint && <span className="hp-muted">{hint}</span>}
+      </div>
+    </div>
+  );
+}
+
 /** iframe плеєра як є + адаптер позиції. Адресу беремо в провайдера (у AnimeON — запитом). */
 export function PlayerFrame(p: {
   player: WatchPlayer;
   ep: number;
   startAt: { current: number };
   onTime: (t: number, d: number) => void;
-  onEdStart: (sec: number) => void;
+  onSegs: (segs: { op?: Seg; ed?: Seg }) => void;
   onEnded: () => void;
   onEpisode: (n: number) => void;
   /** Canvas підсвітки за рамкою; null — підсвітку вимкнено. */
   glow?: HTMLCanvasElement | null;
   /** Слати кадри ще й у background для пристроїв (src/lights/). */
   devices?: boolean;
+  /** Просити відбитки кадрів для міток OP/ED (src/watch/skip-marks.ts). */
+  scan?: boolean;
+  onFp?: (fp: string, d: number) => void;
+  /** Кадр цього плеєра читати не можна (відео без CORS) — ні підсвітки, ні авто-міток. */
+  onFramesOff?: () => void;
+  /** Сюди кладемо функцію перемотки (кнопки «Пропустити», смужка міток). */
+  seekRef?: { current: ((sec: number) => void) | null };
 }) {
   const [src, setSrc] = useState<string | null | undefined>(undefined);
   const [err, setErr] = useState(false);
@@ -681,6 +814,7 @@ export function PlayerFrame(p: {
     }
     const devices = !!p.devices;
     const on = !!c || devices;
+    const scan = !!p.scan;
     // Пристрої: не частіше ніж 10 кадрів/с (повільні пристрої пропускають ще й самі, src/lights/engine.ts).
     let devAt = 0;
     const toDevices = (m: LightsMsg) => void browser.runtime.sendMessage(m).catch(() => {});
@@ -695,7 +829,7 @@ export function PlayerFrame(p: {
       }
     };
     const ask = () => {
-      if (loaded()) f.contentWindow?.postMessage({ type: AMBIENT_REQ, on }, origin);
+      if (loaded()) f.contentWindow?.postMessage({ type: AMBIENT_REQ, on, scan }, origin);
     };
     const ctx = c?.getContext('2d') ?? null;
     const tmp = document.createElement('canvas');
@@ -707,12 +841,14 @@ export function PlayerFrame(p: {
     let first = true;
     const onMsg = (e: MessageEvent) => {
       if (e.source !== f.contentWindow || e.origin !== origin) return;
-      const d = e.data as { type?: unknown; ready?: unknown; off?: unknown; w?: unknown; h?: unknown; rgb?: unknown; bar?: unknown } | null;
+      const d = e.data as { type?: unknown; ready?: unknown; off?: unknown; w?: unknown; h?: unknown; rgb?: unknown; bar?: unknown; fp?: unknown; d?: unknown } | null;
       if (!d || d.type !== AMBIENT_MSG) return;
       if (d.ready) return ask();
+      if (typeof d.fp === 'string') return cb.current.onFp?.(d.fp, Number(d.d) || 0);
       // Moon з панеллю «Під кадром» (його налаштування): рамка вища, див. .hp-watch__frame--below у style.css.
       if (typeof d.bar === 'string') return void f.parentElement?.classList.toggle('hp-watch__frame--below', d.bar === 'below');
       if (d.off) {
+        cb.current.onFramesOff?.();
         if (devices) toDevices({ type: 'hp-lights', stop: true });
         return c?.classList.remove('is-on');
       }
@@ -766,14 +902,14 @@ export function PlayerFrame(p: {
       f.parentElement?.classList.remove('hp-watch__frame--below');
       c?.classList.remove('is-on');
       if (devices) toDevices({ type: 'hp-lights', stop: true });
-      if (!on || !loaded()) return;
+      if ((!on && !scan) || !loaded()) return;
       try {
-        f.contentWindow?.postMessage({ type: AMBIENT_REQ, on: false }, origin);
+        f.contentWindow?.postMessage({ type: AMBIENT_REQ, on: false, scan: false }, origin);
       } catch {
         /* фрейм уже прибрано */
       }
     };
-  }, [src, p.glow, p.devices]);
+  }, [src, p.glow, p.devices, p.scan]);
 
   useEffect(() => {
     const f = ref.current;
@@ -798,10 +934,33 @@ export function PlayerFrame(p: {
         cb.current.onTime(t, d);
       },
       onEnded: () => cb.current.onEnded(),
-      onEdStart: (s) => cb.current.onEdStart(s),
+      onSegs: (m) => cb.current.onSegs(m),
       onEpisode: (n) => cb.current.onEpisode(n),
     });
-    return ctl.detach;
+    // Перемотка: через наш скрипт у фреймі (video.currentTime — працює в усіх трьох плеєрах однаково),
+    // а якщо сторінка плеєра ще не завантажилась — через API самого плеєра.
+    const seekRef = cb.current.seekRef;
+    if (seekRef)
+      seekRef.current = (sec) => {
+        let origin = '';
+        try {
+          origin = new URL(src).origin;
+        } catch {
+          /* немає */
+        }
+        let foreign = false;
+        try {
+          void f.contentWindow?.location.href;
+        } catch {
+          foreign = true;
+        }
+        if (foreign && origin) f.contentWindow?.postMessage({ type: AMBIENT_REQ, seek: sec }, origin);
+        else ctl.seek(sec);
+      };
+    return () => {
+      if (seekRef?.current) seekRef.current = null;
+      ctl.detach();
+    };
   }, [src, p.player.kind]);
 
   if (src === undefined) return <div className="hp-watch__empty">Завантаження…</div>;

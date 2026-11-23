@@ -7,7 +7,7 @@ export default defineConfig({
   manifest: ({ browser, manifestVersion }) => ({
     name: 'Hikka Plus',
     description:
-      'Читалка ранобе та манґи прямо на сторінці тайтлу hikka.io. Неофіційне розширення.',
+      'Плеєр аніме та читалка манґи й ранобе прямо на сторінках тайтлів hikka.io. Неофіційне розширення.',
     permissions: ['storage'],
     host_permissions: ['https://hikka.io/*', ...API_HOSTS.map((h) => `${h}/*`)],
     // Підсвітка пристроїв (src/lights/): адреса ТВ/моста/WLED у домашній мережі наперед невідома —

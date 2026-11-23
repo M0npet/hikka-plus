@@ -8,10 +8,15 @@
  *
  * Для Moon ще кажемо, який вигляд панелі вибрано в самому плеєрі ({bar}) — рамка під «Під кадром» вища.
  *
+ * Мітки OP/ED (MK 18:07, src/watch/skip-marks.ts): якщо hikka.io просить ({scan}), з того самого зменшеного кадру
+ * двічі на секунду відео рахуємо 32-бітний відбиток і шлемо пачками ({fp: "крок,відбиток;…", d}) — кадри нікуди далі
+ * не йдуть, порівнює їх hikka.io локально. Перемотка ({seek}) — лише коли користувач натиснув «Пропустити» чи смужку міток.
+ *
  * Раніше тут були обхід стилю Hikka Features (0.5.2–0.5.4; вони виправили в 3.1.22) і замір панелі Moon,
  * щоб рамка ставала вищою (0.5.4–0.5.5) — замір розгойдував розкладку Moon у вузькому блоці (панель блимала), прибрано.
  */
 import { AMBIENT_MSG, AMBIENT_REQ } from '@/src/watch/types';
+import { FP_RATE, frameHash } from '@/src/watch/fp-hash';
 
 export const FRAME_NAME = 'hikka-plus';
 const PARENT = 'https://hikka.io';
@@ -30,6 +35,10 @@ export default defineContentScript({
 
 function ambient() {
   let on = false;
+  let scan = false;
+  let fpBuf = '';
+  let fpStep = -1;
+  let fpTimer = 0;
   let failed = false;
   let timer = 0;
   const canvas = document.createElement('canvas');
@@ -55,15 +64,24 @@ function ambient() {
   let lastT = -1;
   let logged = false;
   const sample = () => {
-    if (!on || failed || !ctx || document.hidden) return;
+    if ((!on && !scan) || failed || !ctx) return;
     const v = pick();
     if (!v) return;
     // На паузі кадр не змінюється — не шлемо те саме.
     if (v.paused && v.currentTime === lastT) return;
     lastT = v.currentTime;
+    const step = Math.round(v.currentTime * FP_RATE);
+    const wantFp = scan && step !== fpStep;
+    if (!wantFp && (!on || document.hidden)) return;
     try {
       ctx.drawImage(v, 0, 0, W, H);
       const px = ctx.getImageData(0, 0, W, H).data;
+      if (wantFp) {
+        fpStep = step;
+        fpBuf += `${step},${frameHash(px, W, H)};`;
+        if (!fpTimer) fpTimer = window.setTimeout(flushFp, 1000);
+      }
+      if (!on || document.hidden) return;
       // Рядком RGB (по символу на байт): у Firefox об'єкти між скриптом фрейму і сторінкою йдуть через Xray-обгортки,
       // ArrayBuffer там не впізнається — рядок проходить без проблем.
       let rgb = '';
@@ -80,6 +98,13 @@ function ambient() {
       send({ off: true });
       stop();
     }
+  };
+  const flushFp = () => {
+    fpTimer = 0;
+    if (!fpBuf) return;
+    const v = pick();
+    send({ fp: fpBuf, d: v?.duration && Number.isFinite(v.duration) ? v.duration : 0 });
+    fpBuf = '';
   };
   const start = () => {
     if (timer || failed) return;
@@ -108,11 +133,17 @@ function ambient() {
 
   window.addEventListener('message', (e) => {
     if (e.source !== window.parent || e.origin !== PARENT) return;
-    const d = e.data as { type?: unknown; on?: unknown } | null;
+    const d = e.data as { type?: unknown; on?: unknown; scan?: unknown; seek?: unknown } | null;
     if (!d || d.type !== AMBIENT_REQ) return;
+    if (typeof d.seek === 'number') {
+      const v = pick();
+      if (v && Number.isFinite(d.seek) && d.seek >= 0) v.currentTime = Math.min(d.seek, (v.duration || Infinity) - 0.5);
+      return;
+    }
     on = d.on === true;
+    scan = d.scan === true;
     reportBar(true);
-    if (on) start();
+    if (on || scan) start();
     else stop();
   });
   // hikka.io міг надіслати запит раніше, ніж ми запустилися, — просимо повторити.

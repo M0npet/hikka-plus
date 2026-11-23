@@ -1,8 +1,8 @@
 {
   "name": "hikka-plus",
-  "description": "Hikka Plus — читалка та плеєр, вбудовані прямо в hikka.io",
+  "description": "Hikka Plus — плеєр аніме та читалка манґи й ранобе, вбудовані прямо в hikka.io",
   "private": true,
-  "version": "0.5.18",
+  "version": "0.5.19",
   "type": "module",
   "scripts": {
     "dev": "wxt",
@@ -11,6 +11,7 @@
     "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
+    "build-for-amo": "wxt build -b firefox",
     "compile": "tsc --noEmit",
     "postinstall": "wxt prepare"
   },

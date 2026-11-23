@@ -335,6 +335,18 @@ function PlayerFields({ mode }: { mode: SettingsMode }) {
         />
         <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної" checked={w.autoNext} onChange={(autoNext) => setW({ autoNext })} />
         <SwitchRow
+          label="Мітки опенінгу й ендингу"
+          hint="Смужка під плеєром і кнопка «Пропустити». Якщо плеєр не дає міток, Hikka Plus сам знаходить OP/ED, порівнюючи кадри серій (лише на вашому пристрої)"
+          checked={w.marks !== false}
+          onChange={(marks) => setW({ marks })}
+        />
+        {w.marks !== false && (
+          <>
+            <SwitchRow label="Пропускати опенінг сам" checked={!!w.skipOp} onChange={(skipOp) => setW({ skipOp })} />
+            <SwitchRow label="Пропускати ендинг сам" hint="Серія все одно зараховується" checked={!!w.skipEd} onChange={(skipEd) => setW({ skipEd })} />
+          </>
+        )}
+        <SwitchRow
           label="Підсвітка"
           hint="Кольори з відео навколо плеєра, як Ambient mode на YouTube"
           checked={w.ambient !== false}

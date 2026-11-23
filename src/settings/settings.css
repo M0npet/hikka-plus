@@ -94,7 +94,7 @@
   margin: 0;
 }
 .hp-set__foot .hp-link {
-  color: var(--hp-primary);
+  color: var(--hp-primary-fg);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -130,7 +130,7 @@
   gap: 8px;
 }
 .hp-lights__card .hp-link {
-  color: var(--hp-primary);
+  color: var(--hp-primary-fg);
   text-decoration: underline;
   text-underline-offset: 2px;
 }

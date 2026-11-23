@@ -1747,6 +1747,94 @@ select {
   filter: blur(80px) saturate(1.6) brightness(var(--hp-glow-b, 1));
 }
 
+/* Мітки OP/ED (src/watch/skip-marks.ts): кнопка «Пропустити» поверх плеєра — над панеллю керування плеєра, справа. */
+.hp-watch__skip {
+  position: absolute;
+  right: 16px;
+  bottom: 72px;
+  z-index: 2;
+  gap: 6px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.4);
+}
+.hp-watch__view:fullscreen > .hp-watch__skip {
+  right: 32px;
+  bottom: 96px;
+}
+/* Смужка під плеєром: де насправді OP і ED у серії (тривалість = ширина), біла риска — де зараз. */
+.hp-watch__marks {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hp-watch__track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--hp-muted);
+  cursor: pointer;
+  overflow: hidden;
+}
+.hp-watch__seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 3px;
+  background: var(--hp-primary-fg);
+}
+.hp-watch__seg--ed {
+  background: color-mix(in oklab, var(--hp-primary-fg) 55%, var(--hp-fg));
+}
+/* AniSkip — розмітка під чужий реліз: показуємо штрихом, «приблизно». */
+.hp-watch__seg--rough {
+  background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgb(0 0 0 / 0.35) 4px 8px);
+}
+.hp-watch__now {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--hp-fg);
+  pointer-events: none;
+}
+.hp-watch__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  font-size: 12px;
+  line-height: 16px;
+}
+.hp-watch__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--hp-fg);
+  font: inherit;
+  cursor: pointer;
+}
+.hp-watch__mark:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.hp-watch__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--hp-primary-fg);
+}
+.hp-watch__dot--ed {
+  background: color-mix(in oklab, var(--hp-primary-fg) 55%, var(--hp-fg));
+}
+.hp-watch__legend .hp-muted {
+  color: var(--hp-muted-fg);
+}
+
 .hp-watch__nav {
   display: flex;
   align-items: center;

@@ -7,7 +7,8 @@ import { getJson } from '../core/net';
 import { hikkaConfigured, watchScopeItem, tokenItem } from '../core/hikka-auth';
 import { startHikkaLogin } from '../features/hikka-sync';
 import { animeonTeams, mergeTeams, mikaiTeams, parseWatchLinks } from './providers';
-import { aniskipRaw, edFromAniskip, watchedAt } from './threshold';
+import { aniskipRaw, watchedAt, type AniSkip } from './threshold';
+import { FP_RATE, learnEpisode, liveFind, loadFp, mergeMarks, rememberMark, segsFromAniskip, templates, type Marks, type Seg } from './skip-marks';
 import { getWatchSaved, updateWatchSaved, useWatchPrefs, type WatchSaved } from './watch-store';
 import { HIKKA_LIST_EVENT, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '../core/bridge';
 import { loadHikkaWatch, lowerHikkaEpisodes, markHikkaEpisodes, type HikkaWatchState } from './hikka-watch';
@@ -51,12 +52,17 @@ type Load = { status: 'loading' } | { status: 'ready'; teams: WatchTeam[]; anime
 
 const SAVE_EVERY_MS = 5000;
 
+/** Мітки OP/ED поточної серії для блоку: framesOff — кадри плеєра читати не можна (лише мітки плеєра/AniSkip). */
+export type MarksInfo = { ep: number; d: number; m: Marks; framesOff: boolean; learned: number };
+type SegPair = { op?: Seg; ed?: Seg };
+
 export function WatchRoot({ slug }: { slug: string }) {
   const [prefs, setPrefs] = useWatchPrefs();
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [saved, setSaved] = useState<WatchSaved | null>(null);
   const [hikka, setHikka] = useState<HikkaWatchState>({ status: 'loading' });
   const [edInfo, setEdInfo] = useState<{ ep: number; at: number; ed: boolean } | null>(null);
+  const [marks, setMarks] = useState<MarksInfo | null>(null);
 
   // Дані тайтлу й серій.
   useEffect(() => {
@@ -122,7 +128,24 @@ export function WatchRoot({ slug }: { slug: string }) {
   }, [reloadHikka]);
 
   // ---------- Позиція й зарахування ----------
-  const live = useRef({ ep: 0, t: 0, lastSave: 0, playerEd: new Map<number, number>(), aniskip: new Map<number, number | null>(), marked: new Set<number>(), blocked: new Set<number>() });
+  const live = useRef({
+    ep: 0,
+    t: 0,
+    d: 0,
+    lastSave: 0,
+    playerSegs: new Map<number, SegPair>(),
+    aniskip: new Map<number, AniSkip | null | undefined>(),
+    marked: new Set<number>(),
+    blocked: new Set<number>(),
+    // Мітки OP/ED, знайдені самі (src/watch/skip-marks.ts): відбитки кадрів серій, зразки тайтлу, мітки серій.
+    fp: new Map<number, (number | undefined)[]>(),
+    fpD: new Map<number, number>(),
+    learnedAt: new Map<number, number>(),
+    auto: {} as Record<string, SegPair>,
+    tpl: { op: null as number[] | null, ed: null as number[] | null },
+    framesOff: false,
+    learnedEps: 0,
+  });
   const anime = load.status === 'ready' ? load.anime : null;
   const total = anime?.episodes_total || anime?.episodes_released || null;
 
@@ -139,26 +162,123 @@ export function WatchRoot({ slug }: { slug: string }) {
     [slug, prefs.hikkaSync, hikka.status, total],
   );
 
+  // Збережені відбитки/зразки/мітки тайтлу.
+  useEffect(() => {
+    void loadFp(slug).then((st) => {
+      const L = live.current;
+      L.auto = { ...st.marks, ...L.auto };
+      L.tpl = templates(st);
+      L.learnedEps = Object.keys(st.eps).length;
+    });
+  }, [slug]);
+
+  /** Злити мітки поточної серії й оновити блок і поріг зарахування. Повертає початок ED (або null). */
+  const refreshMarks = useCallback((ep: number, d: number): Marks => {
+    const L = live.current;
+    const m = mergeMarks(d, L.playerSegs.get(ep) ?? {}, L.auto[ep] ?? {}, segsFromAniskip(L.aniskip.get(ep) ?? null, d));
+    setMarks((x) => {
+      const nx: MarksInfo = { ep, d, m, framesOff: L.framesOff, learned: L.learnedEps };
+      return x && JSON.stringify(x) === JSON.stringify(nx) ? x : nx;
+    });
+    return m;
+  }, []);
+
+  // Порівняти відбитки серії з іншими збереженими й запам'ятати (на кінці серії, при зміні серії, при закритті).
+  const learn = useCallback(
+    (ep: number) => {
+      const L = live.current;
+      const arr = L.fp.get(ep);
+      const d = L.fpD.get(ep) ?? L.d;
+      if (!arr || !(d > 0)) return;
+      const have = arr.filter((v) => v !== undefined).length;
+      if (have - (L.learnedAt.get(ep) ?? 0) < 120) return; // менше хвилини нового — не варто
+      L.learnedAt.set(ep, have);
+      void learnEpisode(slug, ep, arr, d).then((st) => {
+        L.auto = { ...L.auto, ...st.marks };
+        L.tpl = templates(st);
+        L.learnedEps = Object.keys(st.eps).length;
+        if (L.ep === ep) refreshMarks(ep, d);
+      });
+    },
+    [slug, refreshMarks],
+  );
+  const learnRef = useRef(learn);
+  learnRef.current = learn;
+  useEffect(() => {
+    const onHide = () => document.visibilityState === 'hidden' && learnRef.current(live.current.ep);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      learnRef.current(live.current.ep);
+    };
+  }, []);
+
+  // Відбитки кадрів із фрейму: накопичуємо й упізнаємо зразки OP/ED тайтлу вже в цій серії.
+  const onFp = useCallback(
+    (ep: number, fp: string, d: number) => {
+      const L = live.current;
+      if (d > 0) L.fpD.set(ep, d);
+      let arr = L.fp.get(ep);
+      if (!arr) L.fp.set(ep, (arr = []));
+      const dur = d || L.d;
+      let changed = false;
+      for (const part of fp.split(';')) {
+        if (!part) continue;
+        const [a, b] = part.split(',');
+        const i = Number(a);
+        const h = Number(b);
+        if (!(i >= 0 && i < 4 * 3600 * FP_RATE) || !Number.isFinite(h)) continue;
+        arr[i] = h;
+        for (const kind of ['op', 'ed'] as const) {
+          const tpl = L.tpl[kind];
+          if (!tpl || L.auto[ep]?.[kind] || L.playerSegs.get(ep)?.[kind]) continue;
+          const at = liveFind(arr, i, tpl);
+          if (at === null || !(dur > 0)) continue;
+          const seg = { s: Math.max(0, at / FP_RATE), e: Math.min(dur, (at + tpl.length) / FP_RATE) };
+          // OP — у першій половині серії, ED — у другій; інакше це збіг з іншим шматком (анонс, повтор).
+          if (kind === 'op' ? seg.s > dur * 0.5 : seg.s < dur * 0.5) continue;
+          L.auto[ep] = { ...L.auto[ep], [kind]: seg };
+          void rememberMark(slug, ep, kind, seg);
+          changed = true;
+        }
+      }
+      if (changed && L.ep === ep && dur > 0) refreshMarks(ep, dur);
+    },
+    [slug, refreshMarks],
+  );
+
+  const onFramesOff = useCallback(() => {
+    const L = live.current;
+    if (L.framesOff) return;
+    L.framesOff = true;
+    if (L.d > 0) refreshMarks(L.ep, L.d);
+  }, [refreshMarks]);
+
   const onTime = useCallback(
     (ep: number, t: number, d: number) => {
       const L = live.current;
+      if (ep !== L.ep && L.ep) learn(L.ep);
       L.ep = ep;
       L.t = t;
-      // Поріг: мітка плеєра → AniSkip (з перевіркою) → за 90 с до кінця.
+      L.d = d;
+      // Мітки: плеєр → знайдені самі → AniSkip (з перевіркою); поріг — початок ED, інакше за 90 с до кінця.
       if (anime?.mal_id && !L.aniskip.has(ep)) {
-        L.aniskip.set(ep, null);
+        L.aniskip.set(ep, undefined);
         void aniskipRaw(anime.mal_id, ep).then((a) => {
-          L.aniskip.set(ep, edFromAniskip(a, d));
+          L.aniskip.set(ep, a);
+          if (L.ep === ep) refreshMarks(ep, L.d);
         });
       }
-      const pEd = L.playerEd.get(ep) ?? null;
-      const aEd = L.aniskip.get(ep) ?? null;
-      const at = watchedAt(d, pEd, aEd);
-      const isEd = at === pEd || at === aEd;
+      const m = refreshMarks(ep, d);
+      const edAt = m.ed?.s ?? null;
+      const at = watchedAt(d, edAt, null);
+      const isEd = edAt !== null && at === edAt;
       setEdInfo((x) => (x && x.ep === ep && Math.abs(x.at - at) < 1 && x.ed === isEd ? x : { ep, at, ed: isEd }));
       // Після «Скасувати» серію не відмічаємо знову, доки позиція не повернеться нижче порогу.
       if (t < at) L.blocked.delete(ep);
       else markWatched(ep);
+      // Майже кінець — саме час порівняти відбитки (ED уже пройшов).
+      if (t > d * 0.97) learn(ep);
       const now = Date.now();
       if (now - L.lastSave > SAVE_EVERY_MS) {
         L.lastSave = now;
@@ -169,7 +289,7 @@ export function WatchRoot({ slug }: { slug: string }) {
         }).then(() => getWatchSaved(slug).then(setSaved));
       }
     },
-    [slug, anime?.mal_id, markWatched],
+    [slug, anime?.mal_id, markWatched, refreshMarks, learn],
   );
 
   // Позначити вручну (глазок у сітці): як дійти до кінця — локально + лічильник Hikka до n.
@@ -206,17 +326,26 @@ export function WatchRoot({ slug }: { slug: string }) {
     [slug, hikka, pageN, prefs.hikkaSync],
   );
 
-  const onEdStart = useCallback((ep: number, sec: number) => {
-    live.current.playerEd.set(ep, sec);
-  }, []);
+  const onSegs = useCallback(
+    (ep: number, segs: SegPair) => {
+      const L = live.current;
+      L.playerSegs.set(ep, { ...L.playerSegs.get(ep), ...segs });
+      if (L.ep === ep && L.d > 0) refreshMarks(ep, L.d);
+    },
+    [refreshMarks],
+  );
 
   const onSelect = useCallback(
     (sel: { team: string; player: string; ep: number }) => {
       const L = live.current;
-      if (sel.ep !== L.ep) L.t = 0;
+      if (sel.ep !== L.ep) {
+        learn(L.ep);
+        L.t = 0;
+      }
+      L.framesOff = false; // інший плеєр може віддавати кадри
       void updateWatchSaved(slug, (s) => ({ ...s, team: sel.team, player: sel.player, ep: sel.ep, t: sel.ep === s.ep ? s.t : 0 }));
     },
-    [slug],
+    [slug, learn],
   );
 
   if (!prefs.enabled) return null;
@@ -259,7 +388,10 @@ export function WatchRoot({ slug }: { slug: string }) {
       nextEp={nextEp}
       onSelect={onSelect}
       onTime={onTime}
-      onEdStart={onEdStart}
+      onSegs={onSegs}
+      marks={marks}
+      onFp={onFp}
+      onFramesOff={onFramesOff}
       onEnded={markWatched}
       canUnwatch={canUnwatch}
       onUnwatch={unwatch}
