@@ -21,14 +21,14 @@ const TAG = 'hikka-plus-badges';
 const CSS = `
 :host { all: initial; pointer-events: none; font-family: inherit; }
 :host([data-kind="poster"]) {
-  position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 2;
-  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 2;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
 }
 :host([data-kind="inline"]) { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 8px; vertical-align: middle; }
 .b {
   box-sizing: border-box; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  padding: 2px 6px; border-radius: 6px; border: 1px solid transparent;
-  font: 600 11px/16px var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  padding: 3px 8px; border-radius: 7px; border: 1px solid transparent;
+  font: 600 13px/18px var(--font-sans, ui-sans-serif, system-ui, sans-serif);
   background: rgb(0 0 0 / 0.72); color: #fff; backdrop-filter: blur(4px);
 }
 .new { background: var(--primary, oklch(30% 0.05 343)); color: var(--primary-foreground, oklch(72% 0.18 343)); border-color: var(--primary-border, transparent); }

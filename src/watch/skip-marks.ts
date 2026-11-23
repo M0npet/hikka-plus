@@ -8,12 +8,14 @@
  *               однакові OP/ED — шукаємо в двох серіях однаковий шматок ≥ 30 с (на початку — OP, у кінці — ED),
  *               запам'ятовуємо його кадри як зразок і далі впізнаємо зразок у нових серіях уже за перші ~4 с;
  *  3) aniskip — краудсорс під чужий реліз: лише з перевіркою тривалості (±30 с), ED рахуємо від кінця.
+ * Найвищий пріоритет — manual: «Тут опенінг» / «Тут ендинг» (MK 20:21). Кадри позначеного шматка стають зразком тайтлу,
+ * тож одна ручна позначка дає мітки в усіх серіях (через liveFind), без очікування двох серій.
  * Відбитки — лише локально (local:hp:fp:<slug>), нікуди не йдуть.
  */
 import { storage } from '#imports';
 
 export type Seg = { s: number; e: number };
-export type MarkSrc = 'player' | 'auto' | 'aniskip';
+export type MarkSrc = 'manual' | 'player' | 'auto' | 'aniskip';
 export type Marks = { op?: Seg & { src: MarkSrc }; ed?: Seg & { src: MarkSrc } };
 
 import { FLAT, FP_RATE } from './fp-hash';
@@ -149,6 +151,10 @@ type FpStore = {
   tpl: { op?: string; ed?: string };
   /** Знайдені мітки серій (сек). */
   marks: Record<string, { op?: Seg; ed?: Seg }>;
+  /** Позначені вручну («Тут опенінг» / «Тут ендинг»). */
+  man?: Record<string, { op?: Seg; ed?: Seg }>;
+  /** З якої серії взято зразок, позначений вручну (щоб прибрати його разом із позначкою). */
+  tplMan?: { op?: number; ed?: number };
   u: number;
 };
 const EPS_KEEP = 3;
@@ -192,19 +198,54 @@ export async function learnEpisode(slug: string, ep: number, live: ArrayLike<num
   s.eps = Object.fromEntries(keep);
 
   const secs = (r: Run, from: 'a' | 'b'): Seg => ({ s: r[from] / FP_RATE, e: (r[from] + r.len) / FP_RATE });
+  // 40 % / 30 % — від ТРИВАЛОСТІ серії, а не від переглянутої частини (0.5.21: після перших 4 хв двох серій OP не знаходився).
+  const steps = (dur: number, have: number) => Math.max(have, dur > 0 ? Math.round(dur * FP_RATE) : 0);
   for (const [k, o] of Object.entries(s.eps)) {
     if (k === String(ep)) continue;
     const B = unhex(o.h);
-    const found = classify(commonRuns(A, B), A.length, B.length);
+    const found = classify(commonRuns(A, B), steps(d, A.length), steps(o.d, B.length));
     for (const kind of ['op', 'ed'] as const) {
       const r = found[kind];
       if (!r) continue;
       (s.marks[ep] ??= {})[kind] = secs(r, 'a');
       (s.marks[k] ??= {})[kind] = secs(r, 'b');
       const cur = s.tpl[kind];
-      if (!cur || cur.length / 8 < r.len) s.tpl[kind] = hex(A.slice(r.a, r.a + r.len));
+      if (s.tplMan?.[kind] === undefined && (!cur || cur.length / 8 < r.len)) s.tpl[kind] = hex(A.slice(r.a, r.a + r.len));
     }
   }
+  await saveFp(slug, s);
+  return s;
+}
+
+/** Ручна позначка серії (null — прибрати; тоді й зразок, узятий із неї). */
+export async function setManualMark(slug: string, ep: number, kind: 'op' | 'ed', seg: Seg | null): Promise<FpStore> {
+  const s = await loadFp(slug);
+  const man = (s.man ??= {});
+  if (seg) (man[ep] ??= {})[kind] = seg;
+  else {
+    if (man[ep]) delete man[ep]![kind];
+    if (s.tplMan?.[kind] === ep) {
+      delete s.tpl[kind];
+      delete s.tplMan[kind];
+    }
+  }
+  await saveFp(slug, s);
+  return s;
+}
+
+/**
+ * Кадри ручної позначки → зразок тайтлу. null, якщо кадрів шматка ще мало (плеєр його не програв) — тоді спробувати пізніше.
+ * Шматок ≥ 10 с і ≥ 70 % кроків із картинкою.
+ */
+export async function templateFromManual(slug: string, ep: number, kind: 'op' | 'ed', live: ArrayLike<number | undefined>, seg: Seg): Promise<FpStore | null> {
+  const a = Math.max(0, Math.floor(seg.s * FP_RATE));
+  const b = Math.floor(seg.e * FP_RATE);
+  if (b - a < 10 * FP_RATE) return null;
+  const part = Array.from({ length: b - a }, (_, i) => live[a + i] ?? FLAT);
+  if (part.filter((v) => v !== FLAT).length < part.length * 0.7) return null;
+  const s = await loadFp(slug);
+  s.tpl[kind] = hex(part);
+  (s.tplMan ??= {})[kind] = ep;
   await saveFp(slug, s);
   return s;
 }
@@ -260,10 +301,16 @@ export function segsFromAniskip(a: AniSkip | null, duration: number): { op?: Seg
   return out;
 }
 
-/** Злити мітки за пріоритетом player → auto → aniskip; кінець, якого бракує, — +90 с. */
-export function mergeMarks(d: number, player: { op?: Seg; ed?: Seg }, auto: { op?: Seg; ed?: Seg }, aniskip: { op?: Seg; ed?: Seg }): Marks {
+/** Злити мітки за пріоритетом manual → player → auto → aniskip; кінець, якого бракує, — +90 с. */
+export function mergeMarks(
+  d: number,
+  player: { op?: Seg; ed?: Seg },
+  auto: { op?: Seg; ed?: Seg },
+  aniskip: { op?: Seg; ed?: Seg },
+  manual: { op?: Seg; ed?: Seg } = {},
+): Marks {
   const pick = (k: 'op' | 'ed') => {
-    for (const [src, m] of [['player', player], ['auto', auto], ['aniskip', aniskip]] as const) {
+    for (const [src, m] of [['manual', manual], ['player', player], ['auto', auto], ['aniskip', aniskip]] as const) {
       const seg = m[k];
       if (!seg || !(seg.s >= 0) || (d > 0 && seg.s >= d)) continue;
       const e = seg.e > seg.s ? seg.e : seg.s + 90;

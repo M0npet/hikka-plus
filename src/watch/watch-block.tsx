@@ -57,6 +57,8 @@ export type WatchBlockProps = {
   marks?: MarksInfo | null;
   onFp?: (ep: number, fp: string, d: number) => void;
   onFramesOff?: () => void;
+  /** «Тут опенінг» / «Тут ендинг» (seg) або прибрати ручну позначку (null). */
+  onManualMark?: (ep: number, kind: 'op' | 'ed', seg: Seg | null) => void;
   /** Вміст рамки замість iframe (стенд). */
   renderFrame?: (p: WatchPlayer, ep: number) => ReactNode;
 };
@@ -220,8 +222,7 @@ export function WatchBlock(p: WatchBlockProps) {
   const [full, setFull] = useState(false);
   // «Вимкнути світло» — не запам'ятовуємо: щоразу вмикає сам користувач.
   const [dark, setDark] = useState(false);
-  const [viewEl, setViewEl] = useState<HTMLDivElement | null>(null);
-  useLightsOff(viewEl, dark && !full, () => setDark(false));
+  useLightsOff(viewRef, dark && !full, () => setDark(false));
   const canFull = typeof document !== 'undefined' && document.fullscreenEnabled !== false;
 
   const team = p.teams.find((t) => t.id === teamId) ?? p.teams[0];
@@ -377,13 +378,7 @@ export function WatchBlock(p: WatchBlockProps) {
   const st = p.episodes[ep];
   const ed = p.edInfo && p.edInfo.ep === ep ? p.edInfo : null;
   const frame = (
-    <div
-      ref={(el) => {
-        viewRef.current = el;
-        if (el !== viewEl) setViewEl(el);
-      }}
-      className="hp-watch__view"
-    >
+    <div ref={viewRef} className="hp-watch__view">
     {ambient && !p.renderFrame && (
       <canvas
         ref={setGlowEl}
@@ -694,7 +689,14 @@ export function WatchBlock(p: WatchBlockProps) {
         {bar}
         {frame}
         {marksOn && now && now.d > 0 && (
-          <MarksBar info={mk} t={now.t} d={now.d} onSeek={(sec) => seekRef.current?.(sec)} />
+          <MarksBar
+            key={ep}
+            info={mk}
+            t={now.t}
+            d={now.d}
+            onSeek={(sec) => seekRef.current?.(sec)}
+            onManual={p.onManualMark ? (kind, seg) => p.onManualMark!(ep, kind, seg) : undefined}
+          />
         )}
         {rest}
       </div>
@@ -712,12 +714,41 @@ export function WatchBlock(p: WatchBlockProps) {
 
 /* ---------- Смужка міток OP/ED під плеєром ---------- */
 
-const SRC_NAMES: Record<MarkSrc, string> = { player: 'з плеєра', auto: 'знайдено за кадрами', aniskip: 'AniSkip, приблизно' };
+const SRC_NAMES: Record<MarkSrc, string> = { manual: 'позначено вами', player: 'з плеєра', auto: 'знайдено за кадрами', aniskip: 'AniSkip, приблизно' };
 const KIND_NAMES = { op: 'Опенінг', ed: 'Ендинг' } as const;
 
 /** Де насправді OP і ED у цій серії: смужка на всю тривалість, клік — перемотка; під нею — час і звідки мітка. */
-export function MarksBar({ info, t, d, onSeek }: { info: MarksInfo | null; t: number; d: number; onSeek: (sec: number) => void }) {
+/** Ручна позначка без кінця — до другого натискання вважаємо 90 с (типова довжина OP/ED). */
+const MANUAL_LEN = 90;
+
+export function MarksBar({
+  info,
+  t,
+  d,
+  onSeek,
+  onManual,
+}: {
+  info: MarksInfo | null;
+  t: number;
+  d: number;
+  onSeek: (sec: number) => void;
+  onManual?: (kind: 'op' | 'ed', seg: Seg | null) => void;
+}) {
   const m = info?.m ?? {};
+  // Позначили початок, чекаємо «Кінець…» (серія змінилась — компонент перемонтовується за key).
+  const [open, setOpen] = useState<{ kind: 'op' | 'ed'; s: number } | null>(null);
+  const start = (kind: 'op' | 'ed') => {
+    const s = Math.max(0, Math.round(t));
+    setOpen({ kind, s });
+    onManual?.(kind, { s, e: Math.min(d, s + MANUAL_LEN) });
+  };
+  const finish = () => {
+    if (!open) return;
+    const e = Math.round(t);
+    // Кінець раніше початку або шматок < 10 с — лишаємо +90 с.
+    if (e > open.s + 10) onManual?.(open.kind, { s: open.s, e: Math.min(d, e) });
+    setOpen(null);
+  };
   const pct = (x: number) => `${Math.max(0, Math.min(100, (x / d) * 100))}%`;
   const segs = (['op', 'ed'] as const).filter((k) => m[k]);
   const hint = segs.length
@@ -737,7 +768,7 @@ export function MarksBar({ info, t, d, onSeek }: { info: MarksInfo | null; t: nu
         {segs.map((k) => (
           <span
             key={k}
-            className={`hp-watch__seg hp-watch__seg--${k}${m[k]!.src === 'aniskip' ? ' hp-watch__seg--rough' : ''}`}
+            className={`hp-watch__seg hp-watch__seg--${k}${m[k]!.src === 'aniskip' || open?.kind === k ? ' hp-watch__seg--rough' : ''}`}
             style={{ left: pct(m[k]!.s), width: `calc(${pct(m[k]!.e)} - ${pct(m[k]!.s)})` }}
           />
         ))}
@@ -751,7 +782,41 @@ export function MarksBar({ info, t, d, onSeek }: { info: MarksInfo | null; t: nu
             <span className="hp-muted"> · {SRC_NAMES[m[k]!.src]}</span>
           </button>
         ))}
-        {hint && <span className="hp-muted">{hint}</span>}
+        {hint && !open && <span className="hp-muted">{hint}</span>}
+        {onManual && (
+          <span className="hp-watch__manual">
+            {open ? (
+              <button type="button" className="hp-watch__tag hp-watch__tag--on" onClick={finish} title="Позначити, де закінчився шматок">
+                Кінець {open.kind === 'op' ? 'опенінгу' : 'ендингу'} тут
+              </button>
+            ) : (
+              (['op', 'ed'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className="hp-watch__tag"
+                  onClick={() => start(k)}
+                  title={`Позначити: ${KIND_NAMES[k].toLowerCase()} починається з цієї секунди — далі Hikka Plus упізнає його в інших серіях`}
+                >
+                  Тут {k === 'op' ? 'опенінг' : 'ендинг'}
+                </button>
+              ))
+            )}
+            {(['op', 'ed'] as const)
+              .filter((k) => m[k]?.src === 'manual' && open?.kind !== k)
+              .map((k) => (
+                <button
+                  key={`x${k}`}
+                  type="button"
+                  className="hp-watch__tag"
+                  onClick={() => onManual(k, null)}
+                  title={`Прибрати вашу позначку: ${KIND_NAMES[k].toLowerCase()}`}
+                >
+                  × {KIND_NAMES[k].toLowerCase()}
+                </button>
+              ))}
+          </span>
+        )}
       </div>
     </div>
   );

@@ -4,19 +4,26 @@
  * прямокутника плеєра — щоб затемнення було над усім сайтом (і над липкою шапкою Hikka), а плеєр лишався клікабельним.
  * Клік по темному, Esc або повторна кнопка — світло назад. Положення плеєра стежимо кожен кадр (прокрутка, «Ширше»).
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 const DIM = 'rgba(0, 0, 0, 0.85)';
 
-export function useLightsOff(target: HTMLElement | null, on: boolean, off: () => void) {
+/**
+ * target — ref рамки (не сам елемент): елемент читаємо щокадру. Інакше кожне перемальовування блоку (клік по будь-якій
+ * кнопці) давало ref null → елемент, затемнення знімалося й з'являлося знову — блимало (MK 20:00).
+ */
+export function useLightsOff(target: { current: HTMLElement | null }, on: boolean, off: () => void) {
+  const offRef = useRef(off);
+  offRef.current = off;
   useEffect(() => {
-    if (!on || !target) return;
+    if (!on) return;
+    const doOff = () => offRef.current();
     const host = document.createElement('hikka-plus-dim');
     const root = host.attachShadow({ mode: 'open' });
     const parts = [0, 1, 2, 3].map(() => {
       const d = document.createElement('div');
       d.style.cssText = `position:fixed;background:${DIM};z-index:2147483000;opacity:0;transition:opacity .25s ease;cursor:pointer`;
-      d.addEventListener('click', off);
+      d.addEventListener('click', doOff);
       root.append(d);
       return d;
     });
@@ -24,7 +31,11 @@ export function useLightsOff(target: HTMLElement | null, on: boolean, off: () =>
     let raf = 0;
     let last = '';
     const place = () => {
-      const r = target.getBoundingClientRect();
+      raf = requestAnimationFrame(place);
+      const el = target.current;
+      // Між перемальовуваннями ref буває null — лишаємо смуги як були.
+      if (!el || !el.isConnected) return;
+      const r = el.getBoundingClientRect();
       const key = `${r.left},${r.top},${r.width},${r.height},${innerWidth},${innerHeight}`;
       if (key !== last) {
         last = key;
@@ -36,16 +47,15 @@ export function useLightsOff(target: HTMLElement | null, on: boolean, off: () =>
         Object.assign(l.style, { left: '0', top: `${top}px`, width: `${Math.max(0, r.left)}px`, height: `${Math.max(0, bottom - top)}px` });
         Object.assign(rt.style, { left: `${r.right}px`, top: `${top}px`, width: `${Math.max(0, innerWidth - r.right)}px`, height: `${Math.max(0, bottom - top)}px` });
       }
-      raf = requestAnimationFrame(place);
     };
     place();
     requestAnimationFrame(() => parts.forEach((d) => (d.style.opacity = '1')));
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && off();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && doOff();
     window.addEventListener('keydown', onKey);
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('keydown', onKey);
       host.remove();
     };
-  }, [target, on]);
+  }, [on]);
 }

@@ -8,7 +8,7 @@ import { hikkaConfigured, watchScopeItem, tokenItem } from '../core/hikka-auth';
 import { startHikkaLogin } from '../features/hikka-sync';
 import { animeonTeams, mergeTeams, mikaiTeams, parseWatchLinks } from './providers';
 import { aniskipRaw, watchedAt, type AniSkip } from './threshold';
-import { FP_RATE, learnEpisode, liveFind, loadFp, mergeMarks, rememberMark, segsFromAniskip, templates, type Marks, type Seg } from './skip-marks';
+import { FP_RATE, learnEpisode, liveFind, loadFp, mergeMarks, rememberMark, segsFromAniskip, setManualMark, templateFromManual, templates, type Marks, type Seg } from './skip-marks';
 import { getWatchSaved, updateWatchSaved, useWatchPrefs, type WatchSaved } from './watch-store';
 import { HIKKA_LIST_EVENT, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '../core/bridge';
 import { loadHikkaWatch, lowerHikkaEpisodes, markHikkaEpisodes, type HikkaWatchState } from './hikka-watch';
@@ -145,6 +145,9 @@ export function WatchRoot({ slug }: { slug: string }) {
     tpl: { op: null as number[] | null, ed: null as number[] | null },
     framesOff: false,
     learnedEps: 0,
+    // «Тут опенінг» / «Тут ендинг»: позначки серій і шматки, з яких ще треба взяти зразок (коли плеєр їх програє).
+    manual: {} as Record<string, SegPair>,
+    pendTpl: new Map<string, { ep: number; kind: 'op' | 'ed'; seg: Seg }>(),
   });
   const anime = load.status === 'ready' ? load.anime : null;
   const total = anime?.episodes_total || anime?.episodes_released || null;
@@ -167,6 +170,7 @@ export function WatchRoot({ slug }: { slug: string }) {
     void loadFp(slug).then((st) => {
       const L = live.current;
       L.auto = { ...st.marks, ...L.auto };
+      L.manual = { ...st.man, ...L.manual };
       L.tpl = templates(st);
       L.learnedEps = Object.keys(st.eps).length;
     });
@@ -175,7 +179,7 @@ export function WatchRoot({ slug }: { slug: string }) {
   /** Злити мітки поточної серії й оновити блок і поріг зарахування. Повертає початок ED (або null). */
   const refreshMarks = useCallback((ep: number, d: number): Marks => {
     const L = live.current;
-    const m = mergeMarks(d, L.playerSegs.get(ep) ?? {}, L.auto[ep] ?? {}, segsFromAniskip(L.aniskip.get(ep) ?? null, d));
+    const m = mergeMarks(d, L.playerSegs.get(ep) ?? {}, L.auto[ep] ?? {}, segsFromAniskip(L.aniskip.get(ep) ?? null, d), L.manual[ep] ?? {});
     setMarks((x) => {
       const nx: MarksInfo = { ep, d, m, framesOff: L.framesOff, learned: L.learnedEps };
       return x && JSON.stringify(x) === JSON.stringify(nx) ? x : nx;
@@ -231,7 +235,7 @@ export function WatchRoot({ slug }: { slug: string }) {
         arr[i] = h;
         for (const kind of ['op', 'ed'] as const) {
           const tpl = L.tpl[kind];
-          if (!tpl || L.auto[ep]?.[kind] || L.playerSegs.get(ep)?.[kind]) continue;
+          if (!tpl || L.auto[ep]?.[kind] || L.manual[ep]?.[kind] || L.playerSegs.get(ep)?.[kind]) continue;
           const at = liveFind(arr, i, tpl);
           if (at === null || !(dur > 0)) continue;
           const seg = { s: Math.max(0, at / FP_RATE), e: Math.min(dur, (at + tpl.length) / FP_RATE) };
@@ -243,6 +247,37 @@ export function WatchRoot({ slug }: { slug: string }) {
         }
       }
       if (changed && L.ep === ep && dur > 0) refreshMarks(ep, dur);
+      // Ручна позначка: щойно плеєр програв позначений шматок — його кадри стають зразком тайтлу.
+      for (const [key, pt] of L.pendTpl) {
+        if (pt.ep !== ep || arr.length < Math.floor(pt.seg.e * FP_RATE)) continue;
+        L.pendTpl.delete(key);
+        void templateFromManual(slug, ep, pt.kind, arr, pt.seg).then((st) => {
+          if (st) L.tpl = templates(st);
+          else if (!L.pendTpl.has(key) && L.manual[ep]?.[pt.kind]) L.pendTpl.set(key, pt); // кадрів мало — ще раз, коли додадуться
+        });
+      }
+      // Порівнювати з іншими серіями й по ходу перегляду — раз на хвилину нових кадрів (а не лише в кінці / при зміні серії).
+      learn(ep);
+    },
+    [slug, refreshMarks, learn],
+  );
+
+  /** «Тут опенінг» / «Тут ендинг» (seg) або прибрати позначку (null). */
+  const onManualMark = useCallback(
+    (ep: number, kind: 'op' | 'ed', seg: Seg | null) => {
+      const L = live.current;
+      const key = `${ep}:${kind}`;
+      const cur = { ...L.manual[ep] };
+      if (seg) cur[kind] = seg;
+      else delete cur[kind];
+      L.manual = { ...L.manual, [ep]: cur };
+      if (seg && !L.framesOff) L.pendTpl.set(key, { ep, kind, seg });
+      else L.pendTpl.delete(key);
+      void setManualMark(slug, ep, kind, seg).then((st) => {
+        L.tpl = templates(st);
+      });
+      const d = L.fpD.get(ep) ?? L.d;
+      if (L.ep === ep && d > 0) refreshMarks(ep, d);
     },
     [slug, refreshMarks],
   );
@@ -392,6 +427,7 @@ export function WatchRoot({ slug }: { slug: string }) {
       marks={marks}
       onFp={onFp}
       onFramesOff={onFramesOff}
+      onManualMark={onManualMark}
       onEnded={markWatched}
       canUnwatch={canUnwatch}
       onUnwatch={unwatch}
