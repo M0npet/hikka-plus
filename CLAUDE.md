@@ -1,6 +1,7 @@
 # Hikka Plus — правила для Claude
 
 Розширення для hikka.io (WXT 0.21 + React 19 + TypeScript, MV3 для Chrome, MV2 для Firefox).
+У збірці замість React — **Preact** (`preact/compat` через alias у `wxt.config.ts`, 0.5.17): код пишемо як під React (типи `@types/react`), але лише API, які є в compat (хуки, `createRoot`, `useId`, `useSyncExternalStore`); content script 429 → 224 КБ. Перевірено попиксельно проти React-збірки (блок плеєра, «Ширше», читалка, вікно налаштувань).
 Карта проєкту й рішення MK — у claude.ai-проєкті «Hikka The Project» (`claude/project-map.md`,
 `claude/research-readers-and-layout.md`).
 

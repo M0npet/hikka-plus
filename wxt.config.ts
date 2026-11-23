@@ -32,6 +32,18 @@ export default defineConfig({
     // Архів вихідного коду йде рецензентам AMO — локальні секрети й нотатки туди не потрібні.
     excludeSources: ['.env*', 'CLAUDE.md'],
   },
+  // Preact замість React (той самий код через alias): React-DOM — ~200 КБ у кожному content script, Preact — ~15 КБ.
+  // Типи лишаються від React (tsc), у збірку йде preact/compat.
+  vite: () => ({
+    resolve: {
+      alias: [
+        { find: /^react-dom\/client$/, replacement: 'preact/compat/client' },
+        { find: /^react-dom$/, replacement: 'preact/compat' },
+        { find: /^react\/jsx-(dev-)?runtime$/, replacement: 'preact/jsx-runtime' },
+        { find: /^react$/, replacement: 'preact/compat' },
+      ],
+    },
+  }),
   webExt: {
     startUrls: ['https://hikka.io/novel'],
   },
