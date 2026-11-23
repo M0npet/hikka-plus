@@ -364,7 +364,7 @@ function PlayerFields({ mode }: { mode: SettingsMode }) {
           <>
             <SwitchRow label="Пропускати опенінг сам" checked={!!w.skipOp} onChange={(skipOp) => setW({ skipOp })} />
             <SwitchRow label="Пропускати ендинг сам" hint="Серія все одно зараховується" checked={!!w.skipEd} onChange={(skipEd) => setW({ skipEd })} />
-            <SwitchRow label="Сканувати серії наперед" hint={SCAN_HINT} checked={w.scan !== false} onChange={(scan) => setW({ scan })} />
+            <SwitchRow label="Сканувати серії наперед" hint={SCAN_HINT} checked={!!w.scan} onChange={(scan) => setW({ scan })} />
           </>
         )}
         <SwitchRow

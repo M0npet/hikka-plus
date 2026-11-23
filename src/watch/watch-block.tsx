@@ -367,7 +367,7 @@ export function WatchBlock(p: WatchBlockProps) {
   };
   // Вимкнули сканер — прибрати фрейм одразу.
   useEffect(() => {
-    if (p.prefs.scan === false || p.prefs.marks === false) setScanJob(null);
+    if (!p.prefs.scan || p.prefs.marks === false) setScanJob(null);
   }, [p.prefs.scan, p.prefs.marks]);
   const scanPlayer = scanJob ? playerFor(scanJob.ep) : undefined;
 
@@ -672,7 +672,7 @@ export function WatchBlock(p: WatchBlockProps) {
                 <>
                   <SwitchRow label="Пропускати опенінг сам" checked={!!p.prefs.skipOp} onChange={(v) => p.onPrefs({ skipOp: v })} />
                   <SwitchRow label="Пропускати ендинг сам" checked={!!p.prefs.skipEd} onChange={(v) => p.onPrefs({ skipEd: v })} />
-                  <SwitchRow label="Сканувати серії наперед" hint={SCAN_HINT} checked={p.prefs.scan !== false} onChange={(v) => p.onPrefs({ scan: v })} />
+                  <SwitchRow label="Сканувати серії наперед" hint={SCAN_HINT} checked={!!p.prefs.scan} onChange={(v) => p.onPrefs({ scan: v })} />
                 </>
               )}
               <SwitchRow label="Підсвітка" hint="Кольори з відео навколо плеєра" checked={ambient} onChange={(v) => p.onPrefs({ ambient: v })} />

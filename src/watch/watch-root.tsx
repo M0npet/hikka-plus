@@ -306,7 +306,7 @@ export function WatchRoot({ slug }: { slug: string }) {
   const nextScan = useCallback(
     (ep: number, has: (n: number) => boolean): ScanJob | null => {
       const L = live.current;
-      if (prefs.scan === false || prefs.marks === false || L.framesOff || L.scanOff || !scanAllowedByNetwork()) return null;
+      if (!prefs.scan || prefs.marks === false || L.framesOff || L.scanOff || !scanAllowedByNetwork()) return null;
       if (L.ep !== ep || L.t < 5 || !(L.d > 0)) return null; // спершу хай піде основний плеєр (реклама, буфер)
       const nb = has(ep + 1) ? ep + 1 : has(ep - 1) ? ep - 1 : null;
       const hasMark = (e: number, k: 'op' | 'ed') => !!(L.manual[e]?.[k] || L.auto[e]?.[k] || L.playerSegs.get(e)?.[k]);

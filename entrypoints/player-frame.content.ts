@@ -36,7 +36,16 @@ export default defineContentScript({
   runAt: 'document_idle',
   main() {
     if (window.parent === window) return;
-    if (window.name === FRAME_NAME) ambient();
+    if (window.name === FRAME_NAME || window.name === SCAN_NAME) fixPlyrSpeed();
+    if (window.name === FRAME_NAME) {
+      ambient();
+      // Плеєр міг уже стартувати з 16× зі сховища (слід сканера 0.5.22) — перші 15 с повертаємо 1×.
+      const t0 = Date.now();
+      const fix = window.setInterval(() => {
+        for (const v of document.querySelectorAll('video')) if (v.playbackRate > 4) v.playbackRate = 1;
+        if (Date.now() - t0 > 15000) clearInterval(fix);
+      }, 500);
+    }
     else if (window.name === SCAN_NAME) sweeper();
   },
 });
@@ -186,6 +195,8 @@ function sweeper() {
   let kickAt = 0;
   let started = 0;
   let frames = 0;
+  let snap: StoreSnap | null = null;
+  let restoreAt = 0;
 
   const flush = () => {
     if (!buf) return;
@@ -201,6 +212,7 @@ function sweeper() {
     } catch {
       /* немає */
     }
+    restoreStore(snap);
     if (job) {
       console.info(`[Hikka Plus] сканер міток: ${how}, ${Math.round(job.from)}–${Math.round(job.to)} с, кадрів ${frames}`);
       send({ swept: how });
@@ -216,9 +228,17 @@ function sweeper() {
     },
     true,
   );
+  // Щойно плеєр записав швидкість/звук — повернути (setTimeout: Plyr пише в обробнику тієї самої події).
+  for (const ev of ['ratechange', 'volumechange'])
+    document.addEventListener(ev, () => job && setTimeout(() => restoreStore(snap), 50), true);
+  window.addEventListener('pagehide', () => restoreStore(snap));
   const tick = () => {
     if (!job) return;
     const now = Date.now();
+    if (now - restoreAt > 2000) {
+      restoreAt = now;
+      restoreStore(snap);
+    }
     if (!v || !v.isConnected) {
       v = mainVideo();
       if (!v) {
@@ -280,6 +300,7 @@ function sweeper() {
     const rate = Math.min(16, Math.max(1, Number(sw.rate) || 16));
     if (!Number.isFinite(from) || !Number.isFinite(to) || job) return;
     job = { from, to, rate };
+    snap = snapStore();
     v = null;
     lastStep = -1;
     frames = 0;
@@ -288,4 +309,79 @@ function sweeper() {
     timer = window.setInterval(tick, 20);
   });
   send({ ready: true });
+}
+
+/*
+ * Плеєри пам'ятають налаштування в localStorage свого сайту — спільному для нашого плеєра й сканера (перевірено 2026-11-23):
+ *  - Moon (Plyr): "plyr" {speed, muted, volume, quality} — після скану наступний Moon відкривався на 16× без звуку (баг 0.5.22);
+ *  - Moon: "ma:progress:v1" {items: {<id серії>: {t, d, at, e}}} — позиція серії;
+ *  - Ashdi (PlayerJS): "pljsplayfrom_videoplayer<id>…" — позиція серії.
+ * Сканер знімає їх перед сканом і повертає як було (під час скану теж — щоб плеєр, відкритий у цей час, не підхопив 16×).
+ */
+const PLYR = 'plyr';
+const MOON_PROGRESS = 'ma:progress:v1';
+const pageId = () => location.pathname.split('/').filter(Boolean).pop() ?? '';
+const readJson = (k: string): Record<string, unknown> | null => {
+  try {
+    const v = localStorage.getItem(k);
+    return v ? (JSON.parse(v) as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Більше 4× у меню Plyr не поставити — це слід сканера (0.5.22): повертаємо 1×. */
+function fixPlyrSpeed() {
+  try {
+    const o = readJson(PLYR);
+    if (o && typeof o.speed === 'number' && o.speed > 4) localStorage.setItem(PLYR, JSON.stringify({ ...o, speed: 1 }));
+  } catch {
+    /* сховище недоступне */
+  }
+}
+
+type StoreSnap = { plyr: Record<string, unknown> | null; moon: unknown; ashdi: Map<string, string> };
+
+function snapStore(): StoreSnap | null {
+  try {
+    const id = pageId();
+    const ashdi = new Map<string, string>();
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('pljsplayfrom_') && id && k.includes(id)) ashdi.set(k, localStorage.getItem(k) ?? '');
+    }
+    const items = readJson(MOON_PROGRESS)?.items as Record<string, unknown> | undefined;
+    return { plyr: readJson(PLYR), moon: items?.[id], ashdi };
+  } catch {
+    return null;
+  }
+}
+
+function restoreStore(snap: StoreSnap | null) {
+  if (!snap) return;
+  try {
+    const id = pageId();
+    const cur = readJson(PLYR);
+    if (cur) {
+      const speed = typeof snap.plyr?.speed === 'number' && snap.plyr.speed <= 4 ? snap.plyr.speed : 1;
+      const muted = typeof snap.plyr?.muted === 'boolean' ? snap.plyr.muted : false;
+      if (cur.speed !== speed || cur.muted !== muted) localStorage.setItem(PLYR, JSON.stringify({ ...cur, speed, muted }));
+    }
+    const mp = readJson(MOON_PROGRESS);
+    const items = mp?.items as Record<string, unknown> | undefined;
+    if (mp && items && id && JSON.stringify(items[id]) !== JSON.stringify(snap.moon)) {
+      if (snap.moon === undefined) delete items[id];
+      else items[id] = snap.moon;
+      localStorage.setItem(MOON_PROGRESS, JSON.stringify(mp));
+    }
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith('pljsplayfrom_') || !id || !k.includes(id)) continue;
+      const was = snap.ashdi.get(k);
+      if (was === undefined) localStorage.removeItem(k);
+      else if (localStorage.getItem(k) !== was) localStorage.setItem(k, was);
+    }
+  } catch {
+    /* сховище недоступне */
+  }
 }
