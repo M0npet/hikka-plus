@@ -559,6 +559,8 @@ export function PlayerFrame(p: {
     <iframe
       ref={ref}
       src={src}
+      // За name скрипт entrypoints/player-frame.content.ts пізнає наш фрейм.
+      name="hikka-plus"
       title={`${PLAYER_NAMES[p.player.kind]} — серія ${p.ep}`}
       allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
       allowFullScreen
