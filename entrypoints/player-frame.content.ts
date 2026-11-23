@@ -12,6 +12,12 @@
  * двічі на секунду відео рахуємо 32-бітний відбиток і шлемо пачками ({fp: "крок,відбиток;…", d}) — кадри нікуди далі
  * не йдуть, порівнює їх hikka.io локально. Перемотка ({seek}) — лише коли користувач натиснув «Пропустити» чи смужку міток.
  *
+ * Сканер міток (0.5.22, plan-marks-v2 §3): у ДРУГОМУ нашому iframe (name="hikka-plus-scan", прозорий, під плеєром)
+ * за запитом {sweep: {from, to, rate}} перемотуємо на from, граємо на rate× (16 — максимум і в Firefox, і в Chromium;
+ * звук вище 4× браузери глушать самі — mute плеєра не чіпаємо, він зберігся б і в основному плеєрі), раз на 20 мс
+ * рахуємо відбиток кожного кроку 0,5 с і шлемо пачками ({fp, d}), на to — пауза і {swept: 'ok'|'stall'|'off'}.
+ * Перевірено вживу (2026-11-23): Ashdi і Moon тримають 16×, буфер встигає (~20 с відео за секунду), кадри щоразу нові.
+ *
  * Раніше тут були обхід стилю Hikka Features (0.5.2–0.5.4; вони виправили в 3.1.22) і замір панелі Moon,
  * щоб рамка ставала вищою (0.5.4–0.5.5) — замір розгойдував розкладку Moon у вузькому блоці (панель блимала), прибрано.
  */
@@ -19,6 +25,7 @@ import { AMBIENT_MSG, AMBIENT_REQ } from '@/src/watch/types';
 import { FP_RATE, frameHash } from '@/src/watch/fp-hash';
 
 export const FRAME_NAME = 'hikka-plus';
+export const SCAN_NAME = 'hikka-plus-scan';
 const PARENT = 'https://hikka.io';
 const W = 32;
 const H = 18;
@@ -28,8 +35,9 @@ export default defineContentScript({
   allFrames: true,
   runAt: 'document_idle',
   main() {
-    if (window.parent === window || window.name !== FRAME_NAME) return;
-    ambient();
+    if (window.parent === window) return;
+    if (window.name === FRAME_NAME) ambient();
+    else if (window.name === SCAN_NAME) sweeper();
   },
 });
 
@@ -150,4 +158,134 @@ function ambient() {
   send({ ready: true });
   reportBar(true);
 
+}
+
+/** Відео плеєра: найдовше (реклама коротка), з відомою тривалістю. */
+function mainVideo(): HTMLVideoElement | null {
+  let best: HTMLVideoElement | null = null;
+  for (const v of document.querySelectorAll('video'))
+    if (v.readyState >= 1 && Number.isFinite(v.duration) && v.duration > 0 && (!best || v.duration > best.duration)) best = v;
+  return best;
+}
+
+function sweeper() {
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const send = (m: Record<string, unknown>) => window.parent.postMessage({ type: AMBIENT_MSG, ...m }, PARENT);
+  let job: { from: number; to: number; rate: number } | null = null;
+  let v: HTMLVideoElement | null = null;
+  let timer = 0;
+  let buf = '';
+  let lastStep = -1;
+  let flushAt = 0;
+  let moved = 0; // коли востаннє рухалися (для «застряг»)
+  let lastT = -1;
+  let kicks = 0;
+  let kickAt = 0;
+  let started = 0;
+  let frames = 0;
+
+  const flush = () => {
+    if (!buf) return;
+    send({ fp: buf, d: v?.duration ?? 0 });
+    buf = '';
+  };
+  const finish = (how: 'ok' | 'stall' | 'off') => {
+    clearInterval(timer);
+    timer = 0;
+    flush();
+    try {
+      v?.pause();
+    } catch {
+      /* немає */
+    }
+    if (job) {
+      console.info(`[Hikka Plus] сканер міток: ${how}, ${Math.round(job.from)}–${Math.round(job.to)} с, кадрів ${frames}`);
+      send({ swept: how });
+    }
+    job = null;
+  };
+  // Плеєр (або реклама) міг поставити 1× / паузу — повертаємо, поки сканер працює. Звук з'являється лише на ≤ 4×,
+  // тож швидкість ставимо синхронно на кожен play.
+  document.addEventListener(
+    'play',
+    (e) => {
+      if (job && e.target instanceof HTMLVideoElement) e.target.playbackRate = job.rate;
+    },
+    true,
+  );
+  const tick = () => {
+    if (!job) return;
+    const now = Date.now();
+    if (!v || !v.isConnected) {
+      v = mainVideo();
+      if (!v) {
+        if (now - started > 45000) finish('stall');
+        return;
+      }
+      const d = v.duration;
+      const from = job.from < 0 ? Math.max(0, d + job.from) : Math.min(job.from, d);
+      job = { ...job, from, to: job.to < 0 ? Math.max(0, d + job.to) : Math.min(job.to || d, d) };
+      v.currentTime = from;
+      moved = now;
+    }
+    // Кінець — до «штовхання»: play() на закінченому відео почав би його з нуля.
+    if (v.ended || (v.currentTime >= job.to - 0.4 && v.currentTime >= job.from)) return finish('ok');
+    if (v.playbackRate !== job.rate) v.playbackRate = job.rate;
+    if (v.paused && now - kickAt > 1000) {
+      kickAt = now;
+      if (++kicks > 60) return finish('stall');
+      void v.play().catch((err: unknown) => {
+        // Без жесту користувача зі звуком не можна — тоді беззвучно (у цьому фреймі; плеєр уже на 16×).
+        if ((err as Error)?.name === 'NotAllowedError' && v) {
+          v.muted = true;
+          void v.play().catch(() => {});
+        }
+      });
+    }
+    const t = v.currentTime;
+    if (t !== lastT) {
+      lastT = t;
+      moved = now;
+    } else if (now - moved > 20000) return finish('stall');
+    if (t + 0.25 < job.from) return; // ще перемотуємо
+    const step = Math.round(t * FP_RATE);
+    if (step !== lastStep && ctx && v.readyState >= 2) {
+      lastStep = step;
+      try {
+        ctx.drawImage(v, 0, 0, W, H);
+        buf += `${step},${frameHash(ctx.getImageData(0, 0, W, H).data, W, H)};`;
+        frames++;
+      } catch {
+        send({ off: true });
+        return finish('off');
+      }
+    }
+    if (now - flushAt > 1000) {
+      flushAt = now;
+      flush();
+    }
+  };
+
+  window.addEventListener('message', (e) => {
+    if (e.source !== window.parent || e.origin !== PARENT) return;
+    const d = e.data as { type?: unknown; sweep?: unknown } | null;
+    if (!d || d.type !== AMBIENT_REQ || !('sweep' in d)) return;
+    const sw = d.sweep as { from?: unknown; to?: unknown; rate?: unknown } | null;
+    if (!sw) return finish('ok');
+    const from = Number(sw.from);
+    const to = Number(sw.to);
+    const rate = Math.min(16, Math.max(1, Number(sw.rate) || 16));
+    if (!Number.isFinite(from) || !Number.isFinite(to) || job) return;
+    job = { from, to, rate };
+    v = null;
+    lastStep = -1;
+    frames = 0;
+    kicks = 0;
+    started = moved = Date.now();
+    timer = window.setInterval(tick, 20);
+  });
+  send({ ready: true });
 }

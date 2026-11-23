@@ -81,14 +81,17 @@ export function commonRuns(A: ArrayLike<number>, B: ArrayLike<number>): Run[] {
 }
 
 /**
- * OP — шматок, що в ОБОХ серіях починається в перших 40 %; ED — що в обох закінчується в останніх 30 %.
- * (Анонс наступної серії в кінці A збігається із серединою B — так його не сплутаємо з ED.)
+ * ED — шматок, що в ОБОХ серіях закінчується в останніх 30 %. OP — що в обох починається в перших 65 % і приблизно
+ * на тому самому місці (±15 % серії): опенінг буває й посередині серії після довгого вступу (MK 20:49).
+ * Анонс наступної серії в кінці A збігається з початком/серединою B, recap — кінець A з початком B: місця різні — відкидаємо.
  */
 export function classify(runs: Run[], lenA: number, lenB: number): { op?: Run; ed?: Run } {
   const out: { op?: Run; ed?: Run } = {};
   for (const r of runs) {
-    if (!out.op && r.a < lenA * 0.4 && r.b < lenB * 0.4 && r.a + r.len < lenA * 0.6) out.op = r;
-    else if (!out.ed && r.a + r.len > lenA * 0.7 && r.b + r.len > lenB * 0.7) out.ed = r;
+    const pa = r.a / lenA;
+    const pb = r.b / lenB;
+    if (!out.ed && (r.a + r.len) / lenA > 0.7 && (r.b + r.len) / lenB > 0.7) out.ed = r;
+    else if (!out.op && pa < 0.65 && pb < 0.65 && Math.abs(pa - pb) < 0.15 && (r.a + r.len) / lenA < 0.75) out.op = r;
   }
   return out;
 }
@@ -178,6 +181,10 @@ async function saveFp(slug: string, s: FpStore) {
   }
   await indexItem.setValue(idx);
 }
+
+/** Збережені відбитки серій: крок → відбиток (FLAT — невідомо), d — тривалість. */
+export const storedEpisodes = (s: FpStore) =>
+  Object.entries(s.eps).map(([ep, o]) => ({ ep: Number(ep), a: unhex(o.h), d: o.d }));
 
 export const templates = (s: FpStore) => ({ op: s.tpl.op ? unhex(s.tpl.op) : null, ed: s.tpl.ed ? unhex(s.tpl.ed) : null });
 

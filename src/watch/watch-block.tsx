@@ -10,8 +10,8 @@ import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, Ico
 import { useLightsOff } from './lights-off';
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
-import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
-import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_WIDE_ANIM, type WatchPrefs } from './watch-store';
+import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type ScanEnd, type ScanJob, type WatchPlayer, type WatchTeam } from './types';
+import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_WIDE_ANIM, SCAN_HINT, type WatchPrefs } from './watch-store';
 import { AmbientFields } from './ambient-fields';
 import type { LightsMsg } from '../lights/types';
 import type { MarkSrc, Seg } from './skip-marks';
@@ -57,6 +57,9 @@ export type WatchBlockProps = {
   marks?: MarksInfo | null;
   onFp?: (ep: number, fp: string, d: number) => void;
   onFramesOff?: () => void;
+  /** Сканер міток (watch-root): наступний шматок для прихованого фрейму (has — серія є в команди) і кінець скану. */
+  nextScan?: (ep: number, has: (n: number) => boolean) => ScanJob | null;
+  onScanDone?: (job: ScanJob, how: ScanEnd) => void;
   /** «Тут опенінг» / «Тут ендинг» (seg) або прибрати ручну позначку (null). */
   onManualMark?: (ep: number, kind: 'op' | 'ed', seg: Seg | null) => void;
   /** Вміст рамки замість iframe (стенд). */
@@ -347,6 +350,27 @@ export function WatchBlock(p: WatchBlockProps) {
     doSkip(skipNow.kind, skipNow.seg.e);
   }, [skipNow?.kind, skipNow?.seg.s, ep]);
 
+  // Сканер міток: по одному шматку за раз у прихованому фреймі (ScanFrame); план — у watch-root.
+  const [scanJob, setScanJob] = useState<ScanJob | null>(null);
+  const [scanVer, setScanVer] = useState(0);
+  const pos5 = now ? Math.floor(now.t / 5) : -1;
+  useEffect(() => {
+    if (scanJob || !p.nextScan || p.renderFrame || !player) return;
+    const j = p.nextScan(ep, teamHas);
+    if (j) setScanJob(j);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanJob, scanVer, ep, pos5, p.marks, p.prefs.scan, p.prefs.marks, p.prefs.skipOp, p.prefs.skipEd, player?.id]);
+  const endScan = (job: ScanJob, how: ScanEnd) => {
+    p.onScanDone?.(job, how);
+    setScanJob(null);
+    setScanVer((v) => v + 1);
+  };
+  // Вимкнули сканер — прибрати фрейм одразу.
+  useEffect(() => {
+    if (p.prefs.scan === false || p.prefs.marks === false) setScanJob(null);
+  }, [p.prefs.scan, p.prefs.marks]);
+  const scanPlayer = scanJob ? playerFor(scanJob.ep) : undefined;
+
   if (p.status === 'loading')
     return (
       <section className="hp-section">
@@ -431,6 +455,15 @@ export function WatchBlock(p: WatchBlockProps) {
         />
       )}
     </div>
+    {scanJob && scanPlayer && (
+      <ScanFrame
+        key={`${scanPlayer.id}:${scanJob.ep}:${scanJob.from}`}
+        player={scanPlayer}
+        job={scanJob}
+        onFp={(fp, d) => p.onFp?.(scanJob.ep, fp, d)}
+        onDone={(how) => endScan(scanJob, how)}
+      />
+    )}
     {skipNow && (
       <button type="button" className={cx(btn('secondary', 'sm'), 'hp-watch__skip')} onClick={() => doSkip(skipNow.kind, skipNow.seg.e)}>
         {skipNow.kind === 'op' ? 'Пропустити опенінг' : 'Пропустити ендинг'} <IconRight />
@@ -639,6 +672,7 @@ export function WatchBlock(p: WatchBlockProps) {
                 <>
                   <SwitchRow label="Пропускати опенінг сам" checked={!!p.prefs.skipOp} onChange={(v) => p.onPrefs({ skipOp: v })} />
                   <SwitchRow label="Пропускати ендинг сам" checked={!!p.prefs.skipEd} onChange={(v) => p.onPrefs({ skipEd: v })} />
+                  <SwitchRow label="Сканувати серії наперед" hint={SCAN_HINT} checked={p.prefs.scan !== false} onChange={(v) => p.onPrefs({ scan: v })} />
                 </>
               )}
               <SwitchRow label="Підсвітка" hint="Кольори з відео навколо плеєра" checked={ambient} onChange={(v) => p.onPrefs({ ambient: v })} />
@@ -819,6 +853,111 @@ export function MarksBar({
         )}
       </div>
     </div>
+  );
+}
+
+/** Команда «грати» в API плеєра (Ashdi створює відео лише після неї). Звук не вимикаємо: на 16× браузер глушить його сам. */
+function playCmd(kind: WatchPlayer['kind'], n: number): unknown {
+  if (kind === 'ashdi') return { api: 'play' };
+  if (kind === 'moon') return { ns: 'ma', v: 2, id: `hps${n}`, command: 'player_play' };
+  if (kind === 'fenix') return { action: 'player_play' };
+  return null;
+}
+
+/**
+ * Сканер міток (0.5.22): другий наш iframe того самого плеєра, прозорий і під основним (у видимій області — інакше
+ * браузери пригальмовують невидимі чужі фрейми). Скрипт фрейму (entrypoints/player-frame.content.ts, name="hikka-plus-scan")
+ * за {sweep} проганяє шматок на 16× і шле відбитки; ми кладемо їх у серію job.ep. Після скану фрейм прибираємо.
+ */
+export function ScanFrame(p: { player: WatchPlayer; job: ScanJob; onFp: (fp: string, d: number) => void; onDone: (how: ScanEnd) => void }) {
+  const [src, setSrc] = useState<string | null | undefined>(undefined);
+  const ref = useRef<HTMLIFrameElement>(null);
+  const cb = useRef(p);
+  cb.current = p;
+
+  useEffect(() => {
+    let off = false;
+    p.player
+      .src(p.job.ep)
+      .then((s) => !off && (s ? setSrc(s) : cb.current.onDone('stall')))
+      .catch(() => !off && cb.current.onDone('stall'));
+    return () => {
+      off = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const f = ref.current;
+    if (!src || !f) return;
+    let origin = '';
+    try {
+      origin = new URL(src).origin;
+    } catch {
+      cb.current.onDone('stall');
+      return;
+    }
+    let done = false;
+    let got = false;
+    const finish = (how: ScanEnd) => {
+      if (done) return;
+      done = true;
+      cb.current.onDone(how);
+    };
+    const post = (m: unknown) => {
+      try {
+        f.contentWindow?.postMessage(m, origin);
+      } catch {
+        /* ще about:blank */
+      }
+    };
+    const { from, to } = cb.current.job;
+    const ask = () => post({ type: AMBIENT_REQ, sweep: { from, to, rate: 16 } });
+    const onMsg = (e: MessageEvent) => {
+      if (e.source !== f.contentWindow || e.origin !== origin) return;
+      const d = e.data as { type?: unknown; ready?: unknown; fp?: unknown; d?: unknown; swept?: unknown } | null;
+      if (!d || d.type !== AMBIENT_MSG) return;
+      if (d.ready) return ask();
+      if (typeof d.fp === 'string') {
+        got = true;
+        return cb.current.onFp(d.fp, Number(d.d) || 0);
+      }
+      if (d.swept === 'ok' || d.swept === 'stall' || d.swept === 'off') finish(d.swept);
+    };
+    window.addEventListener('message', onMsg);
+    f.addEventListener('load', ask);
+    // Плеєр сам не стартує (Ashdi — лише після play) — штовхаємо, доки не підуть відбитки.
+    let n = 0;
+    const kick = window.setInterval(() => {
+      if (got) return;
+      const m = playCmd(cb.current.player.kind, ++n);
+      if (m) post(m);
+    }, 2000);
+    // Запобіжник: 11 хв на 16× — це ~45 с; 4 хв — точно щось не так (реклама, мережа).
+    const guard = window.setTimeout(() => finish('stall'), 4 * 60_000);
+    return () => {
+      done = true;
+      window.removeEventListener('message', onMsg);
+      f.removeEventListener('load', ask);
+      clearInterval(kick);
+      clearTimeout(guard);
+    };
+  }, [src]);
+
+  if (!src) return null;
+  return (
+    <iframe
+      ref={ref}
+      src={src}
+      className="hp-watch__scan"
+      // За name скрипт entrypoints/player-frame.content.ts пізнає фрейм сканера.
+      name="hikka-plus-scan"
+      title="Hikka Plus: пошук міток"
+      aria-hidden="true"
+      tabIndex={-1}
+      allow="autoplay"
+      referrerPolicy="origin"
+    />
   );
 }
 

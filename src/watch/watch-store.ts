@@ -40,11 +40,29 @@ export type WatchPrefs = {
   /** Пропускати опенінг / ендинг самому (за замовчуванням — ні, лише кнопка). */
   skipOp?: boolean;
   skipEd?: boolean;
+  /**
+   * Сканер міток (0.5.22): прихований другий плеєр проганяє на 16× початок (6 хв) і кінець (5 хв) цієї й сусідньої серії,
+   * щоб мітки були без очікування двох серій. undefined — увімкнено (MK 21:14: «если экономия трафика — не запускать,
+   * и отключение в настройках»): не запускається, якщо браузер каже про економію трафіку / повільну чи мобільну мережу
+   * (scanAllowedByNetwork; Network Information API є лише в Chromium — у Firefox лише цей вимикач).
+   */
+  scan?: boolean;
 };
 
 export const DEFAULT_AMBIENT_LEVEL = 20;
 export const DEFAULT_AMBIENT_BRIGHT = 100;
 export const DEFAULT_WIDE_ANIM = 320;
+export const SCAN_HINT =
+  'Мітки одразу, без двох переглянутих серій: прихований плеєр проганяє початок і кінець серій на 16× (~100 МБ на тайтл). Не запускається в режимі економії трафіку, у повільній і мобільній мережі (Chrome, Edge; у Firefox — лише цим вимикачем)';
+
+/** Мережа дозволяє сканер: немає «економії трафіку», не 2G/3G і не мобільна (якщо браузер це повідомляє). */
+export function scanAllowedByNetwork(): boolean {
+  const c = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string; type?: string } }).connection;
+  if (!c) return true; // Firefox, Safari — API немає
+  if (c.saveData) return false;
+  if (c.effectiveType && /(^|-)(2g|3g)$/.test(c.effectiveType)) return false;
+  return c.type !== 'cellular';
+}
 
 export const DEFAULT_WATCH_PREFS: WatchPrefs = { enabled: true, autoNext: true, hikkaSync: true };
 
