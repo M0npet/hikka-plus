@@ -306,7 +306,7 @@ export function WatchBlock(p: WatchBlockProps) {
   const frame = (
     <div className="hp-watch__view">
     {ambient && !p.renderFrame && <canvas ref={setGlowEl} className="hp-watch__glow" aria-hidden="true" />}
-    <div ref={frameRef} className="hp-watch__frame">
+    <div ref={frameRef} className={`hp-watch__frame hp-watch__frame--${player.kind}`}>
       {p.renderFrame ? (
         p.renderFrame(player, ep)
       ) : (
@@ -630,7 +630,7 @@ export function PlayerFrame(p: {
     };
   }, [p.player, p.ep]);
 
-  // Підсвітка: кадр 32×18 від нашого скрипта у фреймі (entrypoints/player-frame.content.ts) → canvas за рамкою (CSS розмиває).
+  // Підсвітка: кадр 32×18 (рядок RGB) від нашого скрипта у фреймі (entrypoints/player-frame.content.ts) → canvas за рамкою (CSS розмиває).
   useEffect(() => {
     const f = ref.current;
     const c = p.glow ?? null;
@@ -649,20 +649,28 @@ export function PlayerFrame(p: {
     let first = true;
     const onMsg = (e: MessageEvent) => {
       if (e.source !== f.contentWindow || e.origin !== origin) return;
-      const d = e.data as { type?: unknown; ready?: unknown; off?: unknown; w?: unknown; h?: unknown; px?: unknown } | null;
+      const d = e.data as { type?: unknown; ready?: unknown; off?: unknown; w?: unknown; h?: unknown; rgb?: unknown } | null;
       if (!d || d.type !== AMBIENT_MSG) return;
       if (d.ready) return ask();
       if (!c || !ctx || !tctx) return;
       if (d.off) return c.classList.remove('is-on');
       const w = Number(d.w);
       const h = Number(d.h);
-      if (!(d.px instanceof ArrayBuffer) || !(w > 0 && w <= 64 && h > 0 && h <= 64) || d.px.byteLength !== w * h * 4) return;
+      const rgb = d.rgb;
+      if (typeof rgb !== 'string' || !(w > 0 && w <= 64 && h > 0 && h <= 64) || rgb.length !== w * h * 3) return;
       if (tmp.width !== w || tmp.height !== h) {
         tmp.width = c.width = w;
         tmp.height = c.height = h;
         first = true;
       }
-      tctx.putImageData(new ImageData(new Uint8ClampedArray(d.px), w, h), 0, 0);
+      const img = tctx.createImageData(w, h);
+      for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
+        img.data[j] = rgb.charCodeAt(i);
+        img.data[j + 1] = rgb.charCodeAt(i + 1);
+        img.data[j + 2] = rgb.charCodeAt(i + 2);
+        img.data[j + 3] = 255;
+      }
+      tctx.putImageData(img, 0, 0);
       // Плавна зміна кольорів: новий кадр поверх старого з прозорістю.
       ctx.globalAlpha = first ? 1 : 0.25;
       ctx.drawImage(tmp, 0, 0);

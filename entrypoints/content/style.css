@@ -1640,6 +1640,11 @@ select {
   border-radius: var(--hp-r-lg);
   background: #000;
 }
+/* Moon нижче 380 px (їхня межа «малого плеєра»: max-height 379px) у Firefox блимає панеллю кнопок — перевірено MK
+   2026-11-23 на голому iframe Moon 588×331. Тож рамка Moon не нижча за 380 px (у вузькому блоці — трохи вища за 16:9). */
+.hp-watch__frame--moon {
+  min-height: 380px;
+}
 .hp-watch__frame > iframe {
   position: absolute;
   inset: 0;
@@ -1662,6 +1667,8 @@ select {
 .hp-watch__view {
   position: relative;
   isolation: isolate;
+  /* width обов'язково: у «Ширше» margin-inline:auto у flex-колонці інакше стискає блок (і плеєр) до нуля. */
+  width: 100%;
 }
 .hp-watch__glow {
   position: absolute;
