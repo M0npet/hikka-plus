@@ -3,6 +3,7 @@ import { tapZone } from './views';
 import type { ContentFormat } from '../../sources/types';
 import { IconClose, IconReset } from '../../ui/icons';
 import { Button, Field, Select, Slider, SwitchRow, Tabs } from '../../ui/kit';
+import { GlowSliders } from '../../watch/ambient-fields';
 
 type NovelS = ReaderSettings['novel'];
 type MangaS = ReaderSettings['manga'];
@@ -168,6 +169,20 @@ export function MangaFields({
       ))}
       <Slider label="Відступ між сторінками" value={m.gap} min={0} max={48} format={(v) => `${v}px`} onChange={(gap) => setManga({ gap })} />
       <Slider label="Яскравість" value={m.brightness} min={40} max={120} format={(v) => `${v}%`} onChange={(brightness) => setManga({ brightness })} />
+      <SwitchRow
+        label="Підсвітка"
+        hint="Кольори сторінки м'яко розходяться по фону, як навколо плеєра"
+        checked={m.glow}
+        onChange={(glow) => setManga({ glow })}
+      />
+      {m.glow && (
+        <GlowSliders
+          level={m.glowLevel}
+          bright={m.glowBright}
+          onLevel={(glowLevel) => setManga({ glowLevel })}
+          onBright={(glowBright) => setManga({ glowBright })}
+        />
+      )}
       <SwitchRow label="Номер сторінки" hint="Показувати лічильник сторінок унизу" checked={m.pageNumbers} onChange={(pageNumbers) => setManga({ pageNumbers })} />
       <SwitchRow
         label="Безкінечна стрічка"

@@ -1073,6 +1073,19 @@ select {
   /* Скло для панелей поверх вмісту (surface-glass Hikka). */
   --hp-glass: color-mix(in oklab, var(--hp-card) 80%, transparent);
 }
+/* Підсвітка читалки манґи: маленький canvas на весь екран, розмитий; під вмістом (z-index −1 у контексті .hp-reader). */
+.hp-glow {
+  position: absolute;
+  inset: -6%;
+  width: 112%;
+  height: 112%;
+  z-index: -1;
+  pointer-events: none;
+  filter: blur(64px) saturate(1.35) brightness(var(--hp-glow-b, 100%));
+  /* Гасне до країв екрана — кольори «розходяться» від сторінки, а не заливають усе. */
+  mask-image: radial-gradient(ellipse 60% 70% at 50% 50%, #000 35%, transparent 100%);
+  transition: opacity 0.3s ease;
+}
 .hp-reader__scroll {
   flex: 1;
   overflow-y: auto;

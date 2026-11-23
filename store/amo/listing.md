@@ -46,6 +46,7 @@ Hikka Plus додає на сторінки тайтлів hikka.io те, чог
 • Розділи з українських сайтів: Zenko, manga.in.ua, Бака, Honey Manga, UAManga, DGManga, Animesvit, Смаколики, Runi, NovelHub, FanVers, Wattpad (лише українською).
 • Перемикач джерел і команд перекладу, автопідбір тайтлу, ручна прив'язка.
 • Читалка поверх сторінки: стрічка для манхви, посторінково (і справа наліво), налаштування шрифту й теми для ранобе; адреса розділу — в посиланні.
+• Підсвітка в читалці манґи й манхви: кольори сторінки м'яко розходяться по фону (вимикається, прозорість і яскравість — у налаштуваннях).
 • Прогрес «прочитано N з M», «Продовжити» з місця, де зупинились.
 
 <b>Синхронізація</b>
@@ -96,6 +97,7 @@ Hikka Plus brings watching and reading into the title pages of hikka.io, the Ukr
 • Chapters from Ukrainian sites: Zenko, manga.in.ua, Baka, Honey Manga, UAManga, DGManga, Animesvit, Smakolyky, Runi, NovelHub, FanVers, Wattpad (Ukrainian only).
 • Source and translation team switcher, automatic title matching, manual linking.
 • Overlay reader: vertical strip for manhwa, paged mode (incl. right-to-left), font and theme settings for novels; the chapter is kept in the page URL.
+• Reader glow for manga and manhwa: the page's colours softly spread over the background (can be turned off; opacity and brightness are adjustable).
 • "Read N of M" progress, "Continue" from where you stopped.
 
 <b>Sync</b>

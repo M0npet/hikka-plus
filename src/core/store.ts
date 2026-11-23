@@ -49,6 +49,12 @@ export interface ReaderSettings {
     quality: ImageQuality;
     clickArea: 'image' | 'screen';
     pageNumbers: boolean;
+    /** Підсвітка: кольори сторінки м'яко розходяться по фону (MK 22:18). */
+    glow: boolean;
+    /** Непрозорість підсвітки 0..100 (повзунок показує прозорість = 100 − це). */
+    glowLevel: number;
+    /** Яскравість кольорів підсвітки, %. */
+    glowBright: number;
   };
   /** Ховати панелі при прокрутці вниз і показувати при прокрутці вгору. */
   autoHideBars: boolean;
@@ -82,6 +88,9 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
     quality: 'high',
     clickArea: 'image',
     pageNumbers: true,
+    glow: true,
+    glowLevel: 60,
+    glowBright: 100,
   },
   autoHideBars: true,
 };

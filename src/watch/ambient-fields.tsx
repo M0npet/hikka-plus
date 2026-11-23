@@ -7,24 +7,46 @@ import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, type WatchPrefs } from '
  */
 export function AmbientFields({ prefs, onPrefs }: { prefs: WatchPrefs; onPrefs: (p: Partial<WatchPrefs>) => void }) {
   return (
+    <GlowSliders
+      level={prefs.ambientLevel ?? DEFAULT_AMBIENT_LEVEL}
+      bright={prefs.ambientBright ?? DEFAULT_AMBIENT_BRIGHT}
+      onLevel={(ambientLevel) => onPrefs({ ambientLevel })}
+      onBright={(ambientBright) => onPrefs({ ambientBright })}
+    />
+  );
+}
+
+/** Ті самі два повзунки без прив'язки до сховища — і для підсвітки читалки. level — непрозорість 0..100. */
+export function GlowSliders({
+  level,
+  bright,
+  onLevel,
+  onBright,
+}: {
+  level: number;
+  bright: number;
+  onLevel: (level: number) => void;
+  onBright: (bright: number) => void;
+}) {
+  return (
     <>
       <Slider
         label="Прозорість підсвітки"
-        value={100 - (prefs.ambientLevel ?? DEFAULT_AMBIENT_LEVEL)}
+        value={100 - level}
         min={0}
         max={90}
         step={5}
         format={(v) => `${v}%`}
-        onChange={(t) => onPrefs({ ambientLevel: 100 - t })}
+        onChange={(t) => onLevel(100 - t)}
       />
       <Slider
         label="Яскравість підсвітки"
-        value={prefs.ambientBright ?? DEFAULT_AMBIENT_BRIGHT}
+        value={bright}
         min={50}
         max={200}
         step={10}
         format={(v) => `${v}%`}
-        onChange={(ambientBright) => onPrefs({ ambientBright })}
+        onChange={onBright}
       />
     </>
   );

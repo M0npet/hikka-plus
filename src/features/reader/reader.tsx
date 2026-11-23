@@ -8,6 +8,7 @@ import { contentFormat, neighbor, setChapterRead, setTeam, teamCounts, titleProg
 import { SettingsPanel } from './settings-panel';
 import { Button, btn, Progress, Select } from '../../ui/kit';
 import { NovelView, PagedView, StripView, tapZone, useNearness } from './views';
+import { ReaderGlow } from './glow';
 import { StatusRing } from '../../ui/status-ring';
 
 type Load =
@@ -579,6 +580,15 @@ export function Reader() {
         <div style={{ width: `${Math.round(pos * 100)}%` }} />
       </div>
       {!isNovel && <ZoneOverlay root={rootRef.current} scroll={scrollEl} paged={paged} />}
+      {!isNovel && settings.manga.glow && (
+        <ReaderGlow
+          root={rootRef.current}
+          scroll={scrollEl}
+          level={settings.manga.glowLevel}
+          bright={settings.manga.glowBright}
+          tick={`${req?.chapterId}:${page}:${load.status}:${zoom}`}
+        />
+      )}
 
       {/* Верхня панель */}
       <header className="hp-bar hp-bar--top">
