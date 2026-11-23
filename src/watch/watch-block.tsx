@@ -41,6 +41,11 @@ export type WatchBlockProps = {
   resumeAt?: () => number;
   /** Перша непереглянута серія після останньої переглянутої (Hikka або наші відмітки). */
   nextEp?: number;
+  /** Чи можна зняти відмітку «переглянуто» з серії (лічильник Hikka — лише з дозволом на запис). */
+  canUnwatch?: (ep: number) => boolean;
+  onUnwatch?: (ep: number) => void;
+  /** Відмітити серію переглянутою вручну (глазок у сітці). */
+  onMark?: (ep: number) => void;
   onSelect?: (s: { team: string; player: string; ep: number }) => void;
   onTime?: (ep: number, t: number, duration: number) => void;
   onEdStart?: (ep: number, sec: number) => void;
@@ -229,14 +234,23 @@ export function WatchBlock(p: WatchBlockProps) {
   goEpRef.current = goEp;
   const toggleWide = (v: boolean) => {
     startAt.current = p.resumeAt?.() ?? startAt.current;
+    // Наш блок у центрі міг стояти нижче (заповнення порожнечі) — повертаємо до того, як плеєр переїде в нього.
+    if (!v) layRef.current();
     setWide(v);
     p.onPrefs({ wide: v });
   };
   // «Ширше» — спільне для всіх тайтлів (налаштування могли дочитатися пізніше або змінитися у вікні налаштувань).
   useEffect(() => {
-    if (p.prefs.wide !== undefined) setWide(p.prefs.wide);
+    if (p.prefs.wide === undefined) return;
+    if (!p.prefs.wide) layRef.current();
+    setWide(p.prefs.wide);
   }, [p.prefs.wide]);
-  const lay = useWideLayout(wide && !!p.theater, slotEl, stageEl, p.theater ?? null, () => setWide(false));
+  const layRef = useRef<() => void>(() => {});
+  const lay = useWideLayout(wide && !!p.theater, slotEl, stageEl, p.theater ?? null, () => {
+    layRef.current();
+    setWide(false);
+  });
+  layRef.current = lay.restore;
   // Після перемикання «Ширше» — прокрутити до плеєра.
   useEffect(() => {
     const t = setTimeout(() => stageRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);
@@ -398,6 +412,13 @@ export function WatchBlock(p: WatchBlockProps) {
             {st?.watched ? (
               <>
                 <IconEye /> Переглянуто
+                {p.canUnwatch?.(ep) ? (
+                  <Button variant="ghost" size="xs" className="hp-watch__undo" title={`Зняти відмітку з серії ${ep}`} onClick={() => p.onUnwatch?.(ep)}>
+                    Скасувати
+                  </Button>
+                ) : (
+                  <span title="Зарахована в списку Hikka. Щоб зняти — «−» у віджеті Hikka або «Відмічати в Hikka».">· у Hikka</span>
+                )}
               </>
             ) : ed?.ed ? (
               `Зарахується з ${fmt(ed.at)} — ендинг`
@@ -448,21 +469,42 @@ export function WatchBlock(p: WatchBlockProps) {
             const n = from + i;
             const s = p.episodes[n];
             const on = n === ep;
+            const seen = !!s?.watched;
+            const lockSeen = seen && !p.canUnwatch?.(n);
             return (
-              <button
-                key={n}
-                type="button"
-                role="listitem"
-                className={cx(btn(on ? 'default' : 'secondary', 'md'), 'hp-watch__ep', s?.watched && !on && 'hp-watch__ep--seen')}
-                disabled={!has(n)}
-                aria-current={on || undefined}
-                title={!has(n) ? `Серії ${n} ще немає в цього плеєра` : s?.watched ? `Серія ${n} — переглянуто` : s?.pos ? `Серія ${n} — ${Math.round(s.pos * 100)}%` : `Серія ${n}`}
-                onClick={() => goEp(n)}
-              >
-                {s?.watched && <IconEye />}
-                {n}
-                {!s?.watched && s?.pos ? <span className="hp-watch__epbar" style={{ width: `${s.pos * 100}%` }} /> : null}
-              </button>
+              <div key={n} role="listitem" className={cx('hp-watch__cell', seen && 'hp-watch__cell--seen')}>
+                <button
+                  type="button"
+                  className={cx(btn(on ? 'default' : 'secondary', 'md'), 'hp-watch__ep', seen && !on && 'hp-watch__ep--seen')}
+                  disabled={!has(n)}
+                  aria-current={on || undefined}
+                  title={!has(n) ? `Серії ${n} ще немає в цього плеєра` : seen ? `Серія ${n} — переглянуто` : s?.pos ? `Серія ${n} — ${Math.round(s.pos * 100)}%` : `Серія ${n}`}
+                  onClick={() => goEp(n)}
+                >
+                  {n}
+                  {!seen && s?.pos ? <span className="hp-watch__epbar" style={{ width: `${s.pos * 100}%` }} /> : null}
+                </button>
+                {/* Глазок — окремий перемикач «переглянуто» (MK 03:54: «тут має бути можливість позначати»). */}
+                {(has(n) || seen) && (
+                  <button
+                    type="button"
+                    className="hp-watch__eye"
+                    aria-pressed={seen}
+                    aria-label={seen ? `Зняти відмітку з серії ${n}` : `Позначити серію ${n} переглянутою`}
+                    title={
+                      lockSeen
+                        ? 'Зарахована в списку Hikka. Щоб зняти — «−» у віджеті Hikka або «Відмічати в Hikka».'
+                        : seen
+                          ? `Зняти відмітку з серії ${n}`
+                          : `Позначити серію ${n} переглянутою`
+                    }
+                    disabled={lockSeen}
+                    onClick={() => (seen ? p.onUnwatch?.(n) : p.onMark?.(n))}
+                  >
+                    <IconEye />
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>

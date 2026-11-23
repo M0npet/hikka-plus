@@ -10,7 +10,7 @@ import { animeonTeams, mergeTeams, mikaiTeams, parseWatchLinks } from './provide
 import { aniskipRaw, edFromAniskip, watchedAt } from './threshold';
 import { getWatchSaved, updateWatchSaved, useWatchPrefs, type WatchSaved } from './watch-store';
 import { HIKKA_LIST_EVENT, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '../core/bridge';
-import { loadHikkaWatch, markHikkaEpisodes, type HikkaWatchState } from './hikka-watch';
+import { loadHikkaWatch, lowerHikkaEpisodes, markHikkaEpisodes, type HikkaWatchState } from './hikka-watch';
 import { WatchBlock, type HikkaLine } from './watch-block';
 import type { EpisodeState, WatchTeam } from './types';
 
@@ -144,14 +144,14 @@ export function WatchRoot({ slug }: { slug: string }) {
   }, [reloadHikka]);
 
   // ---------- Позиція й зарахування ----------
-  const live = useRef({ ep: 0, t: 0, lastSave: 0, playerEd: new Map<number, number>(), aniskip: new Map<number, number | null>(), marked: new Set<number>() });
+  const live = useRef({ ep: 0, t: 0, lastSave: 0, playerEd: new Map<number, number>(), aniskip: new Map<number, number | null>(), marked: new Set<number>(), blocked: new Set<number>() });
   const anime = load.status === 'ready' ? load.anime : null;
   const total = anime?.episodes_total || anime?.episodes_released || null;
 
   const markWatched = useCallback(
     (ep: number) => {
       const L = live.current;
-      if (L.marked.has(ep)) return;
+      if (L.marked.has(ep) || L.blocked.has(ep)) return;
       L.marked.add(ep);
       void updateWatchSaved(slug, (s) => ({ ...s, eps: { ...s.eps, [ep]: { pos: 1, w: 1, at: Date.now() } } })).then(() =>
         getWatchSaved(slug).then(setSaved),
@@ -178,7 +178,9 @@ export function WatchRoot({ slug }: { slug: string }) {
       const at = watchedAt(d, pEd, aEd);
       const isEd = at === pEd || at === aEd;
       setEdInfo((x) => (x && x.ep === ep && Math.abs(x.at - at) < 1 && x.ed === isEd ? x : { ep, at, ed: isEd }));
-      if (t >= at) markWatched(ep);
+      // Після «Скасувати» серію не відмічаємо знову, доки позиція не повернеться нижче порогу.
+      if (t < at) L.blocked.delete(ep);
+      else markWatched(ep);
       const now = Date.now();
       if (now - L.lastSave > SAVE_EVERY_MS) {
         L.lastSave = now;
@@ -190,6 +192,40 @@ export function WatchRoot({ slug }: { slug: string }) {
       }
     },
     [slug, anime?.mal_id, markWatched],
+  );
+
+  // Позначити вручну (глазок у сітці): як дійти до кінця — локально + лічильник Hikka до n.
+  const markManual = useCallback(
+    (ep: number) => {
+      const L = live.current;
+      L.blocked.delete(ep);
+      L.marked.delete(ep);
+      markWatched(ep);
+    },
+    [markWatched],
+  );
+
+  // Зняти відмітку «переглянуто» (MK 2026-11-23, 03:47): локально + лічильник Hikka до ep−1, якщо там серія вже зарахована.
+  const unwatch = useCallback(
+    (ep: number) => {
+      const L = live.current;
+      L.marked.delete(ep);
+      L.blocked.add(ep);
+      const hN = Math.max(hikka.status === 'ok' ? hikka.episodes : 0, pageN);
+      const now = Date.now();
+      void updateWatchSaved(slug, (s) => {
+        const eps = { ...s.eps };
+        // Лічильник Hikka опуститься до ep−1 — серії після ep, зараховані лише в Hikka, лишаємо відміченими в нас
+        // (як «прочитано» в читалці: у Hikka — до останньої поспіль, у нас — усе відмічене).
+        for (let n = ep + 1; n <= hN; n++) if (!eps[n]?.w) eps[n] = { pos: 1, w: 1, at: now };
+        delete eps[ep];
+        return { ...s, eps };
+      }).then(() => getWatchSaved(slug).then(setSaved));
+      if (ep > hN) return;
+      setPageN((n) => Math.min(n, ep - 1));
+      if (prefs.hikkaSync && hikka.status === 'ok') void lowerHikkaEpisodes(slug, ep - 1).then(setHikka);
+    },
+    [slug, hikka, pageN, prefs.hikkaSync],
   );
 
   const onEdStart = useCallback((ep: number, sec: number) => {
@@ -214,6 +250,8 @@ export function WatchRoot({ slug }: { slug: string }) {
   for (let n = 1; n <= hikkaN; n++) if (!episodes[n]?.watched) episodes[n] = { pos: 1, watched: true };
   // Перша непереглянута після останньої переглянутої — на неї стаємо при заході.
   const lastSeen = Math.max(0, ...Object.entries(episodes).filter(([, v]) => v.watched).map(([k]) => Number(k)));
+  // Серію з лічильника Hikka можна зняти лише тоді, коли ми можемо записати в Hikka.
+  const canUnwatch = (n: number) => !!episodes[n]?.watched && (n > hikkaN || (prefs.hikkaSync && hikka.status === 'ok'));
   const nextEp = lastSeen > 0 && (!total || lastSeen < total) ? lastSeen + 1 : undefined;
 
   const hikkaLine: HikkaLine =
@@ -246,6 +284,9 @@ export function WatchRoot({ slug }: { slug: string }) {
       onTime={onTime}
       onEdStart={onEdStart}
       onEnded={markWatched}
+      canUnwatch={canUnwatch}
+      onUnwatch={unwatch}
+      onMark={markManual}
     />
   );
 }

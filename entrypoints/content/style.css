@@ -1703,6 +1703,12 @@ select {
   font-weight: 400;
   color: var(--hp-muted-fg);
 }
+.hp-watch__undo.hp-btn--xs {
+  height: 20px;
+  margin-left: 2px;
+  padding: 0 6px;
+  font-weight: 500;
+}
 .hp-watch__hint .hp-icon {
   width: 14px;
   height: 14px;
@@ -1736,9 +1742,59 @@ select {
   overflow: hidden;
   font-variant-numeric: tabular-nums;
 }
-.hp-watch__ep .hp-icon {
+.hp-watch__cell {
+  position: relative;
+  display: flex;
+}
+.hp-watch__cell > .hp-watch__ep {
+  flex: 1;
+  min-width: 0;
+  padding-left: 22px;
+}
+/* Глазок «переглянуто» — окрема кнопка в лівій частині плитки. */
+.hp-watch__eye {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 2px 0 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  border-radius: var(--hp-r-lg) 0 0 var(--hp-r-lg);
+}
+.hp-watch__eye .hp-icon {
   width: 14px;
   height: 14px;
+}
+.hp-watch__cell--seen .hp-watch__eye {
+  opacity: 1;
+  color: var(--hp-muted-fg);
+}
+.hp-watch__cell:has(> .hp-watch__ep[aria-current]) .hp-watch__eye {
+  color: var(--hp-primary-fg, currentColor);
+}
+.hp-watch__cell:not(.hp-watch__cell--seen):hover .hp-watch__eye,
+.hp-watch__eye:focus-visible {
+  opacity: 0.45;
+}
+.hp-watch__cell:not(.hp-watch__cell--seen) .hp-watch__eye:hover {
+  opacity: 0.9;
+}
+.hp-watch__eye:disabled {
+  cursor: default;
+}
+@media (hover: none) {
+  .hp-watch__cell:not(.hp-watch__cell--seen) .hp-watch__eye {
+    opacity: 0.35;
+  }
 }
 .hp-watch__ep--seen {
   background: color-mix(in oklab, var(--hp-secondary) 40%, transparent);

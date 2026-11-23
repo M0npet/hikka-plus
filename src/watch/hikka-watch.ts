@@ -52,3 +52,30 @@ export async function markHikkaEpisodes(slug: string, n: number, total: number |
   notifyHikkaWatchChanged(slug);
   return { status: 'ok', episodes: (r.data as HikkaWatch).episodes, listed: true };
 }
+
+/**
+ * Зняти відмітку: лічильник у Hikka опускаємо до n (як «прочитано» в читалці, 0.4.4). «Переглянуто» → «Дивлюсь».
+ * Лише якщо в Hikka зараз більше за n.
+ */
+export async function lowerHikkaEpisodes(slug: string, n: number): Promise<HikkaWatchState> {
+  n = Math.max(0, Math.floor(n));
+  const cur = await getWatch(slug);
+  if (!cur.ok) {
+    if (cur.error === 'not-found') return { status: 'ok', episodes: 0, listed: false };
+    if (cur.error === 'scope') await watchScopeItem.setValue(false);
+    return cur.error === 'scope' ? { status: 'scope' } : cur.error === 'auth' ? { status: 'off' } : { status: 'error', message: cur.message ?? '' };
+  }
+  const base = cur.data as HikkaWatch;
+  if (base.episodes <= n) return { status: 'ok', episodes: base.episodes, listed: true };
+  const wasDone = base.status === 'completed';
+  const next: HikkaWatch = {
+    ...base,
+    episodes: n,
+    status: wasDone ? 'watching' : base.status,
+    end_date: wasDone ? null : base.end_date,
+  };
+  const r = await putWatch(slug, next);
+  if (!r.ok) return r.error === 'scope' ? { status: 'scope' } : { status: 'error', message: r.message ?? r.error ?? '' };
+  notifyHikkaWatchChanged(slug);
+  return { status: 'ok', episodes: (r.data as HikkaWatch).episodes, listed: true };
+}
