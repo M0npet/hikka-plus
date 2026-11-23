@@ -98,9 +98,10 @@ export const useRemoteRead = () =>
 
 const isCur = (kind: ReadKind, slug: string) => remote?.kind === kind && remote.slug === slug;
 
-export async function loadRemoteRead(kind: ReadKind, slug: string) {
+export async function loadRemoteRead(kind: ReadKind, slug: string, quiet = false) {
   if (!(await tokenItem.getValue())) return setRemote(null);
-  setRemote({ kind, slug, status: 'loading' });
+  // quiet — оновлення вже показаного числа: без «Завантаження…» у рядку Hikka.
+  if (!quiet || !isCur(kind, slug)) setRemote({ kind, slug, status: 'loading' });
   const r = await getRead(kind, slug);
   if (!isCur(kind, slug)) return;
   if (r.ok) setRemote({ kind, slug, status: 'ok', read: r.data as HikkaRead });

@@ -17,6 +17,20 @@ import { getSource, sourcesFor } from '../sources/registry';
 import { takeNearMiss } from '../sources/match';
 import { renumberByVolume, type Chapter, type ContentFormat, type ReadSource, type RemoteTitle } from '../sources/types';
 import { loadRemoteRead, lowerHikkaChapters, queueHikkaChapters, resetRemoteRead } from './hikka-sync';
+import { HIKKA_LIST_EVENT } from '../core/bridge';
+
+// Hikka сама змінила запис у своєму списку (напр. «+/−» у віджеті зліва; сигнал — від hikka-bridge):
+// тихо перечитуємо число з Hikka — далі hikka-bar відмітить 1–N, як при заході на сторінку.
+let listTimer: ReturnType<typeof setTimeout> | undefined;
+if (typeof document !== 'undefined')
+  document.addEventListener(HIKKA_LIST_EVENT, (e) => {
+    if ((e as CustomEvent<unknown>).detail !== 'read') return;
+    clearTimeout(listTimer);
+    listTimer = setTimeout(() => {
+      const page = titleStore.get()?.page;
+      if (page) void loadRemoteRead(page.kind, page.slug, true);
+    }, 800);
+  });
 
 /**
  * Спільний стан поточного тайтлу: його читають кнопка «Читати»,

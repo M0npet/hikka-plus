@@ -1,5 +1,5 @@
 import { defineUnlistedScript } from '#imports';
-import { READ_CHANGED_EVENT } from '@/src/core/bridge';
+import { HIKKA_LIST_EVENT, READ_CHANGED_EVENT } from '@/src/core/bridge';
 
 /**
  * Виконується в контексті сторінки hikka.io (не в ізольованому світі content script).
@@ -11,8 +11,16 @@ import { READ_CHANGED_EVENT } from '@/src/core/bridge';
 interface QueryLike {
   queryKey: unknown[];
 }
+interface CacheEvent {
+  type: string;
+  query: QueryLike & { state?: { status?: string; dataUpdatedAt?: number } };
+  action?: { type?: string };
+}
+interface QueryCacheLike {
+  subscribe(cb: (e: CacheEvent) => void): () => void;
+}
 interface QueryClientLike {
-  getQueryCache(): unknown;
+  getQueryCache(): QueryCacheLike;
   invalidateQueries(filters: { predicate: (q: QueryLike) => boolean }): Promise<void>;
 }
 
@@ -31,6 +39,36 @@ export default defineUnlistedScript(() => {
     }
     return null;
   }
+
+  // Зворотний бік: Hikka сама змінила свій запис (напр. «+/−» у віджеті «у списку») — кажемо content script
+  // перечитати число з Hikka. Ловимо успішні оновлення запитів читання/перегляду в кеші TanStack Query.
+  let unsub: (() => void) | null = null;
+  const last = new Map<string, number>();
+  function watchCache() {
+    if (unsub) return;
+    client ??= findClient();
+    if (!client) return;
+    unsub = client.getQueryCache().subscribe((ev) => {
+      if (ev.type !== 'updated' || ev.action?.type !== 'success') return;
+      const k = ev.query.queryKey[0] as { _id?: unknown } | undefined;
+      const id = k && typeof k === 'object' ? String(k._id ?? '') : '';
+      // Лише сам запис у списку (віджет «у списку»), не статистика й «читають друзі».
+      const kind = id === 'watchGet' ? 'watch' : id === 'readGet' ? 'read' : '';
+      if (!kind) return;
+      const at = ev.query.state?.dataUpdatedAt ?? 0;
+      const key = JSON.stringify(ev.query.queryKey);
+      if (last.get(key) === at) return;
+      last.set(key, at);
+      document.dispatchEvent(new CustomEvent(HIKKA_LIST_EVENT, { detail: kind }));
+    });
+  }
+  // Застосунок Hikka з'являється не одразу й може перемонтуватися — пробуємо періодично.
+  watchCache();
+  const retry = setInterval(() => {
+    if (unsub) return clearInterval(retry);
+    watchCache();
+  }, 1000);
+  setTimeout(() => clearInterval(retry), 60_000);
 
   document.addEventListener(READ_CHANGED_EVENT, (e) => {
     const slug = (e as CustomEvent<unknown>).detail;

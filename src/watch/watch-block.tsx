@@ -7,8 +7,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
-import { IconExpand, IconExternal, IconEye, IconHeart, IconLeft, IconRight, IconSettings, IconShrink } from '../ui/icons';
+import { IconExpand, IconExternal, IconEye, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv } from '../ui/icons';
 import { attachPlayer } from './adapters';
+import { useWideLayout } from './wide-layout';
 import { PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
 import type { WatchPrefs } from './watch-store';
 
@@ -160,6 +161,12 @@ export function WatchBlock(p: WatchBlockProps) {
   const [range, setRange] = useState('0');
   // З якої секунди почати після (пере)завантаження iframe.
   const startAt = useRef(init?.t ?? 0);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const [stageEl, setStageEl] = useState<HTMLDivElement | null>(null);
+  const [slotEl, setSlotEl] = useState<HTMLDivElement | null>(null);
+  const [full, setFull] = useState(false);
+  const canFull = typeof document !== 'undefined' && document.fullscreenEnabled !== false;
 
   const team = p.teams.find((t) => t.id === teamId) ?? p.teams[0];
   const players = useMemo(() => {
@@ -188,6 +195,25 @@ export function WatchBlock(p: WatchBlockProps) {
   const toggleWide = (v: boolean) => {
     startAt.current = p.resumeAt?.() ?? startAt.current;
     setWide(v);
+  };
+  const lay = useWideLayout(wide && !!p.theater, slotEl, stageEl, p.theater ?? null, () => setWide(false));
+  // Після перемикання «Ширше» — прокрутити до плеєра.
+  useEffect(() => {
+    const t = setTimeout(() => stageRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);
+    return () => clearTimeout(t);
+  }, [wide]);
+  // Повний екран — рамка разом з iframe (сам iframe не перезавантажується, позиція й адаптер лишаються).
+  useEffect(() => {
+    const on = () => {
+      const el = frameRef.current;
+      setFull(!!el && (document.fullscreenElement === el || (el.getRootNode() as ShadowRoot).fullscreenElement === el));
+    };
+    document.addEventListener('fullscreenchange', on);
+    return () => document.removeEventListener('fullscreenchange', on);
+  }, []);
+  const toggleFull = () => {
+    if (full) void document.exitFullscreen?.().catch(() => {});
+    else void frameRef.current?.requestFullscreen?.().catch(() => {});
   };
 
   if (p.status === 'loading')
@@ -221,8 +247,14 @@ export function WatchBlock(p: WatchBlockProps) {
   const st = p.episodes[ep];
   const ed = p.edInfo && p.edInfo.ep === ep ? p.edInfo : null;
   const frame = (
-    <div className={cx('hp-watch__stage', wide && 'hp-watch__stage--wide')}>
-      <div className="hp-watch__frame">
+    <div
+      ref={(el) => {
+        stageRef.current = el;
+        setStageEl(el);
+      }}
+      className={cx('hp-watch__stage', wide && 'hp-watch__stage--wide')}
+    >
+      <div ref={frameRef} className="hp-watch__frame">
         {p.renderFrame ? (
           p.renderFrame(player, ep)
         ) : (
@@ -281,12 +313,25 @@ export function WatchBlock(p: WatchBlockProps) {
           size="sm"
           icon
           className="hp-watch__wide"
+          aria-pressed={wide}
           aria-label={wide ? 'Звичайний розмір' : 'Ширше'}
           title={wide ? 'Звичайний розмір' : 'Ширше'}
           onClick={() => toggleWide(!wide)}
         >
-          {wide ? <IconShrink /> : <IconExpand />}
+          <IconTv />
         </Button>
+        {canFull && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon
+            aria-label={full ? 'Вийти з повного екрана' : 'На весь екран'}
+            title={full ? 'Вийти з повного екрана' : 'На весь екран'}
+            onClick={toggleFull}
+          >
+            {full ? <IconShrink /> : <IconExpand />}
+          </Button>
+        )}
       </Header>
 
       <div className="hp-card">
@@ -347,12 +392,13 @@ export function WatchBlock(p: WatchBlockProps) {
         </div>
 
         {portal ? (
-          <div className="hp-watch__moved">
-            Плеєр над сторінкою.
-            <Button variant="ghost" size="sm" onClick={() => toggleWide(false)}>
-              Повернути сюди
-            </Button>
-          </div>
+          // Місце під плеєр «Ширше»: сам плеєр лежить поверх сітки (wide-layout.ts), тут — лише його висота.
+          <div
+            ref={setSlotEl}
+            className="hp-watch__slot"
+            style={{ paddingTop: lay.offset, height: lay.offset + lay.height }}
+            aria-hidden="true"
+          />
         ) : (
           frame
         )}

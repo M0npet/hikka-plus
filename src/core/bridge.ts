@@ -13,3 +13,9 @@ export function notifyHikkaReadChanged(slug: string) {
 export function notifyHikkaWatchChanged(slug: string) {
   document.dispatchEvent(new CustomEvent(READ_CHANGED_EVENT, { detail: `watch:${slug}` }));
 }
+
+/**
+ * Подія сторінки → content script: Hikka сама змінила запис у своєму списку (напр. «+/−» у віджеті зліва)
+ * — оновити число з Hikka в блоці «Розділи». detail — рядок `read` або `watch`.
+ */
+export const HIKKA_LIST_EVENT = 'hikka-plus:hikka-list-changed';

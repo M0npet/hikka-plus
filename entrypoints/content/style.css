@@ -1373,6 +1373,39 @@ select {
   background: var(--hp-tint-bg);
   color: var(--hp-primary-fg);
 }
+/* Підсвітка зон кліку поверх сторінки після зміни налаштування (як у Senkuro). */
+.hp-zones {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  pointer-events: none;
+  animation: hp-zones 2.2s ease forwards;
+}
+@keyframes hp-zones {
+  0% { opacity: 0; }
+  10%, 75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.hp-zones__c--prev {
+  background: rgb(255 170 60 / 0.42);
+}
+.hp-zones__c--next {
+  background: rgb(60 190 100 / 0.42);
+}
+.hp-zones__c--menu {
+  background: rgb(150 150 150 / 0.35);
+}
+.hp-zones__label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: clamp(24px, 6vw, 72px);
+  font-weight: 700;
+  color: rgb(255 255 255 / 0.85);
+  text-shadow: 0 2px 12px rgb(0 0 0 / 0.6);
+  white-space: nowrap;
+}
 .hp-zonemap__c--menu {
   color: var(--hp-muted-fg, inherit);
 }
@@ -1628,27 +1661,30 @@ select {
   font-size: 14px;
 }
 /* Режим «Ширше»: плеєр над колонками сторінки, висота не більша за екран. */
-.hp-watch__stage--wide .hp-watch__frame {
-  max-height: calc(100vh - 140px);
+.hp-watch__stage {
+  scroll-margin-top: 72px;
+}
+/* Повний екран: рамка на весь екран, без рамки й заокруглень. */
+.hp-watch__frame:fullscreen {
+  width: 100%;
+  height: 100%;
+  max-height: none;
   aspect-ratio: auto;
-  height: min(calc(100vh - 140px), calc((100vw - 48px) * 9 / 16));
+  border: 0;
+  border-radius: 0;
+}
+.hp-watch__stage--wide {
+  background: var(--hp-bg);
+}
+.hp-watch__stage--wide .hp-watch__frame {
+  max-width: calc((100vh - 140px) * 16 / 9);
+  margin-inline: auto;
 }
 .hp-watch__stagebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-size: 14px;
-  color: var(--hp-muted-fg);
-}
-.hp-watch__moved {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px dashed var(--hp-border);
-  border-radius: var(--hp-r-lg);
   font-size: 14px;
   color: var(--hp-muted-fg);
 }
@@ -1779,9 +1815,10 @@ select {
 .hp-watch__menu {
   max-width: min(360px, calc(100vw - 32px));
 }
-/* Місце для плеєра «Ширше» над колонками: відступ лише коли там є плеєр. */
-.hp-theater:not(:empty) {
-  margin-bottom: 32px;
+/* «Ширше»: місце в блоці під плеєр, що лежить поверх сітки на всю її ширину. */
+.hp-watch__slot {
+  box-sizing: border-box;
+  flex: none;
 }
 .hp-watch__epname > span:first-child {
   white-space: nowrap;

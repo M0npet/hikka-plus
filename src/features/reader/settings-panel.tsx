@@ -94,16 +94,19 @@ export function MangaFields({
           />
         </Field>
       ))}
-      <Field label="Напрям гортання">
-        <Tabs
-          value={m.rtl}
-          options={[
-            [false, 'Зліва направо'],
-            [true, 'Справа наліво'],
-          ]}
-          onChange={(rtl) => setManga({ rtl })}
-        />
-      </Field>
+      {/* Напрям діє лише на посторінкове гортання; у стрічці (манхва) він нічого не змінює — не показуємо. */}
+      {modes.some(([key]) => m[key] === 'paged') && (
+        <Field label="Напрям гортання" hint="Лише в режимі «Посторінково»">
+          <Tabs
+            value={m.rtl}
+            options={[
+              [false, 'Зліва направо'],
+              [true, 'Справа наліво'],
+            ]}
+            onChange={(rtl) => setManga({ rtl })}
+          />
+        </Field>
+      )}
       <Field label="Вписувати зображення">
         <Tabs
           value={m.fit}

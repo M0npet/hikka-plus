@@ -229,7 +229,7 @@ function HikkaSection({ mode }: { mode: SettingsMode }) {
 
 function ReaderSection() {
   const s = useSettings();
-  const [tab, setTab] = useState<'novel' | 'manga'>('novel');
+  const [tab, setTab] = useState<'novel' | 'manga' | 'webtoon'>('novel');
   return (
     <>
       <Header title="Читалка">
@@ -248,6 +248,7 @@ function ReaderSection() {
         options={[
           ['novel', 'Ранобе'],
           ['manga', 'Манґа'],
+          ['webtoon', 'Манхва'],
         ]}
         onChange={setTab}
         label="Тип читалки"
@@ -256,13 +257,16 @@ function ReaderSection() {
         {tab === 'novel' ? (
           <NovelFields n={s.novel} />
         ) : (
+          // Режим і ширина — свої для манґи й манхви; решта полів (зони, якість, яскравість…) спільні.
+          <>
+          <p className="hp-small hp-muted">Режим і ширина — окремо для манґи й манхви, решта налаштувань спільна.</p>
           <MangaFields
+            key={tab}
             m={s.manga}
-            modes={[
-              ['modeManga', 'Режим для манґи'],
-              ['modeWebtoon', 'Режим для манхви й маньхуа'],
-            ]}
+            modes={[tab === 'manga' ? ['modeManga', 'Режим читання'] : ['modeWebtoon', 'Режим читання (манхва й маньхуа)']]}
+            widths={[tab === 'manga' ? 'width' : 'widthWebtoon']}
           />
+          </>
         )}
         <SwitchRow
           label="Ховати панелі при прокрутці"

@@ -21,6 +21,22 @@ type Seg = { chapter: Chapter; content: Images };
 type Auto = 'off' | 'run' | 'pause';
 
 const SAVE_DELAY = 600;
+
+/**
+ * Прогрес у стрічці картинок — за сторінками, а не за висотою прокрутки: ще не завантажені
+ * сторінки мають висоту-заглушку, тож частка від scrollHeight брехала й стрибала (живий тест MK 2026-11-23).
+ * Частка = (номер сторінки під верхом екрана + прогорнута частина цієї сторінки) / кількість сторінок.
+ */
+function pagesRatio(pages: ArrayLike<HTMLElement>, viewTop: number): number {
+  const n = pages.length;
+  if (!n) return 0;
+  let cur = -1;
+  for (let i = 0; i < n; i++) if (pages[i]!.getBoundingClientRect().top <= viewTop) cur = i;
+  if (cur < 0) return 0;
+  const r = pages[cur]!.getBoundingClientRect();
+  const frac = r.height > 0 ? Math.max(0, Math.min(1, (viewTop - r.top) / r.height)) : 0;
+  return Math.min(1, (cur + frac) / n);
+}
 /** За скільки екранів до кінця стрічки підвантажувати наступний розділ. */
 const PRELOAD_SCREENS = 3;
 const MAX_ZOOM = 3;
@@ -329,7 +345,13 @@ export function Reader() {
     if (!el || paged || load.status !== 'ready') return;
     const top = el.scrollTop;
     const max = Math.max(1, el.scrollHeight - el.clientHeight);
-    const ratio = Math.min(1, top / max);
+    const viewTop = el.getBoundingClientRect().top;
+    const atEnd = max - top < 40;
+    const ratio = isNovel
+      ? Math.min(1, top / max)
+      : atEnd
+        ? 1
+        : pagesRatio(el.querySelectorAll<HTMLElement>('[data-page]'), viewTop);
     setPos(ratio);
 
     // Стрибок від відновлення позиції — не прокрутка користувача: панелі лишаються.
@@ -375,10 +397,11 @@ export function Reader() {
     const seg = segs.find((x) => x.chapter.id === id);
     if (!seg) return;
     const r = cur.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (box.top - r.top) / Math.max(1, r.height - el.clientHeight)));
+    const pages = cur.querySelectorAll<HTMLElement>('[data-page]');
+    const segEnd = r.bottom - (box.top + el.clientHeight) < 40;
+    const ratio = segEnd ? 1 : pagesRatio(pages, box.top);
     setPos(ratio);
 
-    const pages = cur.querySelectorAll<HTMLElement>('[data-page]');
     let pgNo = 0;
     for (const p of pages) if (p.getBoundingClientRect().top <= mid) pgNo = Number(p.dataset.page);
     const pg = { page: pgNo, pages: pages.length };
@@ -399,7 +422,6 @@ export function Reader() {
       moveReader({ sourceId, chapterId: seg.chapter.id });
     }
 
-    const segEnd = r.bottom - (box.top + el.clientHeight) < 40;
     if ((ratio >= DONE_AT || segEnd) && !doneRef.current.has(seg.chapter.id)) {
       doneRef.current.add(seg.chapter.id);
       saveFor(seg.chapter, 1, true, false, { page: pg.pages - 1, pages: pg.pages });
@@ -556,6 +578,7 @@ export function Reader() {
       <div className="hp-chbar" aria-hidden="true">
         <div style={{ width: `${Math.round(pos * 100)}%` }} />
       </div>
+      {!isNovel && <ZoneOverlay root={rootRef.current} scroll={scrollEl} paged={paged} />}
 
       {/* Верхня панель */}
       <header className="hp-bar hp-bar--top">
@@ -916,5 +939,80 @@ function ChaptersPanel(props: {
         })}
       </div>
     </aside>
+  );
+}
+
+/**
+ * Підсвітка зон кліку поверх сторінки (як у Senkuro) — коротко після зміни схеми зон чи «Де працюють зони».
+ * Геометрія та сама, що в обробниках кліку: стрічка — зони від екрана читалки (на «На сторінці» — лише над картинкою),
+ * посторінково — від сторінки (видима частина), з урахуванням напряму гортання.
+ */
+function ZoneOverlay({ root, scroll, paged }: { root: HTMLElement | null; scroll: HTMLElement | null; paged: boolean }) {
+  const settings = useSettings();
+  const m = settings.manga;
+  const [box, setBox] = useState<{ x: number; y: number; w: number; h: number; clip?: [number, number] } | null>(null);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    if (!root || !scroll || m.tapScheme === 'off') return setBox(null);
+    const rr = root.getBoundingClientRect();
+    let r: DOMRect;
+    let clip: [number, number] | undefined;
+    if (paged) {
+      const el = scroll.querySelector<HTMLElement>(m.clickArea === 'image' ? '.hp-page img' : '.hp-page');
+      if (!el) return;
+      const b = el.getBoundingClientRect();
+      const top = Math.max(b.top, rr.top);
+      r = new DOMRect(b.left, top, b.width, Math.min(b.bottom, rr.bottom) - top);
+    } else {
+      r = scroll.getBoundingClientRect();
+      if (m.clickArea === 'image') {
+        const pg = scroll.querySelector<HTMLElement>('.hp-strip__pg');
+        if (pg) {
+          const b = pg.getBoundingClientRect();
+          clip = [Math.max(0, b.left - r.left), Math.max(0, r.right - b.right)];
+        }
+      }
+    }
+    setBox({ x: r.left - rr.left, y: r.top - rr.top, w: r.width, h: r.height, clip });
+    const t = window.setTimeout(() => setBox(null), 2200);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [m.tapScheme, m.clickArea]);
+  if (!box) return null;
+  const rtl = paged && m.rtl;
+  const cells = [1 / 6, 1 / 2, 5 / 6].flatMap((y) => [1 / 6, 1 / 2, 5 / 6].map((x) => tapZone(m.tapScheme, x, y, rtl)));
+  return (
+    <div
+      className="hp-zones"
+      aria-hidden="true"
+      style={{
+        left: box.x,
+        top: box.y,
+        width: box.w,
+        height: box.h,
+        clipPath: box.clip ? `inset(0 ${box.clip[1]}px 0 ${box.clip[0]}px)` : undefined,
+      }}
+    >
+      {cells.map((d, i) => (
+        <span key={i} className={`hp-zones__c hp-zones__c--${d < 0 ? 'prev' : d > 0 ? 'next' : 'menu'}`} />
+      ))}
+      {/* Підписи — по центру зон «Назад»/«Далі» (як у Senkuro), «Меню» — у середній клітинці. */}
+      {(['prev', 'menu', 'next'] as const).map((k) => {
+        const idx = cells.map((d, i) => ((d < 0 ? 'prev' : d > 0 ? 'next' : 'menu') === k ? i : -1)).filter((i) => i >= 0);
+        if (!idx.length || (k === 'menu' && !idx.includes(4))) return null;
+        const at = k === 'menu' ? [4] : idx;
+        const cx = at.reduce((a, i) => a + (i % 3), 0) / at.length;
+        const cy = at.reduce((a, i) => a + Math.floor(i / 3), 0) / at.length;
+        return (
+          <b key={k} className="hp-zones__label" style={{ left: `${((cx + 0.5) / 3) * 100}%`, top: `${((cy + 0.5) / 3) * 100}%` }}>
+            {k === 'prev' ? 'Назад' : k === 'next' ? 'Далі' : 'Меню'}
+          </b>
+        );
+      })}
+    </div>
   );
 }
