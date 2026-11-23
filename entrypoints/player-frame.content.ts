@@ -91,28 +91,32 @@ function ambient() {
     timer = 0;
   };
 
+  // Moon: вигляд панелі — налаштування самого плеєра (data-ma-bar на <html>, напр. "below" — «Під кадром»).
+  // Лише ЧИТАЄМО й кажемо hikka.io: при «Під кадром» рамка вища (інакше смуги, а на малій висоті у Firefox панель блимає).
+  // Шлемо при зміні і у відповідь на КОЖЕН запит hikka.io (там обробник міг перестворитися й скинути стан).
+  const moon = location.hostname.startsWith('moonanime.');
+  let lastBar: string | null | undefined;
+  const reportBar = (force = false) => {
+    if (!moon) return;
+    const bar = document.documentElement.getAttribute('data-ma-bar');
+    if (!force && bar === lastBar) return;
+    if (bar !== lastBar) console.info(`[Hikka Plus] Moon: вигляд панелі «${bar ?? 'типовий'}»`);
+    lastBar = bar;
+    send({ bar: bar ?? '' });
+  };
+  if (moon) new MutationObserver(() => reportBar()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-ma-bar'] });
+
   window.addEventListener('message', (e) => {
     if (e.source !== window.parent || e.origin !== PARENT) return;
     const d = e.data as { type?: unknown; on?: unknown } | null;
     if (!d || d.type !== AMBIENT_REQ) return;
     on = d.on === true;
+    reportBar(true);
     if (on) start();
     else stop();
   });
   // hikka.io міг надіслати запит раніше, ніж ми запустилися, — просимо повторити.
   send({ ready: true });
+  reportBar(true);
 
-  // Moon: вигляд панелі — налаштування самого плеєра (data-ma-bar на <html>, напр. "below" — «Під кадром»).
-  // Лише ЧИТАЄМО й кажемо hikka.io: при «Під кадром» рамка вища (інакше смуги, а на малій висоті у Firefox панель блимає).
-  if (location.hostname.startsWith('moonanime.')) {
-    let lastBar: string | null | undefined;
-    const report = () => {
-      const bar = document.documentElement.getAttribute('data-ma-bar');
-      if (bar === lastBar) return;
-      lastBar = bar;
-      send({ bar: bar ?? '' });
-    };
-    report();
-    new MutationObserver(report).observe(document.documentElement, { attributes: true, attributeFilter: ['data-ma-bar'] });
-  }
 }

@@ -214,6 +214,10 @@ export function WatchBlock(p: WatchBlockProps) {
   const dupKind = (x: WatchPlayer) => players.filter((y) => y.kind === x.kind).length > 1;
   const count = Math.max(team ? teamEpisodes(team) : 0, p.total ?? 0, ep);
   const has = (n: number) => !!player?.episodes.includes(n);
+  /** Плеєр команди, у якому є серія n: поточний, інакше перший за порядком (улюблений — першим). */
+  const playerFor = (n: number) => (has(n) ? player : players.find((x) => x.episodes.includes(n)));
+  /** Серія є хоч в одному плеєрі команди (MK 15:26: у Moon до 16, а в команди 21 — серії мали вибиратися). */
+  const teamHas = (n: number) => !!playerFor(n);
 
   useEffect(() => {
     setRange(String(Math.floor((ep - 1) / RANGE)));
@@ -225,7 +229,10 @@ export function WatchBlock(p: WatchBlockProps) {
 
   const goEp = (n: number) => {
     picked.current = true;
-    if (n === ep && n === frameEp) return;
+    // У поточного плеєра цієї серії немає — перемикаємося на плеєр команди, де вона є.
+    const alt = playerFor(n);
+    if (alt && player && alt.id !== player.id) setPlayerId(alt.id);
+    if (n === ep && n === frameEp && (!alt || alt.id === player?.id)) return;
     startAt.current = 0;
     setEp(n);
     setFrameEp(n);
@@ -247,7 +254,7 @@ export function WatchBlock(p: WatchBlockProps) {
   // приходить не одразу). Лише доки користувач сам нічого не вибрав.
   useEffect(() => {
     const n = p.nextEp;
-    if (picked.current || !n || n === ep || !player || !has(n)) return;
+    if (picked.current || !n || n === ep || !player || !teamHas(n)) return;
     if (!p.episodes[ep]?.watched) return; // почата й не дограна — лишаємо
     picked.current = true;
     goEp(n);
@@ -347,8 +354,8 @@ export function WatchBlock(p: WatchBlockProps) {
           onEnded={() => {
             const cur = ep;
             p.onEnded?.(cur);
-            if (!p.prefs.autoNext || cur >= count || !has(cur + 1)) return;
-            if (player.kind !== 'fenix') return goEp(cur + 1);
+            if (!p.prefs.autoNext || cur >= count || !teamHas(cur + 1)) return;
+            if (player.kind !== 'fenix' || !has(cur + 1)) return goEp(cur + 1);
             // Fenix може й сам перейти на наступну (episode_change) — тоді не перезавантажуємо.
             const at = Date.now();
             setTimeout(() => {
@@ -461,7 +468,7 @@ export function WatchBlock(p: WatchBlockProps) {
             )}
           </span>
         </div>
-        <Button variant="secondary" size="md" icon aria-label="Наступна серія" disabled={ep >= count || !has(ep + 1)} onClick={() => goEp(ep + 1)}>
+        <Button variant="secondary" size="md" icon aria-label="Наступна серія" disabled={ep >= count || !teamHas(ep + 1)} onClick={() => goEp(ep + 1)}>
           <IconRight />
         </Button>
         {h?.kind === 'count' && (
@@ -510,16 +517,16 @@ export function WatchBlock(p: WatchBlockProps) {
                 <button
                   type="button"
                   className={cx(btn(on ? 'default' : 'secondary', 'md'), 'hp-watch__ep', seen && !on && 'hp-watch__ep--seen')}
-                  disabled={!has(n)}
+                  disabled={!teamHas(n)}
                   aria-current={on || undefined}
-                  title={!has(n) ? `Серії ${n} ще немає в цього плеєра` : seen ? `Серія ${n} — переглянуто` : s?.pos ? `Серія ${n} — ${Math.round(s.pos * 100)}%` : `Серія ${n}`}
+                  title={!teamHas(n) ? `Серії ${n} ще немає в цієї команди` : !has(n) ? `Серія ${n} — у плеєрі ${PLAYER_NAMES[playerFor(n)!.kind]}` : seen ? `Серія ${n} — переглянуто` : s?.pos ? `Серія ${n} — ${Math.round(s.pos * 100)}%` : `Серія ${n}`}
                   onClick={() => goEp(n)}
                 >
                   {n}
                   {!seen && s?.pos ? <span className="hp-watch__epbar" style={{ width: `${s.pos * 100}%` }} /> : null}
                 </button>
                 {/* Глазок — окремий перемикач «переглянуто» (MK 03:54: «тут має бути можливість позначати»). */}
-                {(has(n) || seen) && (
+                {(teamHas(n) || seen) && (
                   <button
                     type="button"
                     className="hp-watch__eye"
