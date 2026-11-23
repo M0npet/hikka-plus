@@ -237,6 +237,61 @@ function SourceSwitcher({
   );
 }
 
+const numOf = (c: Chapter) => Number.parseFloat(c.number.replace(',', '.'));
+
+/**
+ * Тут розділи скінчились (або нумерація стрибає — напр. Zenko 132 → 574), а наступний після
+ * прочитаного є на іншому джерелі — підказка «Розділ N є на …» з переходом (рішення MK 2026-11-23).
+ */
+type Elsewhere = { src: ReadSource; left: number };
+export function continueElsewhere(s: TitleState): { no: number; first: Elsewhere; items: Elsewhere[] } | null {
+  let max = 0;
+  for (const [k, c] of Object.entries(s.progress.chapters)) {
+    const n = Number.parseFloat(k);
+    if (c.read && Number.isFinite(n)) max = Math.max(max, Math.floor(n));
+  }
+  if (max < 1) return null;
+  const next = (c: Chapter) => {
+    const n = numOf(c);
+    return n > max && n <= max + 1;
+  };
+  if (visibleChapters(s).some(next)) return null;
+  const items = sourcesFor(s.page.kind).flatMap((src) => {
+    const st = s.sources[src.id];
+    if (src.id === s.activeId || st?.status !== 'ready' || !st.chapters.some(next)) return [];
+    const left = new Set(st.chapters.map(numOf).filter((n) => n > max)).size;
+    return [{ src, left }];
+  });
+  const first = items[0];
+  return first ? { no: max + 1, first, items } : null;
+}
+
+function ContinueElsewhere({ state: s }: { state: TitleState }) {
+  const hint = continueElsewhere(s);
+  if (!hint) return null;
+  const { first } = hint;
+  const rest = hint.items.slice(1);
+  return (
+    <div className="hp-hikka hp-hikka--offer">
+      <span className="hp-grow hp-small">
+        Тут далі немає — розділ {hint.no} є на {first.src.name} (ще {first.left})
+        {rest.length > 0 && <span className="hp-muted"> · також {rest.map((i) => i.src.name).join(', ')}</span>}
+      </span>
+      {hint.items.map((i) => (
+        <Button
+          key={i.src.id}
+          variant={i === first ? 'default' : 'ghost'}
+          size="sm"
+          title={`Перейти на ${i.src.name}: ще ${i.left} розд.`}
+          onClick={() => void setActiveSource(i.src.id)}
+        >
+          {i === first ? `Читати на ${i.src.name}` : i.src.name}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 function ChapterList({ state: s }: { state: TitleState }) {
   const [query, setQuery] = useState('');
   const [desc, setDesc] = useState(false);
@@ -260,6 +315,7 @@ function ChapterList({ state: s }: { state: TitleState }) {
   const { read, total } = titleProgress(s);
   const pct = total ? Math.round((read / total) * 100) : 0;
   const target = continueTarget(s);
+  const elsewhere = continueElsewhere(s);
   const lastKey = s.progress.last?.key;
 
   // Список одразу на останньому відкритому розділі (або на тому, з якого продовжувати), щоб не гортати.
@@ -294,13 +350,18 @@ function ChapterList({ state: s }: { state: TitleState }) {
             {total > 0 && read >= total ? (
               <span className="hp-muted"> · усе прочитано</span>
             ) : (
-              target && read > 0 && <span className="hp-muted"> · далі: розділ {chapterNo(target)}</span>
+              elsewhere ? (
+                <span className="hp-muted"> · далі: розділ {elsewhere.no} на {elsewhere.first.src.name}</span>
+              ) : (
+                target && read > 0 && <span className="hp-muted"> · далі: розділ {chapterNo(target)}</span>
+              )
             )}
           </span>
           <span className="hp-muted hp-tnum">{pct}%</span>
         </div>
         <Progress value={pct} />
         <HikkaSyncBar state={s} />
+        <ContinueElsewhere state={s} />
       </div>
 
       <div className="hp-toolbar">

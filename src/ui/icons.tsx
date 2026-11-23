@@ -49,3 +49,5 @@ export const IconLink = base([
   'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71',
 ]);
 export const IconReset = base(['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5']);
+export const IconPlay = base(['M6 4v16l14-8z']);
+export const IconPause = base(['M8 5v14', 'M16 5v14']);

@@ -10,7 +10,7 @@ import {
   useHikkaAuth,
   useRemoteRead,
 } from './hikka-sync';
-import { markReadUpTo, maxReadLocal, titleStore, type TitleState } from './title-state';
+import { markReadUpTo, markUntrackedUpTo, maxReadLocal, titleStore, untrackedUpTo, type TitleState } from './title-state';
 import { Button, Switch } from '../ui/kit';
 
 const STATUS: Record<string, string> = {
@@ -74,6 +74,14 @@ export function HikkaSyncBar({ state: s }: { state: TitleState }) {
       if (first && behind && cur?.kind === kind && cur.slug === slug) void markReadUpTo(hikkaN);
     });
   }, [behind, kind, slug, hikkaN]);
+  // Розділи ≤ N, яких тут ще не торкались (проміжні «34.5», джерело/команда завантажились пізніше),
+  // відмічаємо завжди — не лише при першому баченні числа. Зняті вручну мають запис і лишаються.
+  const untracked = hikkaN > 0 ? untrackedUpTo(s, hikkaN).length : 0;
+  useEffect(() => {
+    if (!untracked) return;
+    const cur = titleStore.get()?.page;
+    if (cur?.kind === kind && cur.slug === slug) void markUntrackedUpTo(hikkaN);
+  }, [untracked, kind, slug, hikkaN]);
 
   if (!auth.configured) return null;
 

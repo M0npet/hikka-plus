@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify';
-import { useEffect, useMemo, type MouseEvent } from 'react';
-import type { ReaderSettings } from '../../core/store';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import type { ReaderSettings, TapScheme } from '../../core/store';
 import type { ChapterContent } from '../../sources/types';
 
 const FONTS: Record<ReaderSettings['novel']['font'], string> = {
@@ -42,28 +42,127 @@ export function NovelView({ html, title, s }: { html: string; title: string; s: 
 
 type Images = Extract<ChapterContent, { type: 'images' }>;
 
-export function StripView({ content, s }: { content: Images; s: ReaderSettings['manga'] }) {
+/** Куди веде клік у точці (x, y — частки 0..1 від екрана/зображення): -1 назад, 1 далі, 0 — панелі. */
+export function tapZone(scheme: TapScheme, x: number, y: number, rtl = false): -1 | 0 | 1 {
+  if (rtl) x = 1 - x;
+  const h = x < 1 / 3 ? -1 : x > 2 / 3 ? 1 : 0;
+  const v = y < 1 / 3 ? -1 : y > 2 / 3 ? 1 : 0;
+  if (scheme === 'lr') return h;
+  if (scheme === 'tb') return v;
+  if (scheme === 'l') return v !== 0 ? v : h;
+  return 0;
+}
+
+/**
+ * Спільні спостерігачі для картинок стрічки: «близько» (вантажимо заздалегідь, ~3 екрани вниз)
+ * і «далеко» (вивантажуємо, щоб довга стрічка не їла пам'ять; висота лишається — без стрибків).
+ */
+export type Nearness = { observe: (el: Element, cb: (near: boolean, far: boolean) => void) => () => void };
+
+export function useNearness(root: HTMLElement | null): Nearness | null {
+  return useMemo(() => {
+    if (!root || typeof IntersectionObserver === 'undefined') return null;
+    const cbs = new Map<Element, (near: boolean, far: boolean) => void>();
+    const near = new IntersectionObserver(
+      (es) => es.forEach((e) => e.isIntersecting && cbs.get(e.target)?.(true, false)),
+      { root, rootMargin: '150% 0px 300% 0px' },
+    );
+    const far = new IntersectionObserver(
+      (es) => es.forEach((e) => !e.isIntersecting && cbs.get(e.target)?.(false, true)),
+      { root, rootMargin: '800% 0px 800% 0px' },
+    );
+    return {
+      observe(el, cb) {
+        cbs.set(el, cb);
+        near.observe(el);
+        far.observe(el);
+        return () => {
+          cbs.delete(el);
+          near.unobserve(el);
+          far.unobserve(el);
+        };
+      },
+    };
+  }, [root]);
+}
+
+function StripImg({
+  url,
+  i,
+  eager,
+  original,
+  nearness,
+}: {
+  url: string;
+  i: number;
+  eager: boolean;
+  original: boolean;
+  nearness: Nearness | null;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [on, setOn] = useState(eager || !nearness);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !nearness) return;
+    return nearness.observe(el, (near, far) => {
+      if (near) setOn(true);
+      else if (far) setOn(false);
+    });
+  }, [nearness]);
   return (
     <div
-      className="hp-strip"
+      ref={ref}
+      className={`hp-strip__pg ${size ? 'hp-strip__pg--sized' : ''}`}
+      data-page={i}
+      style={size ? { aspectRatio: `${size.w} / ${size.h}`, ...(original ? { width: `min(${size.w}px, 100vw)` } : {}) } : undefined}
+    >
+      {on && (
+        <img
+          src={url}
+          alt={`Сторінка ${i + 1}`}
+          referrerPolicy="no-referrer"
+          decoding="async"
+          draggable={false}
+          onLoad={(e) => {
+            const im = e.currentTarget;
+            if (im.naturalWidth && im.naturalHeight) setSize({ w: im.naturalWidth, h: im.naturalHeight });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+export function StripView({
+  content,
+  s,
+  width,
+  nearness,
+  zoom = 1,
+  feed = false,
+}: {
+  feed?: boolean;
+  content: Images;
+  s: ReaderSettings['manga'];
+  width: number;
+  nearness: Nearness | null;
+  /** Масштаб щипком (1 — звичайна ширина). */
+  zoom?: number;
+}) {
+  const original = s.fit === 'original';
+  return (
+    <div
+      className={['hp-strip', original && 'hp-strip--original', feed && 'hp-strip--feed'].filter(Boolean).join(' ')}
       style={{
-        maxWidth: s.fit === 'original' ? 'none' : s.width,
+        maxWidth: original || zoom > 1 ? 'none' : width,
+        width: zoom > 1 ? `calc(min(100%, ${width}px) * ${zoom})` : undefined,
         gap: s.gap,
         filter: s.brightness !== 100 ? `brightness(${s.brightness}%)` : undefined,
       }}
     >
       {content.pages.map((p, i) => (
-        <img
-          key={p.id}
-          src={p.url(s.quality)}
-          alt={`Сторінка ${i + 1}`}
-          loading={i < 3 ? 'eager' : 'lazy'}
-          referrerPolicy="no-referrer"
-          decoding="async"
-          data-page={i}
-          style={s.fit === 'original' ? { width: 'auto', maxWidth: '100vw' } : undefined}
-          onLoad={(e) => (e.currentTarget.dataset.loaded = '1')}
-        />
+        <StripImg key={p.id} url={p.url(s.quality)} i={i} eager={i < 3} original={original} nearness={nearness} />
       ))}
     </div>
   );
@@ -93,12 +192,13 @@ export function PagedView({
   }, [content, page, s.quality]);
 
   const zone = (e: MouseEvent<HTMLElement>, el: HTMLElement) => {
+    // Лише видима частина (сторінка може бути вищою за екран).
     const r = el.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width;
-    let dir: -1 | 0 | 1 = x < 0.33 ? -1 : x > 0.67 ? 1 : 0;
-    if (s.rtl && dir !== 0) dir = (dir * -1) as -1 | 1;
-    onZone(dir);
+    const top = Math.max(r.top, 0);
+    const h = Math.max(1, Math.min(r.bottom, window.innerHeight) - top);
+    onZone(tapZone(s.tapScheme, (e.clientX - r.left) / r.width, (e.clientY - top) / h, s.rtl));
   };
+
 
   const fitCls = s.fit === 'height' ? 'hp-page--fit-height' : s.fit === 'width' ? 'hp-page--fit-width' : '';
   return (

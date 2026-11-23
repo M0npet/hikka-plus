@@ -165,7 +165,7 @@ export function continueTarget(s: TitleState): Chapter | null {
 
 const MISS_TTL = 3 * 24 * 3600 * 1000; // «не знайдено» перевіряємо знову через 3 дні
 /** Версія автопідбору: збільшити, коли він став знаходити більше, — старі «не знайдено» перевіряться знову. */
-const MATCH_VERSION = 2;
+const MATCH_VERSION = 3;
 
 let loadToken = 0;
 let unwatch: (() => void) | null = null;
@@ -428,6 +428,36 @@ function maxReadNumber(next: Progress, prev: Progress): number {
 /** Найбільший прочитаний номер розділу (для «Записати в Hikka»). */
 export function maxReadLocal(p: Progress): number {
   return maxReadNumber(p, { last: null, chapters: {}, updatedAt: 0 });
+}
+
+/**
+ * Розділи з номером ≤ n, яких користувач тут ще не торкався (немає запису прогресу) —
+ * напр. проміжні «34.5» з джерела, що завантажилось після першої автовідмітки.
+ * Зняті вручну (запис read:false) не чіпаємо.
+ */
+export function untrackedUpTo(s: TitleState, n: number): string[] {
+  const keys = new Set<string>();
+  for (const st of Object.values(s.sources))
+    for (const c of st.chapters) {
+      const num = Number.parseFloat(c.number.replace(',', '.'));
+      const k = chapterKey(c.number);
+      if (Number.isFinite(num) && num <= n && !s.progress.chapters[k]) keys.add(k);
+    }
+  return [...keys];
+}
+
+/** Відмітити прочитаними лише розділи без запису (див. `untrackedUpTo`). */
+export function markUntrackedUpTo(n: number) {
+  const s = titleStore.get();
+  if (!s) return;
+  const keys = untrackedUpTo(s, n);
+  if (!keys.length) return;
+  const at = Date.now();
+  return updateProgress(s.page.kind, s.page.slug, (p) => {
+    const chapters = { ...p.chapters };
+    for (const k of keys) if (!chapters[k]) chapters[k] = { pos: 1, read: true, at };
+    return { ...p, chapters };
+  });
 }
 
 /** Відмітити прочитаними всі розділи з номером ≤ n (з усіх знайдених джерел). */

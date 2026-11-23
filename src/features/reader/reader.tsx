@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { chapterKey, getProgress, posText, updateProgress, useSettings, type ChapterProgress } from '../../core/store';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
+import { chapterKey, getProgress, posText, updateProgress, updateSettings, useSettings, type ChapterProgress } from '../../core/store';
 import { getSource } from '../../sources/registry';
 import { chapterLabel, type Chapter, type ChapterContent, type ContentFormat } from '../../sources/types';
-import { IconClose, IconExpand, IconExternal, IconLeft, IconList, IconRight, IconSettings } from '../../ui/icons';
+import { IconClose, IconExpand, IconExternal, IconLeft, IconList, IconPause, IconPlay, IconRight, IconSettings } from '../../ui/icons';
 import { closeReader, moveReader } from '../reader-url';
 import { contentFormat, neighbor, setChapterRead, setTeam, teamCounts, titleProgress, useReaderRequest, useTitleState } from '../title-state';
 import { SettingsPanel } from './settings-panel';
 import { Button, btn, Progress, Select } from '../../ui/kit';
-import { NovelView, PagedView, StripView } from './views';
+import { NovelView, PagedView, StripView, tapZone, useNearness } from './views';
 import { StatusRing } from '../../ui/status-ring';
 
 type Load =
@@ -15,7 +15,15 @@ type Load =
   | { status: 'error'; error: string }
   | { status: 'ready'; content: ChapterContent };
 
+type Images = Extract<ChapterContent, { type: 'images' }>;
+/** Розділ у безкінечній стрічці. */
+type Seg = { chapter: Chapter; content: Images };
+type Auto = 'off' | 'run' | 'pause';
+
 const SAVE_DELAY = 600;
+/** За скільки екранів до кінця стрічки підвантажувати наступний розділ. */
+const PRELOAD_SCREENS = 3;
+const MAX_ZOOM = 3;
 /** Позиція, з якої вважаємо розділ дочитаним. */
 const DONE_AT = 0.985;
 
@@ -31,6 +39,11 @@ export function Reader() {
   const [pos, setPos] = useState(0); // прогрес поточного розділу 0..1
   const [stripPage, setStripPage] = useState(0); // сторінка під серединою екрана в режимі стрічки
   const [pageInfo, setPageInfo] = useState('');
+  const [segs, setSegs] = useState<Seg[]>([]);
+  const [feedNext, setFeedNext] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [auto, setAuto] = useState<Auto>('off');
+  const [zoom, setZoom] = useState(1);
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -42,6 +55,21 @@ export function Reader() {
   const finishedRef = useRef(false);
   const saveTimer = useRef<number | undefined>(undefined);
   const lastTop = useRef(0);
+  const restorePageRef = useRef<number | null>(null);
+  /** Розділ, на який ми самі перейшли прокруткою стрічки, — його не перезавантажуємо. */
+  const feedMoveRef = useRef<string | null>(null);
+  const feedGen = useRef(0);
+  const appendingRef = useRef(false);
+  const doneRef = useRef(new Set<string>());
+  const ptrType = useRef('mouse');
+  const holdRef = useRef(false);
+  const pinchRef = useRef<{ d0: number; z0: number; cx: number; cy: number; sl: number; st: number } | null>(null);
+  const lastTapRef = useRef(0);
+  const nearness = useNearness(scrollEl);
+  const setScroll = useCallback((el: HTMLDivElement | null) => {
+    scrollRef.current = el;
+    setScrollEl(el);
+  }, []);
 
   const sourceId = req?.sourceId ?? '';
   const source = getSource(sourceId);
@@ -69,7 +97,15 @@ export function Reader() {
     load.status === 'ready' && load.content.type === 'text' ? 'novel' : s ? contentFormat(s) : 'manga';
   const isNovel = format === 'novel';
   const paged = !isNovel && (format === 'manga' ? settings.manga.modeManga : settings.manga.modeWebtoon) === 'paged';
-  const pageCount = load.status === 'ready' && load.content.type === 'images' ? load.content.pages.length : 0;
+  const feed = !paged && !isNovel && settings.manga.endless;
+  const curSeg = feed ? segs.find((x) => x.chapter.id === chapter?.id) : undefined;
+  const pageCount = curSeg
+    ? curSeg.content.pages.length
+    : load.status === 'ready' && load.content.type === 'images'
+      ? load.content.pages.length
+      : 0;
+  const stripWidth = format === 'manga' ? settings.manga.width : settings.manga.widthWebtoon;
+  const chList = list.length ? list : all;
 
   // Блокуємо прокрутку сторінки під оверлеєм.
   useEffect(() => {
@@ -84,8 +120,8 @@ export function Reader() {
   }, []);
 
   /** Зберегти позицію в розділі (і «прочитано», якщо дочитали). */
-  const save = useCallback(
-    (p: number, forceRead = false, keepRead = false, pg?: { page: number; pages: number }) => {
+  const saveFor = useCallback(
+    (chapter: Chapter | undefined, p: number, forceRead = false, keepRead = false, pg?: { page: number; pages: number }) => {
       if (!s || !chapter || !source) return;
       const key = chapterKey(chapter.number);
       const done = !keepRead && (forceRead || p >= DONE_AT);
@@ -106,13 +142,29 @@ export function Reader() {
         };
       });
     },
-    [s, chapter, source],
+    [s, source],
+  );
+  const save = useCallback(
+    (p: number, forceRead = false, keepRead = false, pg?: { page: number; pages: number }) =>
+      saveFor(chapter, p, forceRead, keepRead, pg),
+    [saveFor, chapter],
   );
 
   // Завантаження розділу.
   useEffect(() => {
     if (!s || !source || !chapter) return;
+    // Перейшли на цей розділ самі, прокручуючи стрічку, — він уже на екрані.
+    if (feedMoveRef.current === chapter.id) {
+      feedMoveRef.current = null;
+      return;
+    }
+    feedMoveRef.current = null;
     let alive = true;
+    feedGen.current++;
+    appendingRef.current = false;
+    doneRef.current = new Set();
+    setSegs([]);
+    setFeedNext('idle');
     setLoad({ status: 'loading' });
     setPos(0);
     setPageInfo('');
@@ -127,6 +179,7 @@ export function Reader() {
       atEndRef.current = false;
       restoreRef.current = atEnd ? null : cp && !cp.read && cp.pos > 0.01 && cp.pos < DONE_AT ? cp.pos : null;
       const restorePage = restoreRef.current != null && cp?.page != null ? cp.page : null;
+      restorePageRef.current = restorePage;
       try {
         const content = await source.getContent(chapter);
         if (!alive) return;
@@ -145,6 +198,7 @@ export function Reader() {
           const p = restorePage != null && restorePage < n ? restorePage : r != null ? Math.round(r * Math.max(0, n - 1)) : 0;
           setPage(p);
           setPos(r ?? 0);
+          setSegs([{ chapter, content }]);
           setLoad({ status: 'ready', content });
           save(r ?? 0, false, false, { page: p, pages: n });
           return;
@@ -173,12 +227,26 @@ export function Reader() {
     el.addEventListener('wheel', mark, { once: true });
     el.addEventListener('touchstart', mark, { once: true });
     el.addEventListener('keydown', mark, { once: true });
+    let applied: number | null = null;
     const apply = () => {
+      // Прокрутили після нашого стрибка (зони кліку, автопрокрутка, перетягування) — більше не чіпаємо.
+      if (applied != null && Math.abs(el.scrollTop - applied) > 2) userMoved = true;
       if (userMoved) return;
-      const top = ratio * (el.scrollHeight - el.clientHeight);
+      // Спершу — за номером сторінки (висоти ще не завантажених картинок приблизні), інакше — за часткою.
+      const box = el.getBoundingClientRect();
+      const base = el.querySelector<HTMLElement>('[data-seg]');
+      const pg = restorePageRef.current;
+      const pgEl = pg != null ? el.querySelector<HTMLElement>(`[data-page="${pg}"]`) : null;
+      let top: number;
+      if (pgEl) top = pgEl.getBoundingClientRect().top - box.top + el.scrollTop;
+      else if (base) {
+        const r = base.getBoundingClientRect();
+        top = r.top - box.top + el.scrollTop + ratio * Math.max(0, r.height - el.clientHeight);
+      } else top = ratio * (el.scrollHeight - el.clientHeight);
       if (Math.abs(el.scrollTop - top) < 1) return;
       programmaticTop.current = top;
       el.scrollTop = top;
+      applied = el.scrollTop;
     };
     const timers = [50, 400, 1200, 2500].map((t) => window.setTimeout(apply, t));
     return () => {
@@ -192,12 +260,43 @@ export function Reader() {
   const goChapter = useCallback(
     (c?: Chapter) => {
       if (!c) return;
-      restoreRef.current = null;
       setPanel('none');
+      // У стрічці розділ уже підвантажений — просто прокрутити до нього.
+      const el = scrollRef.current?.querySelector<HTMLElement>(`[data-seg="${CSS.escape(c.id)}"]`);
+      if (el && scrollRef.current) {
+        const box = scrollRef.current.getBoundingClientRect();
+        scrollRef.current.scrollTo({ top: el.getBoundingClientRect().top - box.top + scrollRef.current.scrollTop });
+        return;
+      }
+      restoreRef.current = null;
+      restorePageRef.current = null;
       moveReader({ sourceId, chapterId: c.id });
     },
     [sourceId],
   );
+
+  /** Підвантажити наступний розділ у кінець стрічки. */
+  const appendNext = useCallback(() => {
+    const last = segs[segs.length - 1];
+    if (!source || !last || appendingRef.current) return;
+    const nx = neighbor(chList, last.chapter, 1);
+    if (!nx || segs.some((x) => x.chapter.id === nx.id)) return;
+    appendingRef.current = true;
+    const gen = feedGen.current;
+    setFeedNext('loading');
+    source
+      .getContent(nx)
+      .then((c) => {
+        if (gen !== feedGen.current) return;
+        if (c.type !== 'images') return setFeedNext('error');
+        setSegs((x) => (x.some((y) => y.chapter.id === nx.id) ? x : [...x, { chapter: nx, content: c }]));
+        setFeedNext('idle');
+      })
+      .catch(() => gen === feedGen.current && setFeedNext('error'))
+      .finally(() => {
+        if (gen === feedGen.current) appendingRef.current = false;
+      });
+  }, [segs, source, chList]);
 
   const setPageAndSave = useCallback(
     (p: number) => {
@@ -236,15 +335,17 @@ export function Reader() {
     // Стрибок від відновлення позиції — не прокрутка користувача: панелі лишаються.
     const own = programmaticTop.current != null && Math.abs(top - programmaticTop.current) < 2;
     programmaticTop.current = null;
-    if (settings.autoHideBars && panel === 'none' && !own) {
+    if (settings.autoHideBars && panel === 'none' && !own && auto !== 'run') {
       if (top - lastTop.current > 12 && top > 80) setBarsHidden(true);
       else if (lastTop.current - top > 12) setBarsHidden(false);
     }
     lastTop.current = top;
 
+    if (feed) return onFeedScroll(el, top, own);
+
     let pg: { page: number; pages: number } | undefined;
     if (!isNovel) {
-      const imgs = el.querySelectorAll<HTMLImageElement>('img[data-page]');
+      const imgs = el.querySelectorAll<HTMLElement>('[data-page]');
       const mid = el.getBoundingClientRect().top + el.clientHeight / 2;
       let cur = 0;
       for (const img of imgs) if (img.getBoundingClientRect().top <= mid) cur = Number(img.dataset.page);
@@ -260,6 +361,125 @@ export function Reader() {
     }
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => save(ratio, false, false, pg), SAVE_DELAY);
+  };
+
+  /** Стрічка з кількох розділів: поточний — той, що посередині екрана; адреса й прогрес — за ним. */
+  const onFeedScroll = (el: HTMLDivElement, top: number, own: boolean) => {
+    const box = el.getBoundingClientRect();
+    const mid = box.top + el.clientHeight / 2;
+    const sections = [...el.querySelectorAll<HTMLElement>('[data-seg]')];
+    let cur = sections[0];
+    for (const sec of sections) if (sec.getBoundingClientRect().top <= mid) cur = sec;
+    if (!cur) return;
+    const id = cur.dataset.seg;
+    const seg = segs.find((x) => x.chapter.id === id);
+    if (!seg) return;
+    const r = cur.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (box.top - r.top) / Math.max(1, r.height - el.clientHeight)));
+    setPos(ratio);
+
+    const pages = cur.querySelectorAll<HTMLElement>('[data-page]');
+    let pgNo = 0;
+    for (const p of pages) if (p.getBoundingClientRect().top <= mid) pgNo = Number(p.dataset.page);
+    const pg = { page: pgNo, pages: pages.length };
+    setStripPage(pgNo);
+    if (settings.manga.pageNumbers) setPageInfo(`${pgNo + 1} / ${pages.length}`);
+
+    // Перейшли в наступний розділ: попередні — прочитані, адреса — на новий.
+    if (seg.chapter.id !== chapter?.id) {
+      const k = segs.indexOf(seg);
+      const was = segs.findIndex((x) => x.chapter.id === chapter?.id);
+      if (was >= 0 && k > was)
+        for (const x of segs.slice(was, k))
+          if (!doneRef.current.has(x.chapter.id)) {
+            doneRef.current.add(x.chapter.id);
+            saveFor(x.chapter, 1, true, false, { page: x.content.pages.length - 1, pages: x.content.pages.length });
+          }
+      feedMoveRef.current = seg.chapter.id;
+      moveReader({ sourceId, chapterId: seg.chapter.id });
+    }
+
+    const segEnd = r.bottom - (box.top + el.clientHeight) < 40;
+    if ((ratio >= DONE_AT || segEnd) && !doneRef.current.has(seg.chapter.id)) {
+      doneRef.current.add(seg.chapter.id);
+      saveFor(seg.chapter, 1, true, false, { page: pg.pages - 1, pages: pg.pages });
+    } else if (!doneRef.current.has(seg.chapter.id) && !own) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = window.setTimeout(() => saveFor(seg.chapter, ratio, false, false, pg), SAVE_DELAY);
+    }
+
+    // Наближаємось до кінця — підвантажуємо наступний розділ.
+    if (el.scrollHeight - top - el.clientHeight < PRELOAD_SCREENS * el.clientHeight && feedNext === 'idle') appendNext();
+  };
+
+  // Автопрокрутка: плавно, з урахуванням дробових пікселів; палець на екрані — пауза.
+  useEffect(() => {
+    if (auto !== 'run' || paged) return;
+    let raf = 0;
+    let last = performance.now();
+    let acc = 0;
+    const step = (t: number) => {
+      const dt = Math.min(0.1, (t - last) / 1000);
+      last = t;
+      const el = scrollRef.current;
+      if (el && !holdRef.current) {
+        acc += settings.manga.autoSpeed * dt;
+        const d = Math.floor(acc);
+        if (d >= 1) {
+          acc -= d;
+          el.scrollTop += d;
+        }
+        const atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+        if (atEnd && !(feed && feedNext === 'loading')) {
+          setAuto('pause');
+          setBarsHidden(false);
+        }
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [auto, paged, feed, feedNext, settings.manga.autoSpeed]);
+
+  // Масштаб щипком: тримаємо під пальцями ту саму точку.
+  useLayoutEffect(() => {
+    const p = pinchRef.current;
+    const el = scrollRef.current;
+    if (!p || !el) return;
+    const k = zoom / p.z0;
+    el.scrollLeft = (p.sl + p.cx) * k - p.cx;
+    el.scrollTop = (p.st + p.cy) * k - p.cy;
+  }, [zoom]);
+
+  const touchDist = (e: TouchEvent) => {
+    const [a, b] = [e.touches[0]!, e.touches[1]!];
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  };
+  const onTouchStart = (e: TouchEvent<HTMLDivElement>) => {
+    holdRef.current = true;
+    if (e.touches.length === 2 && !paged && !isNovel) {
+      const el = e.currentTarget;
+      const box = el.getBoundingClientRect();
+      const [a, b] = [e.touches[0]!, e.touches[1]!];
+      pinchRef.current = {
+        d0: touchDist(e),
+        z0: zoom,
+        cx: (a.clientX + b.clientX) / 2 - box.left,
+        cy: (a.clientY + b.clientY) / 2 - box.top,
+        sl: el.scrollLeft,
+        st: el.scrollTop,
+      };
+    }
+  };
+  const onTouchMove = (e: TouchEvent<HTMLDivElement>) => {
+    const p = pinchRef.current;
+    if (!p || e.touches.length !== 2) return;
+    const z = Math.max(1, Math.min(MAX_ZOOM, (p.z0 * touchDist(e)) / Math.max(1, p.d0)));
+    if (Math.abs(z - zoom) > 0.01) setZoom(z);
+  };
+  const onTouchEnd = (e: TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length < 2) pinchRef.current = null;
+    if (e.touches.length === 0) holdRef.current = false;
   };
 
   const toggleFullscreen = useCallback(() => {
@@ -293,6 +513,10 @@ export function Reader() {
           } else goChapter(dir === 1 ? next : prev);
           break;
         }
+        case ' ':
+          if (typing || auto === 'off') return;
+          setAuto(auto === 'run' ? 'pause' : 'run');
+          break;
         case 'f':
         case 'F':
         case 'а':
@@ -310,7 +534,7 @@ export function Reader() {
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [panel, paged, settings.manga.rtl, goPage, goChapter, next, prev, toggleFullscreen]);
+  }, [panel, paged, auto, settings.manga.rtl, goPage, goChapter, next, prev, toggleFullscreen]);
 
   if (!s || !req) return null;
 
@@ -376,14 +600,55 @@ export function Reader() {
 
       {/* Вміст */}
       <div
-        ref={scrollRef}
-        className="hp-reader__scroll"
+        ref={setScroll}
+        className={[
+          'hp-reader__scroll',
+          !paged && !isNovel && 'hp-reader__scroll--touch',
+          zoom > 1 && 'hp-reader__scroll--zoomed',
+        ]
+          .filter(Boolean)
+          .join(' ')}
         tabIndex={-1}
         onScroll={onScroll}
+        onPointerDown={(e) => (ptrType.current = e.pointerType)}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchEnd}
         onClick={(e) => {
-          if (paged || (e.target as HTMLElement).closest('a,button')) return;
-          if (panel !== 'none') setPanel('none');
-          else if (!window.getSelection()?.toString()) setBarsHidden((v) => !v);
+          if (paged || (e.target as HTMLElement).closest('a,button,input')) return;
+          if (panel !== 'none') return setPanel('none');
+          // Дотик під час автопрокрутки — пауза.
+          if (auto === 'run') {
+            setAuto('pause');
+            setBarsHidden(false);
+            return;
+          }
+          if (window.getSelection()?.toString()) return;
+          const el = e.currentTarget;
+          if (!isNovel) {
+            const now = Date.now();
+            // Збільшено щипком: подвійний тап — скинути масштаб, зони не працюють.
+            if (zoom > 1) {
+              if (ptrType.current === 'touch' && now - lastTapRef.current < 320) {
+                pinchRef.current = null;
+                setZoom(1);
+              }
+              lastTapRef.current = now;
+              return;
+            }
+            // Область «Зображення»: зони лише по самій сторінці, поза нею — тільки панелі.
+            const onImage = !!(e.target as HTMLElement).closest('.hp-strip__pg');
+            if (settings.manga.clickArea === 'screen' || onImage) {
+              const r = el.getBoundingClientRect();
+              const d = tapZone(settings.manga.tapScheme, (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
+              if (d !== 0) {
+                el.scrollBy({ top: d * el.clientHeight * 0.67, behavior: 'smooth' });
+                return;
+              }
+            }
+          }
+          setBarsHidden((v) => !v);
         }}
       >
         {!chapter && <div className="hp-error">Розділ не знайдено у списку джерела.</div>}
@@ -404,8 +669,34 @@ export function Reader() {
         {load.status === 'ready' && load.content.type === 'text' && (
           <NovelView html={load.content.html} title={label} s={settings.novel} />
         )}
-        {load.status === 'ready' && load.content.type === 'images' && !paged && (
-          <StripView content={load.content} s={settings.manga} />
+        {load.status === 'ready' && load.content.type === 'images' && !paged && !feed && (
+          <StripView content={load.content} s={settings.manga} width={stripWidth} nearness={nearness} zoom={zoom} />
+        )}
+        {load.status === 'ready' && feed && (
+          <div className="hp-feed">
+            {segs.map((sg, k) => (
+              <section
+                key={sg.chapter.id}
+                data-seg={sg.chapter.id}
+                style={k > 0 && !settings.manga.feedSep ? { paddingTop: settings.manga.gap } : undefined}
+              >
+                {k > 0 && settings.manga.feedSep && (
+                  <div className="hp-feed__sep">
+                    <span className="hp-xs hp-muted">Кінець «{chapterLabel(segs[k - 1]!.chapter)}»</span>
+                    <b>{chapterLabel(sg.chapter)}</b>
+                    {sg.chapter.team && <span className="hp-xs hp-muted">переклад: {sg.chapter.team}</span>}
+                  </div>
+                )}
+                <StripView feed content={sg.content} s={settings.manga} width={stripWidth} nearness={nearness} zoom={zoom} />
+              </section>
+            ))}
+            {feedNext === 'loading' && (
+              <div className="hp-error">
+                <span className="hp-spinner" aria-hidden="true" />
+                Завантаження наступного розділу…
+              </div>
+            )}
+          </div>
         )}
         {load.status === 'ready' && load.content.type === 'images' && paged && (
           <PagedView
@@ -415,10 +706,15 @@ export function Reader() {
             onZone={(d) => (d === 0 ? setBarsHidden((v) => !v) : goPage(d))}
           />
         )}
-        {load.status === 'ready' && !paged && (
+        {load.status === 'ready' && !paged && (!feed || (feedNext !== 'loading' && !feedHasNext(segs, chList))) && (
           <div className="hp-end">
             <div className="hp-muted hp-small">Кінець розділу{chapter?.team ? ` · переклад: ${chapter.team}` : ''}</div>
-            {next ? (
+            {feed && feedNext === 'error' && <div className="hp-small">Не вдалося завантажити наступний розділ.</div>}
+            {feed && feedNext === 'error' && segs.length > 0 && neighbor(chList, segs[segs.length - 1]!.chapter, 1) ? (
+              <Button variant="default" size="lg" onClick={() => { setFeedNext('idle'); appendNext(); }}>
+                Спробувати ще раз
+              </Button>
+            ) : next && !feed ? (
               <Button variant="default" size="lg" onClick={() => goChapter(next)}>
                 Далі: {chapterLabel(next)}
                 <IconRight />
@@ -433,6 +729,37 @@ export function Reader() {
         )}
       </div>
 
+      {!paged && auto !== 'off' && (
+        <div className="hp-auto" role="group" aria-label="Автопрокрутка">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon
+            title={auto === 'run' ? 'Пауза (Пробіл)' : 'Продовжити (Пробіл)'}
+            aria-label={auto === 'run' ? 'Пауза' : 'Продовжити'}
+            onClick={() => setAuto(auto === 'run' ? 'pause' : 'run')}
+          >
+            {auto === 'run' ? <IconPause /> : <IconPlay />}
+          </Button>
+          <input
+            type="range"
+            min={20}
+            max={400}
+            step={10}
+            value={settings.manga.autoSpeed}
+            aria-label="Швидкість автопрокрутки"
+            title="Швидкість"
+            onChange={(e) => {
+              const autoSpeed = Number(e.currentTarget.value);
+              void updateSettings((x) => ({ ...x, manga: { ...x.manga, autoSpeed } }));
+            }}
+          />
+          <span className="hp-xs hp-muted hp-tnum">{settings.manga.autoSpeed}</span>
+          <Button variant="ghost" size="sm" icon title="Вимкнути автопрокрутку" aria-label="Вимкнути автопрокрутку" onClick={() => setAuto('off')}>
+            <IconClose />
+          </Button>
+        </div>
+      )}
       {paged && settings.manga.pageNumbers && pageCount > 0 && (
         <div className="hp-pagenum">
           {page + 1} / {pageCount}
@@ -467,6 +794,19 @@ export function Reader() {
         <span className="hp-small hp-muted hp-tnum hp-bar__count">
           {idx + 1} / {total}
         </span>
+        {!paged && (
+          <Button
+            variant="ghost"
+            size="md"
+            icon
+            aria-pressed={auto !== 'off'}
+            title={auto === 'off' ? 'Автопрокрутка' : 'Вимкнути автопрокрутку'}
+            aria-label="Автопрокрутка"
+            onClick={() => setAuto(auto === 'off' ? 'run' : 'off')}
+          >
+            {auto === 'run' ? <IconPause /> : <IconPlay />}
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="md"
@@ -504,6 +844,12 @@ export function Reader() {
       )}
     </div>
   );
+}
+
+/** Чи є ще розділ після останнього в стрічці. */
+function feedHasNext(segs: Seg[], list: Chapter[]) {
+  const last = segs[segs.length - 1];
+  return !!last && !!neighbor(list, last.chapter, 1);
 }
 
 function ChaptersPanel(props: {

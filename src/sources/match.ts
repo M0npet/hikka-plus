@@ -99,12 +99,21 @@ export async function autoMatchBy(
   // («Коли я переродився слизом» при основній «Про моє переродження в слиз») — тож спершу всі
   // кириличні назви (до 3), потім англійська й оригінальна.
   const cyr = names.filter((n) => /[а-яіїєґ]/i.test(n));
-  const queries = [...cyr.slice(0, 3), ...names.filter((n) => !cyr.includes(n)).slice(0, 2)];
+  // Латиниця — англійська, ромадзі й латинські синоніми (до 3); японська/китайська назва укр. сайтам не допоможе.
+  const latin = names.filter((n) => !cyr.includes(n) && /[a-z]/i.test(n));
+  const queries = [...cyr.slice(0, 3), ...latin.slice(0, 3)];
   // Запасні запити — частина назви: пошук деяких сайтів (NovelHub) шукає фразу цілком, тож інший
   // переклад («Сходження Героя щита» ↔ «Становлення Героя Щита») знаходиться лише за «Героя щита».
   // Ідуть, лише якщо повні назви не дали навіть кандидата для «Схоже».
-  const w = (cyr[0] ?? '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ');
-  const partial = w.length >= 3 ? [w.slice(-2).join(' '), w.slice(0, 2).join(' ')] : [];
+  // З усіх кириличних назв, бо синоніми бувають іншим перекладом («Приборкувач звірів…» ↔ «Повелитель звірів…»).
+  const partial = [
+    ...new Set(
+      cyr.slice(0, 3).flatMap((n) => {
+        const w = n.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ');
+        return w.length >= 3 ? [w.slice(-2).join(' '), w.slice(0, 2).join(' ')] : [];
+      }),
+    ),
+  ].filter((q) => !queries.includes(q));
   let best: { t: RemoteTitle; score: number } | null = null;
   for (const q of [...queries, ...partial]) {
     if (partial.includes(q) && ((best as { score: number } | null)?.score ?? 0) >= NEAR_MIN) break;

@@ -10,6 +10,8 @@ export type NovelTheme = 'site' | 'sepia' | 'light' | 'dark';
 export type NovelFont = 'site' | 'serif' | 'sans' | 'mono';
 export type MangaMode = 'vertical' | 'paged';
 export type MangaFit = 'width' | 'height' | 'original';
+/** Зони кліку/тапу: L — як у Senkuro/Mihon (верх і ліво — назад, низ і право — далі), ліво/право, верх/низ, вимкнено. */
+export type TapScheme = 'l' | 'lr' | 'tb' | 'off';
 export type ImageQuality = 'original' | 'high' | 'medium' | 'low';
 
 export interface ReaderSettings {
@@ -29,7 +31,17 @@ export interface ReaderSettings {
     modeWebtoon: MangaMode;
     rtl: boolean;
     fit: MangaFit;
-    width: number; // px, для стрічки та «за шириною»
+    width: number; // px, манґа: стрічка та «за шириною»
+    /** Окрема ширина для манхви/маньхви (стрічка). */
+    widthWebtoon: number;
+    /** Безкінечна стрічка: наступний розділ підвантажується одразу під поточним. */
+    endless: boolean;
+    /** Роздільник «Кінець розділу → наступний» між розділами в безкінечній стрічці. */
+    feedSep: boolean;
+    /** Автопрокрутка, px/с. */
+    autoSpeed: number;
+    /** Схема зон кліку/тапу (стрічка й посторінково); середина — завжди панелі. */
+    tapScheme: TapScheme;
     gap: number; // px між сторінками стрічки
     brightness: number; // %
     quality: ImageQuality;
@@ -57,6 +69,11 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
     rtl: false,
     fit: 'width',
     width: 900,
+    widthWebtoon: 800,
+    endless: true,
+    feedSep: true,
+    autoSpeed: 80,
+    tapScheme: 'l',
     gap: 0,
     brightness: 100,
     quality: 'high',
@@ -75,7 +92,12 @@ function mergeSettings(s: Partial<ReaderSettings> | null | undefined): ReaderSet
     ...DEFAULT_SETTINGS,
     ...s,
     novel: { ...DEFAULT_SETTINGS.novel, ...s?.novel },
-    manga: { ...DEFAULT_SETTINGS.manga, ...s?.manga },
+    manga: {
+      ...DEFAULT_SETTINGS.manga,
+      // До 0.4.8 ширина була спільна — манхва бере її, поки користувач не змінить окремо.
+      ...(s?.manga?.width != null && s.manga.widthWebtoon == null ? { widthWebtoon: s.manga.width } : {}),
+      ...s?.manga,
+    },
   };
 }
 

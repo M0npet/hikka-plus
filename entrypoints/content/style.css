@@ -1303,15 +1303,105 @@ select {
   user-select: none;
   -webkit-user-drag: none;
 }
-.hp-strip img {
+.hp-strip__pg {
   width: 100%;
-  height: auto;
-  min-height: 200px;
+  min-height: 60vh;
   background: color-mix(in oklab, var(--hp-secondary) 20%, transparent);
 }
-.hp-strip img[data-loaded='1'] {
+.hp-strip__pg--sized {
   min-height: 0;
   background: none;
+}
+.hp-strip__pg img {
+  width: 100%;
+  height: 100%;
+}
+.hp-strip--original .hp-strip__pg {
+  width: auto;
+  max-width: 100vw;
+}
+.hp-strip--original .hp-strip__pg img {
+  width: auto;
+  max-width: 100vw;
+}
+/* Безкінечна стрічка: роздільник між розділами */
+.hp-feed__sep {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 0 auto;
+  padding: 28px 16px;
+  text-align: center;
+}
+.hp-feed__sep b {
+  font-size: 1rem;
+}
+.hp-strip--feed {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.hp-feed {
+  padding: 64px 0 0;
+}
+/* Масштаб щипком: стрічка ширша за екран — прокрутка вбік */
+.hp-reader__scroll--zoomed {
+  overflow-x: auto;
+}
+.hp-reader__scroll--touch {
+  touch-action: pan-x pan-y;
+}
+/* Схема зон кліку в налаштуваннях */
+.hp-zonemap {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 26px);
+  gap: 2px;
+  width: 132px;
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid var(--hp-border);
+  border-radius: var(--hp-r-md);
+  font-size: 10px;
+  line-height: 26px;
+  text-align: center;
+}
+.hp-zonemap__c--prev {
+  background: color-mix(in oklab, var(--hp-secondary) 70%, transparent);
+}
+.hp-zonemap__c--next {
+  background: var(--hp-tint-bg);
+  color: var(--hp-primary-fg);
+}
+.hp-zonemap__c--menu {
+  color: var(--hp-muted-fg, inherit);
+}
+/* Автопрокрутка */
+.hp-auto {
+  position: absolute;
+  left: 50%;
+  bottom: 76px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--hp-border);
+  border-radius: var(--hp-r-lg, 12px);
+  background: var(--hp-glass);
+  backdrop-filter: blur(12px);
+  z-index: 3;
+  transition: transform 0.2s;
+}
+.hp-bars-hidden .hp-auto {
+  transform: translate(-50%, 60px);
+}
+.hp-auto input[type='range'] {
+  width: 120px;
+  accent-color: var(--hp-primary-fg);
+}
+.hp-auto + .hp-pagenum {
+  bottom: 124px;
 }
 .hp-page {
   position: relative;

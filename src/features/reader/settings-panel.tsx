@@ -1,4 +1,5 @@
-import { DEFAULT_SETTINGS, updateSettings, type ReaderSettings } from '../../core/store';
+import { DEFAULT_SETTINGS, updateSettings, type ReaderSettings, type TapScheme } from '../../core/store';
+import { tapZone } from './views';
 import type { ContentFormat } from '../../sources/types';
 import { IconClose, IconReset } from '../../ui/icons';
 import { Button, Field, Select, Slider, SwitchRow, Tabs } from '../../ui/kit';
@@ -51,8 +52,34 @@ export function NovelFields({ n }: { n: NovelS }) {
 
 type ModeKey = 'modeManga' | 'modeWebtoon';
 
+/** Схема зон 3×3: що робить клік у кожній частині. */
+function ZoneMap({ scheme }: { scheme: TapScheme }) {
+  const cells = [1 / 6, 1 / 2, 5 / 6].flatMap((y) => [1 / 6, 1 / 2, 5 / 6].map((x) => tapZone(scheme, x, y)));
+  return (
+    <div className="hp-zonemap" aria-hidden="true">
+      {cells.map((d, i) => (
+        <span key={i} className={`hp-zonemap__c hp-zonemap__c--${d < 0 ? 'prev' : d > 0 ? 'next' : 'menu'}`}>
+          {d < 0 ? 'Назад' : d > 0 ? 'Далі' : i === 4 ? 'Меню' : ''}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /** Поля зображень (манґа/манхва); modes — які режими за замовчуванням показати і з якими підписами. */
-export function MangaFields({ m, modes }: { m: MangaS; modes: [ModeKey, string][] }) {
+type WidthKey = 'width' | 'widthWebtoon';
+const WIDTH_LABEL: Record<WidthKey, string> = { width: 'Ширина (манґа)', widthWebtoon: 'Ширина (манхва)' };
+
+export function MangaFields({
+  m,
+  modes,
+  widths = ['width', 'widthWebtoon'],
+}: {
+  m: MangaS;
+  modes: [ModeKey, string][];
+  /** Які повзунки ширини показати; один — підпис просто «Ширина». */
+  widths?: WidthKey[];
+}) {
   return (
     <>
       {modes.map(([key, label]) => (
@@ -88,11 +115,24 @@ export function MangaFields({ m, modes }: { m: MangaS; modes: [ModeKey, string][
           onChange={(fit) => setManga({ fit })}
         />
       </Field>
-      <Field label="Гортання кліком">
+      <Field label="Зони кліку й тапу" hint="Середина — показати/сховати панелі">
+        <Tabs
+          value={m.tapScheme}
+          options={[
+            ['l', 'L-подібні'],
+            ['lr', 'Ліво/право'],
+            ['tb', 'Верх/низ'],
+            ['off', 'Вимкнено'],
+          ]}
+          onChange={(tapScheme) => setManga({ tapScheme })}
+        />
+        {m.tapScheme !== 'off' && <ZoneMap scheme={m.tapScheme} />}
+      </Field>
+      <Field label="Де працюють зони">
         <Tabs
           value={m.clickArea}
           options={[
-            ['image', 'По зображенню'],
+            ['image', 'На сторінці'],
             ['screen', 'По всьому екрану'],
           ]}
           onChange={(clickArea) => setManga({ clickArea })}
@@ -111,10 +151,44 @@ export function MangaFields({ m, modes }: { m: MangaS; modes: [ModeKey, string][
           onChange={(quality) => setManga({ quality })}
         />
       </Field>
-      <Slider label="Ширина" value={m.width} min={400} max={1600} step={20} format={(v) => `${v}px`} onChange={(width) => setManga({ width })} />
+      {widths.map((k) => (
+        <Slider
+          key={k}
+          label={widths.length > 1 ? WIDTH_LABEL[k] : 'Ширина'}
+          value={m[k]}
+          min={320}
+          max={1600}
+          step={20}
+          format={(v) => `${v}px`}
+          onChange={(v) => setManga({ [k]: v })}
+        />
+      ))}
       <Slider label="Відступ між сторінками" value={m.gap} min={0} max={48} format={(v) => `${v}px`} onChange={(gap) => setManga({ gap })} />
       <Slider label="Яскравість" value={m.brightness} min={40} max={120} format={(v) => `${v}%`} onChange={(brightness) => setManga({ brightness })} />
       <SwitchRow label="Номер сторінки" hint="Показувати лічильник сторінок унизу" checked={m.pageNumbers} onChange={(pageNumbers) => setManga({ pageNumbers })} />
+      <SwitchRow
+        label="Безкінечна стрічка"
+        hint="Наступний розділ підвантажується одразу під поточним"
+        checked={m.endless}
+        onChange={(endless) => setManga({ endless })}
+      />
+      {m.endless && (
+        <SwitchRow
+          label="Роздільник між розділами"
+          hint="Напис «Кінець розділу → наступний» у стрічці; вимкнено — сторінки йдуть суцільно"
+          checked={m.feedSep}
+          onChange={(feedSep) => setManga({ feedSep })}
+        />
+      )}
+      <Slider
+        label="Швидкість автопрокрутки"
+        value={m.autoSpeed}
+        min={20}
+        max={400}
+        step={10}
+        format={(v) => `${v} px/с`}
+        onChange={(autoSpeed) => setManga({ autoSpeed })}
+      />
     </>
   );
 }
@@ -158,7 +232,7 @@ export function SettingsPanel({
         {format === 'novel' ? (
           <NovelFields n={n} />
         ) : (
-          <MangaFields m={m} modes={[[modeKey, 'Режим читання']]} />
+          <MangaFields m={m} modes={[[modeKey, 'Режим читання']]} widths={[format === 'manga' ? 'width' : 'widthWebtoon']} />
         )}
         <SwitchRow
           label="Ховати панелі при прокрутці"
@@ -166,7 +240,7 @@ export function SettingsPanel({
           checked={s.autoHideBars}
           onChange={(autoHideBars) => updateSettings((x) => ({ ...x, autoHideBars }))}
         />
-        <p className="hp-xs hp-muted hp-p">Клавіші: ← → — сторінка або розділ, F — повний екран, Esc — закрити.</p>
+        <p className="hp-xs hp-muted hp-p">Клавіші: ← → — сторінка або розділ, Пробіл — пауза автопрокрутки, F — повний екран, Esc — закрити. На телефоні: два пальці — масштаб, подвійний тап — скинути.</p>
       </div>
     </aside>
   );
