@@ -2,7 +2,7 @@
   "name": "hikka-plus",
   "description": "Hikka Plus — читалка та плеєр, вбудовані прямо в hikka.io",
   "private": true,
-  "version": "0.5.10",
+  "version": "0.5.11",
   "type": "module",
   "scripts": {
     "dev": "wxt",

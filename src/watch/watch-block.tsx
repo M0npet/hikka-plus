@@ -687,7 +687,19 @@ export function PlayerFrame(p: {
       return;
     }
     const on = !!c;
-    const ask = () => f.contentWindow?.postMessage({ type: AMBIENT_REQ, on }, origin);
+    // Поки у фреймі ще порожня about:blank (джерело — hikka.io), postMessage з origin плеєра лише сипле помилку в консоль.
+    // Чужу сторінку прочитати не можна — отже, плеєр уже завантажився; до того питає сам скрипт фрейму ({ready}) і подія load.
+    const loaded = () => {
+      try {
+        void f.contentWindow?.location.href;
+        return false;
+      } catch {
+        return true;
+      }
+    };
+    const ask = () => {
+      if (loaded()) f.contentWindow?.postMessage({ type: AMBIENT_REQ, on }, origin);
+    };
     const ctx = c?.getContext('2d') ?? null;
     const tmp = document.createElement('canvas');
     const tctx = tmp.getContext('2d');
@@ -725,12 +737,14 @@ export function PlayerFrame(p: {
       first = false;
     };
     window.addEventListener('message', onMsg);
+    f.addEventListener('load', ask);
     ask();
     return () => {
       window.removeEventListener('message', onMsg);
+      f.removeEventListener('load', ask);
       f.parentElement?.classList.remove('hp-watch__frame--below');
       c?.classList.remove('is-on');
-      if (!on) return;
+      if (!on || !loaded()) return;
       try {
         f.contentWindow?.postMessage({ type: AMBIENT_REQ, on: false }, origin);
       } catch {
