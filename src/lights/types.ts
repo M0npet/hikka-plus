@@ -4,7 +4,7 @@
  * там src/lights/engine.ts розсилає кольори на пристрої в домашній мережі користувача. Нікуди більше кадр не йде.
  * Протоколи й джерела — claude/research-device-lights.md у claude.ai-проєкті.
  */
-import { storage } from '#imports';
+import { browser, storage } from '#imports';
 
 /** Кадр: w×h пікселів, rgb — рядок, по символу на байт (як AMBIENT_MSG). */
 export type Frame = { w: number; h: number; rgb: string };
@@ -47,3 +47,22 @@ export function cleanHost(raw: string): string | null {
 export const hostOrigins = (host: string) => [`http://${host}/*`, `https://${host}/*`];
 /** Razer Chroma SDK: REST на localhost (або chromasdk.io → 127.0.0.1 з сертифікатом). */
 export const RAZER_ORIGINS = ['http://localhost/*', 'https://chromasdk.io/*'];
+
+/**
+ * Firefox: кольори кадру виходять із браузера на пристрій — це передача даних (websiteContent, optional у
+ * data_collection_permissions). Просимо разом із дозволом на хост, тим самим жестом; без згоди кадр не шлемо.
+ */
+const LIGHTS_DATA = import.meta.env.FIREFOX ? { data_collection: ['websiteContent'] } : {};
+type Perms = Parameters<typeof browser.permissions.request>[0];
+export const lightsPerms = (origins: string[]) => ({ origins, ...LIGHTS_DATA }) as Perms;
+
+/** Чи дав користувач згоду на передачу кольорів кадру (у Chrome такої згоди немає — завжди так). */
+export async function lightsDataOk(): Promise<boolean> {
+  if (!import.meta.env.FIREFOX) return true;
+  try {
+    const all = (await browser.permissions.getAll()) as { data_collection?: string[] };
+    return !!all.data_collection?.includes('websiteContent');
+  } catch {
+    return false;
+  }
+}

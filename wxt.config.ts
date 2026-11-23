@@ -22,9 +22,18 @@ export default defineConfig({
       browser_specific_settings: {
         gecko: {
           id: 'hikka-plus@m0npet',
-          // Firefox вимагає декларувати збір даних; ми нічого не збираємо.
-          data_collection_permissions: { required: ['none'] },
+          // Вбудована згода Firefox на передачу даних (обов'язкова для AMO; PRIVACY.md — подробиці).
+          // Обов'язкові: назви/slug тайтлу, який відкрито, ідуть джерелам, Mikai, AnimeON, AniSkip (browsingActivity);
+          // вхід у Hikka — токен (authenticationInfo) і прочитане/переглянуте в список Hikka (websiteActivity) — MK 17:20.
+          // Необов'язкове: кольори кадру на пристрої підсвітки в локальній мережі (websiteContent) — просимо кнопкою «Підключити».
+          data_collection_permissions: {
+            required: ['browsingActivity', 'authenticationInfo', 'websiteActivity'],
+            optional: ['websiteContent'],
+          },
+          // Вбудована згода є з Firefox 140 (Android — 142); на старіших довелося б робити власне вікно згоди.
+          strict_min_version: '140.0',
         },
+        gecko_android: { strict_min_version: '142.0' },
       },
     }),
   }),

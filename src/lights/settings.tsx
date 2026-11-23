@@ -18,7 +18,7 @@ import {
   type PhilipsPairing,
 } from './devices';
 import { ljson } from './digest';
-import { cleanHost, hostOrigins, lightsItem, RAZER_ORIGINS, type DeviceKind, type LightsConf, type RGB } from './types';
+import { cleanHost, hostOrigins, lightsItem, lightsPerms, lightsDataOk, RAZER_ORIGINS, type DeviceKind, type LightsConf, type RGB } from './types';
 
 function useLights(): [LightsConf, (p: Partial<LightsConf>) => Promise<void>] {
   const [v, setV] = useState<LightsConf>({});
@@ -56,7 +56,7 @@ async function testDriver(d: Driver) {
 }
 
 async function askHost(host: string) {
-  return browser.permissions.request({ origins: hostOrigins(host) });
+  return browser.permissions.request(lightsPerms(hostOrigins(host)));
 }
 
 /** Одна картка пристрою: назва, вимикач (коли підключено), вміст, статус. */
@@ -269,7 +269,7 @@ function RazerCard({ conf, set }: { conf: LightsConf; set: (p: Partial<LightsCon
   const c = conf.razer;
   const st = useStatus();
   const connect = async () => {
-    if (!(await browser.permissions.request({ origins: RAZER_ORIGINS })))
+    if (!(await browser.permissions.request(lightsPerms(RAZER_ORIGINS))))
       return st.set({ msg: 'Без дозволу на localhost Razer Chroma не працюватиме', err: true });
     await st.run('Шукаю Razer Synapse…', async () => {
       await testDriver(razerDriver());
@@ -293,6 +293,39 @@ function RazerCard({ conf, set }: { conf: LightsConf; set: (p: Partial<LightsCon
   );
 }
 
+/**
+ * Firefox: пристрої підключили до 0.5.18 (без згоди на передачу кольорів кадру) — кадр не шлемо, поки не дозволять.
+ * Нові підключення просять згоду разом із дозволом на хост («Підключити»).
+ */
+function DataConsent({ conf }: { conf: LightsConf }) {
+  const [ok, setOk] = useState(true);
+  const any = !!(conf.philips?.on || conf.wled?.on || conf.hue?.on || conf.razer?.on);
+  useEffect(() => {
+    void lightsDataOk().then(setOk);
+  }, [any]);
+  if (ok || !any) return null;
+  return (
+    <div className="hp-lights__card">
+      <p className="hp-set__hint">
+        Firefox просить окремої згоди: кольори кадру йдуть із браузера на ваші пристрої. Без неї підсвітка не працює.
+      </p>
+      <div className="hp-set__actions">
+        <Button
+          size="sm"
+          onClick={() => {
+            void browser.permissions
+              .request(lightsPerms([]))
+              .then(() => lightsDataOk())
+              .then(setOk);
+          }}
+        >
+          Дозволити
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** Картки пристроїв. У popup Firefox закриває вікно на запит дозволу — тому там лише кнопка «у вкладці». */
 export function DeviceLights({ mode }: { mode: 'popup' | 'page' }) {
   const [conf, set] = useLights();
@@ -312,6 +345,7 @@ export function DeviceLights({ mode }: { mode: 'popup' | 'page' }) {
     );
   return (
     <div className="hp-lights">
+      <DataConsent conf={conf} />
       <PhilipsCard conf={conf} set={set} />
       <WledCard conf={conf} set={set} />
       <HueCard conf={conf} set={set} />

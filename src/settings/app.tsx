@@ -80,6 +80,10 @@ export function SettingsApp({ mode }: { mode: SettingsMode }) {
         Hikka Plus v{version} · розробник M0npet ·{' '}
         <a className="hp-link" href={REPO_URL} target="_blank" rel="noreferrer noopener">
           GitHub
+        </a>{' '}
+        ·{' '}
+        <a className="hp-link" href={`${REPO_URL}/blob/main/PRIVACY.md`} target="_blank" rel="noreferrer noopener">
+          Політика приватності
         </a>
         <br />
         Неофіційне розширення для hikka.io. Не пов'язане з командою Hikka.

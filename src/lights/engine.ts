@@ -4,7 +4,7 @@
  */
 import { browser } from '#imports';
 import { hueDriver, philipsDriver, razerDriver, wledDriver, type Driver } from './devices';
-import { hostOrigins, lightsItem, RAZER_ORIGINS, type Frame, type LightsConf } from './types';
+import { hostOrigins, lightsDataOk, lightsItem, RAZER_ORIGINS, type Frame, type LightsConf } from './types';
 
 const IDLE_MS = 3000;
 
@@ -25,6 +25,7 @@ async function allowed(origins: string[]) {
 
 async function drivers(c: LightsConf): Promise<Driver[]> {
   const out: Driver[] = [];
+  if (!(await lightsDataOk())) return out; // Firefox: немає згоди на передачу кольорів кадру
   if (c.philips?.on && (await allowed(hostOrigins(c.philips.host)))) out.push(philipsDriver(c.philips));
   if (c.wled?.on && (await allowed(hostOrigins(c.wled.host)))) out.push(wledDriver(c.wled));
   if (c.hue?.on && (await allowed(hostOrigins(c.hue.host)))) out.push(hueDriver(c.hue));
