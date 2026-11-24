@@ -40,6 +40,9 @@
 - Підсвітка читалки манґи/манхви (MK 22:18) — `src/features/reader/glow.tsx`: canvas 48×N на весь екран під вмістом (`.hp-glow`, z-index −1, blur + маска-еліпс), у нього малюємо видиму частину вже завантажених `<img>` читалки (у SPREAD = 1,8 раза ширше за сторінку; малюємо не частіше ніж раз на 80 мс (`STEP`, 0.6.0 — було щокадру й «грузило проц»), змішування ~0,6 с, фон читалки — без `getComputedStyle` на кожному кадрі, перебір картинок обривається на першій нижче екрана); пікселі НЕ читаємо (canvas може бути «заражений» — показувати можна) → працює з усіма джерелами, нових запитів немає. Налаштування — `ReaderSettings.manga.glow/glowLevel/glowBright` (повзунки `GlowSliders` з `src/watch/ambient-fields.tsx`); для ранобе вимкнено.
 - Картинки з manga.in.ua мають hotlink-захист — завжди `referrerPolicy="no-referrer"`.
 
+## Коміти
+Автор коміту — MK: `git -c user.name=M0npet -c user.email=108492495+M0npet@users.noreply.github.com commit …` (так коміти зараховуються M0npet у Contributors на GitHub; MK 2026-11-25); Claude — рядком `Co-Authored-By` у повідомленні.
+
 ## Перевірка перед комітом
 ```bash
 npm run compile && npm run build && npm run build:firefox

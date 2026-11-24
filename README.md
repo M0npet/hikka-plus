@@ -100,6 +100,11 @@ npm run build-for-amo   # = wxt build -b firefox; результат — .output
 
 Розширення не має власного сервера й нічого не надсилає розробнику. Що й куди йде — [PRIVACY.md](PRIVACY.md).
 
+## Автори
+
+- **[M0npet](https://github.com/M0npet)** — автор і розробник.
+- Claude (Anthropic) — допомога з кодом.
+
 ## Ліцензія
 
 MIT
