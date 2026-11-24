@@ -1751,40 +1751,28 @@ select {
   border: 0;
   border-radius: 0;
 }
-/* Висота — як у Mikai (MK 2026-11-24, скрин): плеєр не вищий за 75 % вікна (window), на всю висоту — 100vh (screen).
-   Там, де Mikai показує чорні смуги (плеєр 16:9 у ширшій рамці), у нас рамка сама 16:9 по центру, а збоку — підсвітка
-   (як у повному екрані; MK 20:27 «підсвітки немає в цих режимах»). Вимкнена підсвітка — чорне, як у Mikai.
-   --hp-fw / --hp-fh — розмір рамки 16:9; 100cqw — ширина .hp-watch__view (= ширина вікна). */
+/* Як у Mikai (MK 2026-11-24, скрин Mikai; 20:40 «нифига не широко»): рамка завжди на всю ширину вікна, висота —
+   16:9, але не більша за 75 % вікна (window) / на всю висоту вікна (screen); відео 16:9 плеєр сам ставить по центру
+   (як у Mikai — чорні смуги всередині плеєра). Підсвітка — за рамкою, видно лише згори/знизу; з боків обрізано
+   (`overflow-x: clip`, інакше горизонтальна прокрутка). 100cqw — ширина .hp-watch__view (= ширина вікна). */
 .hp-watch__stage--window .hp-watch__view,
 .hp-watch__stage--screen .hp-watch__view {
-  --hp-maxh: 75vh;
-  --hp-fw: min(100cqw, var(--hp-maxh) * 16 / 9);
-  --hp-fh: min(100cqw * 9 / 16, var(--hp-maxh));
+  --hp-fh: min(100cqw * 9 / 16, 75vh);
   container-type: inline-size;
-  display: grid;
-  place-items: center;
-  background: #000;
-  /* Підсвітка ширша за вікно — обрізаємо збоку (інакше горизонтальна прокрутка); вгору/вниз світить як завжди. */
   overflow-x: clip;
 }
 .hp-watch__stage--screen .hp-watch__view {
-  --hp-maxh: 100vh;
-  height: 100vh;
+  --hp-fh: 100vh;
 }
 .hp-watch__stage--window .hp-watch__frame,
 .hp-watch__stage--screen .hp-watch__frame {
-  width: var(--hp-fw);
-  height: auto;
-  aspect-ratio: 16 / 9;
+  width: 100%;
+  height: var(--hp-fh);
+  aspect-ratio: auto;
 }
 .hp-watch__stage--window .hp-watch__glow,
 .hp-watch__stage--screen .hp-watch__glow {
-  left: 50%;
-  top: 50%;
-  width: calc(var(--hp-fw) * 1.25);
   height: calc(var(--hp-fh) * 1.44444);
-  transform: translate(-50%, -50%);
-  filter: blur(60px) saturate(1.6) brightness(var(--hp-glow-b, 1));
 }
 
 /* Повний екран — уся .hp-watch__view: кадр 16:9 по центру, навколо (на екрані ширшому за 16:9) — підсвітка. */
