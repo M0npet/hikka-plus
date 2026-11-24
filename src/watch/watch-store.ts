@@ -25,6 +25,11 @@ export type WatchPrefs = {
   favPlayer?: string;
   /** Режим «Ширше» — запам'ятовується між тайтлами. */
   wide?: boolean;
+  /**
+   * Розмір плеєра в режимі «Ширше» (як у Mikai, MK 2026-11-24): grid — на ширину сітки сторінки (як було),
+   * window — плеєр на всю ширину вікна (16:9), screen — плеєр на все вікно (ширина × висота вікна, сторінка під ним гортається).
+   */
+  size?: WatchSize;
   /** Підсвітка навколо плеєра кольорами з відео (як Ambient mode на YouTube). undefined — увімкнено. */
   ambient?: boolean;
   /** Непрозорість підсвітки, 10–100 % (у налаштуваннях — «Прозорість» = 100 − це). undefined — 20, тобто прозорість 80 % (MK 16:12). */
@@ -41,6 +46,8 @@ export type WatchPrefs = {
   skipOp?: boolean;
   skipEd?: boolean;
 };
+
+export type WatchSize = 'grid' | 'window' | 'screen';
 
 export const DEFAULT_AMBIENT_LEVEL = 20;
 export const DEFAULT_AMBIENT_BRIGHT = 100;

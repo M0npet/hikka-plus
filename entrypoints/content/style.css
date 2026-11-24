@@ -1734,6 +1734,34 @@ select {
   max-width: calc((100vh - 140px) * 16 / 9);
   margin-inline: auto;
 }
+/* Розмір плеєра як у Mikai (MK 2026-11-24, wide-layout.ts): блок на всю ширину вікна; заголовок і керування — на ширині
+   сітки сторінки (відступ --hp-bleed з кожного боку), сам плеєр — від краю до краю вікна. 17px = padding + рамка .hp-card. */
+.hp-watch__stage--window,
+.hp-watch__stage--screen {
+  padding-inline: var(--hp-bleed, 0px);
+}
+.hp-watch__stage--window .hp-watch__view,
+.hp-watch__stage--screen .hp-watch__view {
+  width: auto;
+  max-width: none;
+  margin-inline: calc(-1 * (var(--hp-bleed, 0px) + 17px));
+}
+.hp-watch__stage--window .hp-watch__frame,
+.hp-watch__stage--screen .hp-watch__frame {
+  border: 0;
+  border-radius: 0;
+}
+/* На все вікно: кадр — ширина × висота вікна (плеєр сам ставить відео 16:9 по центру). */
+.hp-watch__stage--screen .hp-watch__frame {
+  height: 100vh;
+  aspect-ratio: auto;
+}
+/* Від краю до краю підсвітці немає місця (і вона вилазила б за вікно — горизонтальна прокрутка). */
+.hp-watch__stage--window .hp-watch__glow,
+.hp-watch__stage--screen .hp-watch__glow {
+  display: none;
+}
+
 /* Повний екран — уся .hp-watch__view: кадр 16:9 по центру, навколо (на екрані ширшому за 16:9) — підсвітка. */
 .hp-watch__view:fullscreen {
   display: grid;

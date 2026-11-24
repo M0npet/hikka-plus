@@ -6,12 +6,12 @@
 import { browser } from '#imports';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
-import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv, IconBulb } from '../ui/icons';
+import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv, IconBulb, IconMoveH, IconMoveV, IconMoveBack, IconScan } from '../ui/icons';
 import { useLightsOff } from './lights-off';
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
 import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
-import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_WIDE_ANIM, type WatchPrefs } from './watch-store';
+import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_WIDE_ANIM, type WatchPrefs, type WatchSize } from './watch-store';
 import { AmbientFields } from './ambient-fields';
 import type { LightsMsg } from '../lights/types';
 import type { MarkSrc, Seg } from './skip-marks';
@@ -295,6 +295,19 @@ export function WatchBlock(p: WatchBlockProps) {
   const [noWide, setNoWide] = useState(false);
   const moonWide = player?.kind === 'moon' && !wide && !noWide;
   const effWide = wide || moonWide;
+  // Розмір плеєра в «Ширше» (як у Mikai, MK 2026-11-24): по колу «ширина сторінки» → «на всю ширину вікна» → «на всю висоту».
+  // iframe не перезавантажується (wide-layout.ts лише перераховує позицію). Запам'ятовується між тайтлами.
+  const [size, setSize] = useState<WatchSize>(p.prefs.size ?? 'grid');
+  useEffect(() => {
+    if (p.prefs.size) setSize(p.prefs.size);
+  }, [p.prefs.size]);
+  const effSize: WatchSize = effWide ? size : 'grid';
+  const nextSize: WatchSize = size === 'grid' ? 'window' : size === 'window' ? 'screen' : 'grid';
+  const SIZE_LABEL: Record<WatchSize, string> = { grid: 'За шириною сторінки', window: 'На всю ширину вікна', screen: 'На всю висоту вікна' };
+  const fitScreen = () => {
+    const v = viewRef.current;
+    if (v) window.scrollTo({ top: Math.round(v.getBoundingClientRect().top + window.scrollY), behavior: 'smooth' });
+  };
   useWideLayout(
     effWide,
     stageEl,
@@ -303,6 +316,9 @@ export function WatchBlock(p: WatchBlockProps) {
       setNoWide(true);
     },
     p.prefs.wideAnim ?? DEFAULT_WIDE_ANIM,
+    effSize,
+    // На все вікно — плеєр рівно в екран (як у Mikai); після анімації, щоб рахувати від кінцевого місця.
+    (sz) => sz === 'screen' && setTimeout(fitScreen, (p.prefs.wideAnim ?? DEFAULT_WIDE_ANIM) + 30),
   );
   // Після перемикання «Ширше» — прокрутити до плеєра.
   useEffect(() => {
@@ -665,6 +681,27 @@ export function WatchBlock(p: WatchBlockProps) {
         >
           <IconTv />
         </Button>
+        {effWide && effSize === 'screen' && (
+          <Button variant="ghost" size="sm" icon aria-label="Вирівняти плеєр по екрану" title="Вирівняти плеєр по екрану" onClick={fitScreen}>
+            <IconScan />
+          </Button>
+        )}
+        {effWide && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon
+            className="hp-watch__wide"
+            aria-label={`Розмір плеєра: ${SIZE_LABEL[nextSize].toLowerCase()}`}
+            title={`Розмір плеєра: ${SIZE_LABEL[nextSize].toLowerCase()}`}
+            onClick={() => {
+              setSize(nextSize);
+              p.onPrefs({ size: nextSize });
+            }}
+          >
+            {nextSize === 'window' ? <IconMoveH /> : nextSize === 'screen' ? <IconMoveV /> : <IconMoveBack />}
+          </Button>
+        )}
         {canFull && (
           <Button
             variant="ghost"
@@ -692,7 +729,10 @@ export function WatchBlock(p: WatchBlockProps) {
   // «Ширше» (рішення MK 2026-11-23, 03:06): увесь блок — на ширину сітки, під верхніми картками бічних колонок.
   // Блок лишається на своєму місці в DOM (iframe не перезавантажується), лише стає position:absolute — wide-layout.ts.
   return (
-    <section ref={stageCb} className={cx('hp-section hp-watch hp-watch__stage', effWide && 'hp-watch__stage--wide')}>
+    <section
+      ref={stageCb}
+      className={cx('hp-section hp-watch hp-watch__stage', effWide && 'hp-watch__stage--wide', effSize !== 'grid' && `hp-watch__stage--${effSize}`)}
+    >
       {body}
     </section>
   );

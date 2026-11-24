@@ -6,8 +6,14 @@
  * в DOM (перенесення iframe = перезавантаження) — він лишається на своєму місці в центральній колонці, лише стає
  * position:absolute на ширину сітки. Місце під ним тримають наші порожні відступи `hikka-plus-gap`: у бічних колонках
  * і в центрі. DOM Hikka не змінюємо. Перехід туди й назад — FLIP-анімація transform (без перерахунку розкладки щокадру).
+ *
+ * Розмір плеєра (як у Mikai, MK 2026-11-24): `size` = grid — блок на ширину сітки; window / screen — блок на всю ширину
+ * вікна (`--hp-bleed` — скільки з кожного боку виходить за сітку: керування лишається на ширині сітки, плеєр — від краю
+ * до краю, style.css), screen — ще й рамка на висоту вікна. Зміна розміру не перезапускає ефект (відступи не перебудовуються,
+ * iframe не чіпаємо) — лише перерахунок + FLIP.
  */
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
+import type { WatchSize } from './watch-store';
 
 const GAP = 32; // gap-8 у колонках Hikka
 // Скільки верхніх карток бічної колонки завжди над блоком (hikka-next, content-detail-page.tsx):
@@ -43,15 +49,28 @@ function flip(el: HTMLElement, from: DOMRect, ms: number) {
  * Увімкнути «Ширше» для блоку, у якому лежить `stage`. Нічого не повертає: усе робиться стилями нашого host
  * і нашими відступами. `onUnavailable` — коли «Ширше» неможливе (вузький екран, колонки складені в одну).
  */
-export function useWideLayout(active: boolean, stage: HTMLElement | null, onUnavailable: () => void, animMs = 320) {
+export function useWideLayout(
+  active: boolean,
+  stage: HTMLElement | null,
+  onUnavailable: () => void,
+  animMs = 320,
+  size: WatchSize = 'grid',
+  onSized?: (size: WatchSize) => void,
+) {
   const anim = useRef(animMs);
   anim.current = animMs;
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
+  const sized = useRef(onSized);
+  sized.current = onSized;
+  const relayout = useRef<(() => void) | null>(null);
+  useEffect(() => relayout.current?.(), [size]);
   useLayoutEffect(() => {
     if (!active || !stage) return;
     const host = (stage.getRootNode() as ShadowRoot).host as HTMLElement | undefined;
     const grid = document.querySelector<HTMLElement>('div:has(> #content-left-side)');
     if (!host || !grid) return;
-    const from = host.getBoundingClientRect();
+    let from = host.getBoundingClientRect();
     const gaps = new Map<Element, HTMLElement>();
     let raf = 0;
     let first = true;
@@ -92,11 +111,17 @@ export function useWideLayout(active: boolean, stage: HTMLElement | null, onUnav
       const desc = document.getElementById('content-description');
       const cGap = center ? parseFloat(getComputedStyle(center).rowGap) || GAP : GAP;
 
-      // Сам блок: абсолютно, ширина сітки (висоту бере від ширини — рахуємо після).
+      // Сам блок: абсолютно, ширина сітки або вікна (висоту бере від ширини — рахуємо після).
       const g = grid.getBoundingClientRect();
+      const sz = sizeRef.current;
+      const vw = document.documentElement.clientWidth;
+      const bleed = sz === 'grid' ? 0 : Math.max(0, Math.round((vw - g.width) / 2));
       host.style.position = 'absolute';
-      host.style.zIndex = '1';
-      host.style.width = `${Math.round(g.width)}px`;
+      // На все вікно — над липкою шапкою Hikka (інакше вона закриває верх кадру).
+      host.style.zIndex = sz === 'screen' ? '60' : '1';
+      host.style.width = `${Math.round(sz === 'grid' ? g.width : vw)}px`;
+      host.style.setProperty('--hp-bleed', `${bleed}px`);
+      if (host.dataset.hpSize !== sz) host.dataset.hpSize = sz;
       const H = Math.round(stage.getBoundingClientRect().height);
 
       // Рідне місце блоку — одразу під описом.
@@ -156,11 +181,12 @@ export function useWideLayout(active: boolean, stage: HTMLElement | null, onUnav
       // Позиція блоку: верх = під верхніми бічними картками, ліво = ліво сітки.
       const o = origin();
       host.style.top = `${Math.round(top - o.y)}px`;
-      host.style.left = `${Math.round(g.left + window.scrollX - o.x)}px`;
+      host.style.left = `${Math.round((sz === 'grid' ? g.left : 0) + window.scrollX - o.x)}px`;
 
       if (first) {
         first = false;
         flip(host, from, anim.current);
+        sized.current?.(sz);
       }
     };
     const schedule = () => {
@@ -182,16 +208,24 @@ export function useWideLayout(active: boolean, stage: HTMLElement | null, onUnav
       }
     }
     window.addEventListener('resize', schedule);
+    relayout.current = () => {
+      from = host.getBoundingClientRect();
+      first = true;
+      schedule();
+    };
     run();
 
     return () => {
       cancelAnimationFrame(raf);
+      relayout.current = null;
       ro.disconnect();
       mo.disconnect();
       window.removeEventListener('resize', schedule);
       const was = host.getBoundingClientRect();
       gaps.forEach((g) => g.remove());
       for (const k of ['position', 'zIndex', 'width', 'top', 'left'] as const) host.style[k] = '';
+      host.style.removeProperty('--hp-bleed');
+      delete host.dataset.hpSize;
       if (host.isConnected) flip(host, was, anim.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
