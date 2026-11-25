@@ -71,7 +71,8 @@ export function safeFrameSrc(raw: string | null | undefined, kind: PlayerKind): 
 
 /**
  * Підсвітка навколо плеєра (entrypoints/player-frame.content.ts ↔ PlayerFrame):
- * AMBIENT_MSG — з фрейму: {ready} | {w, h, rgb: рядок, по символу на байт RGB} | {off} (кадр недоступний) | {bar} (Moon);
+ * AMBIENT_MSG — з фрейму: {ready} | {w, h, rgb: рядок, по символу на байт RGB} | {off} (кадр недоступний) | {bar} (Moon)
+ *   | {marks: {op?: {s, e}, ed?: {s, e}}} (Fenix: мітки з його смужки прокрутки, сек);
  * AMBIENT_REQ — з hikka.io у фрейм: {on: boolean} | {seek: сек}.
  */
 export const AMBIENT_MSG = 'hikka-plus:ambient';

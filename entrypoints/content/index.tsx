@@ -41,13 +41,14 @@ export default defineContentScript({
     // подія WXT про зміну адреси (через Navigation API) приходить ДО того, як location оновився,
     // тож самої події мало — додатково звіряємо шлях після мутацій DOM і раз на пів секунди.
     let lastPath: string | null = null;
-    const syncPage = () => {
-      if (location.pathname === lastPath) return;
+    const syncPage = (): boolean => {
+      if (location.pathname === lastPath) return false;
       lastPath = location.pathname;
       animePageStore.set(parseAnimePage()?.slug ?? null);
       const page = readerOn ? parseTitlePage() : null;
       if (page) void loadTitle(page);
       else resetTitle();
+      return true;
     };
 
     const mounter = new Mounter(ctx, [
@@ -94,16 +95,21 @@ export default defineContentScript({
       syncPage();
       mounter.schedule();
     };
+    // Раз на пів секунди лише звіряємо адресу; блоки перевіряємо, коли вона змінилась (решту ловить MutationObserver
+    // у Mounter) — інакше кожна вкладка hikka.io будила б перевірку блоків двічі на секунду завжди.
+    const onTick = () => {
+      if (syncPage()) mounter.schedule();
+    };
     ctx.addEventListener(window, 'wxt:locationchange', () => {
       // Адреса ще стара — перевіряємо після того, як навігація завершиться.
       setTimeout(onNav, 0);
       setTimeout(onNav, 150);
     });
     ctx.addEventListener(window, 'popstate', onNav);
-    const pathObs = new MutationObserver(syncPage);
+    const pathObs = new MutationObserver(() => void syncPage());
     pathObs.observe(document.body, { childList: true, subtree: true });
     ctx.onInvalidated(() => pathObs.disconnect());
-    ctx.setInterval(onNav, 500);
+    ctx.setInterval(onTick, 500);
 
     // Джерела ввімкнули/вимкнули чи переставили у вікні налаштувань — перезавантажити блок тайтлу
     // (якщо читалка відкрита, зміни підхопляться при наступному переході).

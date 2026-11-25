@@ -1734,6 +1734,12 @@ select {
   max-width: calc((100vh - 140px) * 16 / 9);
   margin-inline: auto;
 }
+/* «Ширше» на ширину сітки: збоку підсвітка не далі краю вікна (--hp-room з wide-layout.ts), інакше на вікні ~1280
+   canvas (125 % ширини) виходить за вікно — горизонтальна прокрутка. Немає місця — світить лише згори/знизу. */
+.hp-watch__stage--wide:not(.hp-watch__stage--window):not(.hp-watch__stage--screen) .hp-watch__view:not(:fullscreen) > .hp-watch__glow {
+  left: calc(-1 * min(12.5%, var(--hp-room, 12.5%)));
+  width: calc(100% + 2 * min(12.5%, var(--hp-room, 12.5%)));
+}
 /* Розмір плеєра як у Mikai (MK 2026-11-24, wide-layout.ts): блок на всю ширину вікна; заголовок і керування — на ширині
    сітки сторінки (відступ --hp-bleed з кожного боку), сам плеєр — від краю до краю вікна. 17px = padding + рамка .hp-card. */
 .hp-watch__stage--window,

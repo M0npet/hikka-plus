@@ -121,6 +121,9 @@ export function useWideLayout(
       host.style.zIndex = sz === 'screen' ? '60' : '1';
       host.style.width = `${Math.round(sz === 'grid' ? g.width : vw)}px`;
       host.style.setProperty('--hp-bleed', `${bleed}px`);
+      // Скільки місця до краю вікна з кожного боку: підсвітка в «сітці» не ширша за нього (інакше на вікні ~1280
+      // вона виходить за вікно й дає горизонтальну прокрутку). style.css: .hp-watch__glow у --wide.
+      host.style.setProperty('--hp-room', `${Math.max(0, Math.round((vw - g.width) / 2))}px`);
       if (host.dataset.hpSize !== sz) host.dataset.hpSize = sz;
       const H = Math.round(stage.getBoundingClientRect().height);
 
@@ -225,6 +228,7 @@ export function useWideLayout(
       gaps.forEach((g) => g.remove());
       for (const k of ['position', 'zIndex', 'width', 'top', 'left'] as const) host.style[k] = '';
       host.style.removeProperty('--hp-bleed');
+      host.style.removeProperty('--hp-room');
       delete host.dataset.hpSize;
       if (host.isConnected) flip(host, was, anim.current);
     };

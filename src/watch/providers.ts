@@ -69,12 +69,40 @@ type MikaiRelease = {
   teams?: { id: number; name: string; avatar?: { small?: { webp?: string } } | null }[];
   episodes?: { number: number; sources?: { provider: string; embedUrl: string }[] }[];
 };
-type MikaiPlayer = { anime?: { ids?: { mikai?: number; slug?: string } }; licensed?: boolean; releases?: MikaiRelease[] };
+type MikaiPlayer = {
+  anime?: { ids?: { mikai?: number; slug?: string } };
+  licensed?: boolean;
+  /** Українська ліцензія (є й при licensed:false; перевірено 2026-11-25): {licensedBy, link, uaDub?, uaSubs?}. */
+  license?: { licensedBy?: unknown; link?: unknown; uaDub?: unknown; uaSubs?: unknown };
+  releases?: MikaiRelease[];
+};
+
+/** Де тайтл можна дивитися легально в Україні (блок license з Mikai). dub/subs — undefined, якщо Mikai не перевіряв. */
+export type UaLicense = { by: string; link?: string; dub?: boolean; subs?: boolean };
+
+function parseLicense(l: MikaiPlayer['license']): UaLicense | undefined {
+  if (!l || typeof l.licensedBy !== 'string' || !l.licensedBy.trim()) return undefined;
+  let link: string | undefined;
+  try {
+    const u = typeof l.link === 'string' ? new URL(l.link) : null;
+    if (u?.protocol === 'https:') link = u.href;
+  } catch {
+    /* немає */
+  }
+  return {
+    by: l.licensedBy.trim().slice(0, 60),
+    link,
+    dub: typeof l.uaDub === 'boolean' ? l.uaDub : undefined,
+    subs: typeof l.uaSubs === 'boolean' ? l.uaSubs : undefined,
+  };
+}
+
+export type MikaiResult = { teams: WatchTeam[]; license?: UaLicense };
 
 const PUB_KIND: Record<string, Exclude<PlayerKind, 'custom'>> = { moon: 'moon', ashdi: 'ashdi', fenix: 'fenix' };
 
 /** Команди з публічного API Mikai. null — тайтлу немає на Mikai (404). */
-async function mikaiPublic(ref: string): Promise<WatchTeam[] | null> {
+async function mikaiPublic(ref: string): Promise<MikaiResult | null> {
   let res: { ok?: boolean; result?: MikaiPlayer };
   try {
     res = await getJson(`https://api.mikai.me/public/v1/anime/${ref}/player`);
@@ -83,8 +111,9 @@ async function mikaiPublic(ref: string): Promise<WatchTeam[] | null> {
     throw e;
   }
   const r = res.result;
-  // Ліцензований тайтл: плеєра немає (Mikai просить показувати їхній блок license — поки просто «не знайдено»).
-  if (!r || r.licensed) return [];
+  const license = parseLicense(r?.license);
+  // Ліцензований тайтл: плеєра немає — показуємо лише блок license (де дивитися легально), як просить Mikai.
+  if (!r || r.licensed) return { teams: [], license };
   const mid = r.anime?.ids?.mikai;
   const mslug = r.anime?.ids?.slug;
   const out: WatchTeam[] = [];
@@ -132,24 +161,24 @@ async function mikaiPublic(ref: string): Promise<WatchTeam[] | null> {
       dawn: mid && mslug ? (ep) => `https://mikai.me/anime/${mid}-${mslug}?ep=${ep}&team=${teamId}&v=${v}&p=dawn` : undefined,
     });
   }
-  return out;
+  return { teams: out, license };
 }
 
 /**
  * Команди Mikai для тайтлу Hikka: публічний API за slug Hikka → за id Mikai з посилання → старий внутрішній /v1.
  * link — посилання «Перегляд» на Mikai з Hikka (може не бути).
  */
-export async function mikaiTeamsFor(hikkaSlug: string, link?: { id: number; slug: string }): Promise<WatchTeam[]> {
+export async function mikaiTeamsFor(hikkaSlug: string, link?: { id: number; slug: string }): Promise<MikaiResult> {
   try {
     const bySlug = await mikaiPublic(`hikka:${encodeURIComponent(hikkaSlug)}`);
     if (bySlug) return bySlug;
-    if (!link) return [];
+    if (!link) return { teams: [] };
     const byId = await mikaiPublic(String(link.id));
     if (byId) return byId;
   } catch {
     /* публічний API не відповів — пробуємо старий */
   }
-  return link ? mikaiTeams(link.id, link.slug) : [];
+  return { teams: link ? await mikaiTeams(link.id, link.slug) : [] };
 }
 
 export async function mikaiTeams(id: number, slug: string): Promise<WatchTeam[]> {

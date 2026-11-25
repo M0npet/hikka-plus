@@ -5,12 +5,14 @@
  *    перемотка {api:'seek', set}. Події реклами vast_* ігноруємо.
  *  - Moon (ns 'ma', v2): iframe з ?api=1 → {ns:'ma', event:'bridge_ready'}; команда subscribe → події timeupdate,
  *    ended, quartile; get_duration, get_skip_segments, player_seek {seek}. Відповідь {ns:'ma', id, status, data}.
- *  - Fenix: сам шле {fenix:true, event: ready|loaded|timeupdate|ended|episode_change|skip_change, time, duration, episode};
- *    команди {action, value}.
+ *  - Fenix: сам шле {fenix:true, event: ready|loaded|timeupdate|ended|episode_change, time, duration, episode};
+ *    команди {action, value}. Мітки OP/ED (markers_change, skip_change) Fenix шле лише сайту AniHub (FENIX_TV_API
+ *    видає тільки їхня сторінка; перевірено 2026-11-25) — тому їх читає наш скрипт у фреймі зі смужки прокрутки
+ *    (.fenix-marker-intro/-ending) і шле {type: AMBIENT_MSG, marks} (entrypoints/player-frame.content.ts).
  *  - Свій плеєр (відкритий протокол Hikka Plus): {hp:1, event:'timeupdate'|'ended', time, duration, episode?}.
  * Повідомлення приймаємо лише від contentWindow свого iframe.
  */
-import type { PlayerKind } from './types';
+import { AMBIENT_MSG, type PlayerKind } from './types';
 import { segsFromPlayer, type Seg } from './skip-marks';
 
 export type PlayerEvents = {
@@ -60,6 +62,19 @@ export function attachPlayer(frame: HTMLIFrameElement, kind: PlayerKind, ev: Pla
     }
     if (!m || typeof m !== 'object') return;
     const o = m as Record<string, unknown>;
+    // Мітки від нашого скрипту у фреймі (Fenix) — уже в секундах, перевіряємо й передаємо як є.
+    if (o.type === AMBIENT_MSG) {
+      const mk = o.marks as Record<string, { s?: unknown; e?: unknown } | undefined> | undefined;
+      if (!mk || typeof mk !== 'object') return;
+      const out: { op?: Seg; ed?: Seg } = {};
+      for (const k of ['op', 'ed'] as const) {
+        const s = num(mk[k]?.s);
+        const e = num(mk[k]?.e);
+        if (s >= 0 && e > s) out[k] = { s, e };
+      }
+      if (out.op || out.ed) ev.onSegs(out);
+      return;
+    }
     const d = (o.data && typeof o.data === 'object' ? o.data : {}) as Record<string, unknown>;
 
     if (kind === 'ashdi') {

@@ -16,6 +16,7 @@ import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_WIDE_ANIM, type 
 import { AmbientFields } from './ambient-fields';
 import type { LightsMsg } from '../lights/types';
 import type { MarkSrc, Seg } from './skip-marks';
+import type { UaLicense } from './providers';
 import type { MarksInfo } from './watch-root';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -34,6 +35,8 @@ export type WatchBlockProps = {
   hikka?: HikkaLine;
   /** Посилання «Anitube» (лише посиланням — Cloudflare). */
   anitube?: string;
+  /** Українська ліцензія з Mikai: де дивитися легально (кнопка в шапці; без серій — замість «не знайшли»). */
+  license?: UaLicense;
   /** Поріг зарахування поточної серії: at — секунда, ed — це початок ендингу (а не «за 90 с до кінця»). */
   edInfo?: { ep: number; at: number; ed: boolean } | null;
   prefs: WatchPrefs;
@@ -380,12 +383,37 @@ export function WatchBlock(p: WatchBlockProps) {
     </a>
   );
 
+  // Ліцензія (блок license з Mikai): кнопка «Легально: Netflix» у шапці; підказка — чи є українська озвучка/субтитри.
+  const lic = p.license;
+  const licWhat = lic ? [lic.dub && 'українська озвучка', lic.subs && 'українські субтитри'].filter(Boolean).join(', ') : '';
+  const license = lic && (
+    <a
+      className={btn('ghost', 'sm')}
+      href={lic.link}
+      target="_blank"
+      rel="noreferrer noopener"
+      title={`Ліцензовано в Україні: ${lic.by}${licWhat ? ` — ${licWhat}` : ''}`}
+    >
+      Легально: {lic.by}
+      {lic.link && <IconExternal />}
+    </a>
+  );
+
   if (p.status === 'not-found' || !team || !player)
     return (
       <section className="hp-section">
-        <Header title="Перегляд">{anitube}</Header>
+        <Header title="Перегляд">
+          {license}
+          {anitube}
+        </Header>
         <div className="hp-card">
-          <p className="hp-p hp-state">{p.error ? `Не вдалося завантажити серії: ${p.error}` : 'Не знайшли серій на Mikai та AnimeON.'}</p>
+          <p className="hp-p hp-state">
+            {p.error
+              ? `Не вдалося завантажити серії: ${p.error}`
+              : lic
+                ? `Аніме ліцензоване в Україні — дивіться на ${lic.by}${licWhat ? ` (${licWhat})` : ''}.`
+                : 'Не знайшли серій на Mikai та AnimeON.'}
+          </p>
         </div>
       </section>
     );
@@ -637,6 +665,7 @@ export function WatchBlock(p: WatchBlockProps) {
   const body = (
     <>
       <Header title="Перегляд">
+        {license}
         {anitube}
         {animeSlug && <CoverToggle kind="anime" slug={animeSlug} />}
         <div className="hp-select" ref={menuWrap}>
@@ -870,6 +899,7 @@ export function PlayerFrame(p: {
       if (typeof d.bar === 'string') return void f.parentElement?.classList.toggle('hp-watch__frame--below', d.bar === 'below');
       if (d.off) {
         if (devices) toDevices({ type: 'hp-lights', stop: true });
+        first = true; // кадри можуть піти знову (Ashdi: після реклами) — тоді показати й почати змішування заново
         return c?.classList.remove('is-on');
       }
       const w = Number(d.w);

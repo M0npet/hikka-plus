@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { getJson } from '../core/net';
 import { hikkaConfigured, watchScopeItem, tokenItem } from '../core/hikka-auth';
 import { startHikkaLogin } from '../features/hikka-sync';
-import { animeonTeams, mergeTeams, mikaiTeamsFor, parseWatchLinks } from './providers';
+import { animeonTeams, mergeTeams, mikaiTeamsFor, parseWatchLinks, type UaLicense } from './providers';
 import { aniskipRaw, watchedAt, type AniSkip } from './threshold';
 import { mergeMarks, segsFromAniskip, type Marks, type Seg } from './skip-marks';
 import { getWatchSaved, updateWatchSaved, useWatchPrefs, type WatchSaved } from './watch-store';
@@ -48,7 +48,11 @@ export function AnimeWatch() {
 
 /* ---------- Контейнер ---------- */
 
-type Load = { status: 'loading' } | { status: 'ready'; teams: WatchTeam[]; anime: HikkaAnime; anitube?: string } | { status: 'not-found'; anitube?: string } | { status: 'error'; message: string };
+type Load =
+  | { status: 'loading' }
+  | { status: 'ready'; teams: WatchTeam[]; anime: HikkaAnime; anitube?: string; license?: UaLicense }
+  | { status: 'not-found'; anitube?: string; license?: UaLicense }
+  | { status: 'error'; message: string };
 
 const SAVE_EVERY_MS = 5000;
 
@@ -74,14 +78,15 @@ export function WatchRoot({ slug }: { slug: string }) {
         const anime = await getJson<HikkaAnime>(`https://api.hikka.io/anime/${slug}`);
         const links = parseWatchLinks(anime.external ?? []);
         const [mk, ao] = await Promise.all([
-          mikaiTeamsFor(slug, links.mikai).catch(() => [] as WatchTeam[]),
+          mikaiTeamsFor(slug, links.mikai).catch(() => ({ teams: [] as WatchTeam[], license: undefined })),
           links.animeon ? animeonTeams(links.animeon).catch(() => [] as WatchTeam[]) : [],
         ]);
-        const teams = mergeTeams(mk, ao);
+        const teams = mergeTeams(mk.teams, ao);
+        const license = mk.license;
         const s = await getWatchSaved(slug);
         if (off) return;
         setSaved(s);
-        setLoad(teams.length ? { status: 'ready', teams, anime, anitube: links.anitube } : { status: 'not-found', anitube: links.anitube });
+        setLoad(teams.length ? { status: 'ready', teams, anime, anitube: links.anitube, license } : { status: 'not-found', anitube: links.anitube, license });
       } catch (e) {
         if (!off) setLoad({ status: 'error', message: String((e as Error)?.message ?? e) });
       }
@@ -284,6 +289,7 @@ export function WatchRoot({ slug }: { slug: string }) {
       total={total ?? undefined}
       hikka={hikkaLine}
       anitube={load.status === 'ready' || load.status === 'not-found' ? load.anitube : undefined}
+      license={load.status === 'ready' || load.status === 'not-found' ? load.license : undefined}
       edInfo={edInfo}
       prefs={prefs}
       onPrefs={setPrefs}
