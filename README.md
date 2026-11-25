@@ -13,13 +13,17 @@
 **Неофіційне розширення для [hikka.io](https://hikka.io)** — плеєр аніме з українськими озвучками<br>
 та читалка манґи, манхви й ранобе, вбудовані прямо в сторінку тайтлу й оформлені в стилі сайту.
 
-[Встановлення](#-встановлення) · [Можливості](#-можливості) · [Джерела](#-джерела) · [Приватність](PRIVACY.md) · [Повідомити про помилку](https://github.com/M0npet/hikka-plus/issues)
+[Встановлення](#-встановлення) · [Можливості](#-можливості) · [Скріншоти](#-як-це-виглядає) · [Джерела](#-джерела) · [Приватність](PRIVACY.md) · [Повідомити про помилку](https://github.com/M0npet/hikka-plus/issues)
 
 </div>
 
 > [!NOTE]
 > Hikka Plus не пов'язане з командою Hikka. Контент береться лише з українських сайтів-джерел,
 > їхній захист розширення не обходить. Власного сервера немає — нічого не надсилається розробнику.
+
+<p align="center">
+  <img src=".github/assets/screenshots/01-player.webp" alt="Блок «Перегляд» на сторінці аніме: плеєр, озвучка, серії" width="100%">
+</p>
 
 ## ✨ Можливості
 
@@ -82,6 +86,41 @@
 - **Синхронізація з Hikka** (вхід через OAuth): прочитані розділи оновлюють лічильник у списку Hikka.
 
 </details>
+
+## 📸 Як це виглядає
+
+<table>
+<tr>
+<td width="50%" valign="top" align="center">
+<img src=".github/assets/screenshots/02-player-glow-marks.webp" alt="Підсвітка й мітки OP/ED" width="100%"><br>
+<b>Підсвітка й мітки OP/ED</b><br><sub>Кольори кадру навколо плеєра, «Пропустити опенінг»</sub>
+</td>
+<td width="50%" valign="top" align="center">
+<img src=".github/assets/screenshots/03-player-window.webp" alt="Плеєр на всю ширину вікна" width="100%"><br>
+<b>Плеєр на всю ширину вікна</b><br><sub>«Розмір плеєра» — як на Mikai, без перезавантаження</sub>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top" align="center">
+<img src=".github/assets/screenshots/04-manga-chapters.webp" alt="Розділи на сторінці манґи" width="100%"><br>
+<b>Розділи на сторінці манґи</b><br><sub>Джерела, команди, прогрес — у стилі Hikka</sub>
+</td>
+<td width="50%" valign="top" align="center">
+<img src=".github/assets/screenshots/05-reader-manga-glow.webp" alt="Читалка з підсвіткою" width="100%"><br>
+<b>Читалка з підсвіткою</b><br><sub>Сторінки м'яко розходяться кольором по фону</sub>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top" align="center">
+<img src=".github/assets/screenshots/08-reader-manhwa-settings.webp" alt="Стрічка для манхви" width="100%"><br>
+<b>Стрічка для манхви</b><br><sub>Зони кліку, ширина, яскравість, безкінечна стрічка</sub>
+</td>
+<td width="50%" valign="top" align="center">
+<img src=".github/assets/screenshots/10-reader-novel-settings.webp" alt="Читалка ранобе" width="100%"><br>
+<b>Читалка ранобе</b><br><sub>Тема, шрифт, розмір, інтервал, ширина тексту</sub>
+</td>
+</tr>
+</table>
 
 ## 📚 Джерела
 
@@ -168,7 +207,7 @@ git tag "v$(node -p "require('./package.json').version")"
 git push && git push --tags
 ```
 
-Банер README — `.github/assets/banner.html` (знімок 1280×400 @2x у `banner.webp`).
+Банер README — `.github/assets/banner.html` (знімок 1280×400 @2x у `banner.webp`); рамка скріншотів — `.github/assets/screenshots/frame.html` (скріншот 1280×800 → 1440×972).
 
 </details>
 
