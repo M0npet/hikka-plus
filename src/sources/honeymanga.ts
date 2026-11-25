@@ -111,6 +111,20 @@ export function blockNoteToHtml(raw: unknown): string {
   return Array.isArray(raw) ? blocks(raw as BBlock[]) : '';
 }
 
+function toChapter(titleId: string, c: HChapter): Chapter | null {
+  // Платні (ранній доступ) розділи без входу не відкриються — пропускаємо.
+  if (c.isMonetized) return null;
+  const name = c.title?.trim() ?? '';
+  return {
+    id: c.id,
+    volume: c.volume ? String(c.volume) : null,
+    number: c.subChapterNum ? `${c.chapterNum}.${c.subChapterNum}` : String(c.chapterNum),
+    name: BAD_TITLES.has(name.toLowerCase()) || /розділ/i.test(name) ? undefined : name,
+    date: c.lastUpdated ? Date.parse(c.lastUpdated) : undefined,
+    url: `${SITE}/read/${c.id}/${titleId}`,
+  };
+}
+
 function toRemote(t: HTitle): RemoteTitle {
   if (isNovelType(t.type)) novelIds.add(t.id);
   return {
@@ -155,21 +169,20 @@ export const honeyManga: ReadSource = {
         `${API}/v3/comics/${encodeURIComponent(titleId)}/chapters?sortOrder=ASC&page=${page}&pageSize=200`,
       );
       for (const c of res.data) {
-        // Платні (ранній доступ) розділи без входу не відкриються — пропускаємо.
-        if (c.isMonetized) continue;
-        const name = c.title?.trim() ?? '';
-        out.push({
-          id: c.id,
-          volume: c.volume ? String(c.volume) : null,
-          number: c.subChapterNum ? `${c.chapterNum}.${c.subChapterNum}` : String(c.chapterNum),
-          name: BAD_TITLES.has(name.toLowerCase()) || /розділ/i.test(name) ? undefined : name,
-          date: c.lastUpdated ? Date.parse(c.lastUpdated) : undefined,
-          url: `${SITE}/read/${c.id}/${titleId}`,
-        });
+        const ch = toChapter(titleId, c);
+        if (ch) out.push(ch);
       }
       if (!res.data.length || page * 200 >= res.total) break;
     }
     return out.sort((a, b) => chapterNum(a.volume) - chapterNum(b.volume) || chapterNum(a.number) - chapterNum(b.number));
+  },
+
+  async getLatest(titleId) {
+    // Найновіші 50 розділів одним запитом (DESC) — для плашок нових розділів.
+    const res = await getJson<{ data: HChapter[] }>(
+      `${API}/v3/comics/${encodeURIComponent(titleId)}/chapters?sortOrder=DESC&page=1&pageSize=50`,
+    );
+    return res.data.map((c) => toChapter(titleId, c)).filter((c): c is Chapter => !!c);
   },
 
   async getContent(chapter) {

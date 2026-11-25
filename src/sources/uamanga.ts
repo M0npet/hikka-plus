@@ -57,24 +57,33 @@ const toRemote = (t: USuggest): RemoteTitle => ({
 
 type UChapter = { id?: number; name?: string; number?: number | string; created_at?: string };
 
+const toChapter = (slug: string, c: UChapter): Chapter | null => {
+  const number = String(c.number ?? '').replace(',', '.');
+  if (!number) return null;
+  return {
+    id: String(c.id ?? number),
+    volume: c.name?.match(/Том\s*(\d+)/i)?.[1] ?? null,
+    number,
+    date: c.created_at ? Date.parse(c.created_at) : undefined,
+    url: `${SITE}/title/${encodeURIComponent(slug)}/chapter-${number.replace('.', '-')}`,
+  };
+};
+
+const chaptersPage = (slug: string, n: number) =>
+  getJson<{ items?: UChapter[]; pages?: number }>(`${SITE}/api/titles/${encodeURIComponent(slug)}/chapters?page=${n}&perpage=100`);
+
 async function chaptersApi(slug: string): Promise<Chapter[]> {
-  const out: Chapter[] = [];
-  for (let page = 1; page <= 100; page++) {
-    const r = await getJson<{ items?: UChapter[]; pages?: number }>(`${SITE}/api/titles/${encodeURIComponent(slug)}/chapters?page=${page}`);
-    for (const c of r.items ?? []) {
-      const number = String(c.number ?? '').replace(',', '.');
-      if (!number) continue;
-      out.push({
-        id: String(c.id ?? number),
-        volume: c.name?.match(/Том\s*(\d+)/i)?.[1] ?? null,
-        number,
-        date: c.created_at ? Date.parse(c.created_at) : undefined,
-        url: `${SITE}/title/${encodeURIComponent(slug)}/chapter-${number.replace('.', '-')}`,
-      });
-    }
-    if (!r.items?.length || page >= (r.pages ?? 1)) break;
+  // По 100 на сторінку (`perpage`, більше — 400; порада UAManga, MK 2026-11-25): у Martial Peak 3862 розділи → 39 запитів, а не 194.
+  // Після першої сторінки відомо `pages` — решту беремо по 4 паралельно.
+  const page = (n: number) => chaptersPage(slug, n);
+  const first = await page(1);
+  const pages = Math.min(first.pages ?? 1, 200);
+  const all = [first];
+  for (let n = 2; n <= pages; n += 4) {
+    const batch = [n, n + 1, n + 2, n + 3].filter((x) => x <= pages);
+    all.push(...(await Promise.all(batch.map(page))));
   }
-  return out;
+  return all.flatMap((r) => (r.items ?? []).map((c) => toChapter(slug, c)).filter((c): c is Chapter => !!c));
 }
 
 /** «"W3si…"» → [{url, width, height}] → адреси сторінок (лише http/https). */
@@ -163,6 +172,12 @@ export const uaManga: ReadSource = {
       });
     }
     return out.sort((a, b) => chapterNum(a.number) - chapterNum(b.number));
+  },
+
+  async getLatest(titleId) {
+    // Перша сторінка — найновіші 100 розділів (UAManga віддає від останнього).
+    const r = await chaptersPage(titleId, 1);
+    return (r.items ?? []).map((c) => toChapter(titleId, c)).filter((c): c is Chapter => !!c);
   },
 
   async getContent(chapter) {

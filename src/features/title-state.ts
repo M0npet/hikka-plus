@@ -1,3 +1,4 @@
+import { noteCover } from '../cards/covers';
 import { useSyncExternalStore } from 'react';
 import { fetchHikkaTitle, type HikkaTitle } from '../core/hikka';
 import type { TitlePage } from '../core/page';
@@ -348,6 +349,8 @@ export async function loadTitle(page: TitlePage) {
       pickActive(token);
     }),
   );
+  // Прив'язки відомі — український постер з джерела (src/cards/covers.ts).
+  if (token === loadToken) void noteCover(kind, slug).catch(() => {});
 }
 
 export function resetTitle() {
@@ -397,6 +400,7 @@ export async function bindManually(source: ReadSource, remote: RemoteTitle) {
     near: withNear(b.near, source.id, null),
   }));
   titleStore.set({ ...s, activeId: source.id, activeChosen: true });
+  void noteCover(kind, slug).catch(() => {});
   await loadChapters(loadToken, source, remote, true);
 }
 

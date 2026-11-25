@@ -95,7 +95,12 @@ export async function refreshReleased(keys: string[]) {
       const src = getSource(r.s);
       let next: Released = { ...r, at: Date.now() };
       try {
-        if (src) next = { ...next, ...summarize(renumberByVolume(await src.getChapters(r.id)), r.t) };
+        // Потрібен лише номер останнього розділу — джерела зі сторінками віддають найновіші одним запитом (getLatest):
+        // у Martial Peak на UAManga 1 запит замість 39.
+        if (src) {
+          const sum = summarize(src.getLatest ? await src.getLatest(r.id) : renumberByVolume(await src.getChapters(r.id)), r.t);
+          if (sum.n) next = { ...next, ...sum }; // порожня відповідь (напр. лише платні нові розділи) — старе число не затираємо
+        }
       } catch {
         /* сайт не відповів — спробуємо через 3 год, старе число лишаємо */
       }

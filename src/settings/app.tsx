@@ -261,6 +261,9 @@ function HikkaSection({ mode }: { mode: SettingsMode }) {
         checked={syncOn}
         onChange={(v) => void syncOnItem.setValue(v)}
       />
+
+      <Header title="Сайт Hikka" />
+      <UaCoversField />
     </>
   );
 }
@@ -276,6 +279,19 @@ function ReadCardsField() {
       hint="«▶ N нових розділів» на тайтлах зі статусом «Читаю», якщо вони прив'язані до джерела (раз на 3 год перевіряємо, що вийшло)"
       checked={c.read}
       onChange={(read) => setC({ read })}
+    />
+  );
+}
+
+/** Українські постери аніме, манґи й ранобе — загальний вимикач (src/cards/covers.ts, MK 2026-11-25). */
+function UaCoversField() {
+  const [c, setC] = useCardsPrefs();
+  return (
+    <SwitchRow
+      label="Українські постери"
+      hint="Замість оригінальних на картках і сторінках тайтлів. Аніме — україномовні постери з Mikai; манґа й ранобе — обкладинки з джерела, до якого тайтл прив'язаний (після першого відкриття)"
+      checked={c.ua}
+      onChange={(ua) => setC({ ua })}
     />
   );
 }

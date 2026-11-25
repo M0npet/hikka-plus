@@ -47,6 +47,11 @@ export interface ReadSource {
   autoMatch(title: HikkaTitle): Promise<RemoteTitle | null>;
   getTitle(id: string): Promise<RemoteTitle>;
   getChapters(titleId: string): Promise<Chapter[]>;
+  /**
+   * Лише найновіші розділи (один запит) — для плашок «▶ N нових розділів» (src/cards/released.ts), яким потрібен
+   * тільки номер останнього. Є в джерел, що віддають розділи сторінками; інакше береться getChapters.
+   */
+  getLatest?(titleId: string): Promise<Chapter[]>;
   getContent(chapter: Chapter): Promise<ChapterContent>;
 }
 

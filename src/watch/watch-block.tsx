@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
 import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv, IconBulb, IconMoveH, IconMoveV, IconMoveBack, IconScan } from '../ui/icons';
 import { useLightsOff } from './lights-off';
+import { CoverToggle } from '../cards/cover-toggle';
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
 import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
@@ -370,6 +371,8 @@ export function WatchBlock(p: WatchBlockProps) {
       </section>
     );
 
+  // Не хук — можна після ранніх return. Перемикач українського постера (src/cards/cover-toggle.tsx).
+  const animeSlug = /^\/anime\/([^/?#]+)/.exec(location.pathname)?.[1];
   const anitube = p.anitube && (
     <a className={btn('ghost', 'sm')} href={p.anitube} target="_blank" rel="noreferrer noopener">
       Anitube
@@ -635,6 +638,7 @@ export function WatchBlock(p: WatchBlockProps) {
     <>
       <Header title="Перегляд">
         {anitube}
+        {animeSlug && <CoverToggle kind="anime" slug={animeSlug} />}
         <div className="hp-select" ref={menuWrap}>
           <Button variant="ghost" size="sm" icon aria-label="Налаштування плеєра" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
             <IconSettings />

@@ -23,6 +23,8 @@ Hikka Plus — неофіційне розширення для [hikka.io](https
 Zenko, manga.in.ua, baka.in.ua, Honey Manga, UAManga, DGManga, Animesvit, Смаколики, Runi, NovelHub, FanVers, Wattpad, а також лише для пошуку посилання на тайтл — FAUST, Mangarama, MANGAEZ (manga.valsky.org) і Mangra.
 - Щоб знайти тайтл, розширення надсилає цим сайтам **назви тайтлу** (як на Hikka) або текст, який ви самі ввели в пошук. Потім воно завантажує список розділів і сторінки чи текст розділу, який ви відкрили. Mangra отримує лише запит загального каталогу (без назви тайтлу). Dengeki — лише посилання, запитів до нього розширення не робить.
 - **Плашки «▶ N нових розділів»** (вкладка «Читалка», можна вимкнути): для тайтлів зі статусом «Читаю», які ви бачите на сторінці Hikka і які прив'язані до джерела, розширення не частіше ніж раз на 3 години завантажує список розділів з того самого джерела (той самий запит, що й при відкритті тайтлу). Прочитане береться з того, що сторінка Hikka вже завантажила, — окремих запитів до Hikka немає.
+- **Українські постери** (вкладка «Hikka», можна вимкнути): для тайтлу манґи (Zenko, Honey Manga, DGManga, Manga.in.ua) чи ранобе (Бака, Honey Manga, DGManga), який ви вже відкривали й який прив'язаний до джерела, розширення бере обкладинку з цього джерела (один запит при відкритті тайтлу, далі не частіше ніж раз на 14 днів) і показує її замість постера Hikka. Сама картинка вантажиться з сайту джерела (без адреси сторінки Hikka в заголовку Referer) — так сайт джерела бачить вашу IP-адресу, як і в читалці.
+- **Українські постери аніме** (той самий вимикач): для карток аніме, які ви бачите на сторінці Hikka, розширення надсилає Mikai їхні slug (ідентифікатори Hikka) одним запитом — до 100 за раз, не частіше ніж раз на 2 секунди, і про кожен тайтл не частіше ніж раз на 3–14 днів — і показує україномовний постер, якщо він є в Mikai. Картинка вантажиться з images.mikai.me.
 - Запити йдуть **без ваших cookie** цих сайтів (`credentials: omit`); ваші облікові записи на цих сайтах не використовуються.
 - Сайти, які ви вимкнули у вкладці «Джерела», не отримують жодних запитів.
 - Як і під час звичайного відвідування, ці сайти бачать вашу IP-адресу та звичайні дані браузера. Їхні правила — у їхніх власних політиках.
@@ -46,7 +48,7 @@ Zenko, manga.in.ua, baka.in.ua, Honey Manga, UAManga, DGManga, Animesvit, Сма
 ## Керування даними
 - Вкладка **«Дані»** у вікні налаштувань: зберегти копію своїх даних у файл, відновити з файлу, скинути прогрес, прив'язки або все.
 - **«Вийти»** у вкладці «Hikka» видаляє токен. Доступ також можна відкликати в налаштуваннях облікового запису Hikka.
-- Вимикачі: «Показувати читалку», «Показувати плеєр», окремі джерела, «Оновлювати лічильник у Hikka», «Відмічати серії в Hikka», «Синхронізація» між пристроями, «Підсвітка», «Підсвітка пристроїв».
+- Вимикачі: «Показувати читалку», «Показувати плеєр», окремі джерела, «Оновлювати лічильник у Hikka», «Відмічати серії в Hikka», «Синхронізація» між пристроями, «Підсвітка», «Підсвітка пристроїв», «Українські постери».
 - Firefox показує категорії даних, які передає розширення, під час встановлення і в `about:addons` → Hikka Plus → «Дозволи».
 - Видалення розширення видаляє всі його локальні дані.
 
@@ -86,6 +88,8 @@ Hikka Plus is an unofficial extension for [hikka.io](https://hikka.io) that adds
 Zenko, manga.in.ua, baka.in.ua, Honey Manga, UAManga, DGManga, Animesvit, Smakolyky, Runi, NovelHub, FanVers, Wattpad; and, for title-link lookup only, FAUST, Mangarama, MANGAEZ (manga.valsky.org) and Mangra.
 - To find the title, the extension sends these sites the **title's names** (as listed on Hikka) or the text you type into the search box, then loads the chapter list and the pages/text of the chapter you open. Mangra only receives a request for its general catalogue (no title name). Dengeki is a plain link; the extension makes no requests to it.
 - **"▶ N new chapters" badges** ("Читалка" tab, can be turned off): for titles marked "Reading" that you see on a Hikka page and that are linked to a source, the extension reloads the chapter list from that same source at most once every 3 hours (the same request as when you open the title). What you have read comes from data the Hikka page already loaded — no extra requests to Hikka.
+- **Ukrainian posters** ("Hikka" tab, can be turned off): for a manga (Zenko, Honey Manga, DGManga, Manga.in.ua) or novel (Baka, Honey Manga, DGManga) title you have opened before and that is linked to that source, the extension takes the cover from that source (one request when you open the title, then at most every 14 days) and shows it instead of the Hikka poster. The image itself loads from the source site (with no Referer of the Hikka page), so the source sees your IP address, as in the reader.
+- **Ukrainian anime posters** (same toggle): for anime cards you see on a Hikka page, the extension sends Mikai their slugs (Hikka identifiers) in one request — up to 100 at a time, at most every 2 seconds, and for each title at most once every 3–14 days — and shows the Ukrainian poster if Mikai has one. The image loads from images.mikai.me.
 - Requests are made **without your cookies** for these sites (`credentials: omit`); your accounts on them are not used.
 - Sources you disable in the "Джерела" tab receive no requests.
 - As with any visit, these sites see your IP address and standard browser information; their own privacy policies apply.
@@ -109,7 +113,7 @@ Settings, reading and watching progress, title-to-source bindings, enabled sourc
 ## Your controls
 - **"Дані"** tab: export your data to a file, import it, reset progress, bindings or everything.
 - **"Вийти"** in the "Hikka" tab deletes the token; you can also revoke access in your Hikka account settings.
-- Toggles: show reader, show player, individual sources, Hikka counter sync, episode marking in Hikka, sync between devices, player glow, device lighting.
+- Toggles: show reader, show player, individual sources, Hikka counter sync, episode marking in Hikka, sync between devices, player glow, device lighting, Ukrainian posters.
 - Firefox lists the data categories the extension transmits at install time and in `about:addons` → Hikka Plus → Permissions.
 - Uninstalling the extension removes all its local data.
 

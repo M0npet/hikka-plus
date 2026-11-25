@@ -4,6 +4,7 @@ import { chapterKey, posText, type ChapterProgress } from '../core/store';
 import { getSource, sourcesFor } from '../sources/registry';
 import { chapterNo, type Chapter, type ReadSource, type RemoteTitle } from '../sources/types';
 import { IconExternal, IconLink, IconSearch, IconSort } from '../ui/icons';
+import { CoverToggle } from '../cards/cover-toggle';
 import { Button, btn, ChipMenu, ChipTabs, Header, Progress, Select } from '../ui/kit';
 import { openReader } from './reader-url';
 import { HikkaSyncBar } from './hikka-bar';
@@ -65,6 +66,7 @@ export function ChaptersBlock() {
           <IconLink />
           {searchFor && binding ? 'Скасувати' : 'Знайти вручну'}
         </Button>
+        <CoverToggle kind={s.page.kind} slug={s.page.slug} />
       </Header>
 
       <div className="hp-card">

@@ -13,14 +13,45 @@
  *
  * Манґа й ранобе (0.6.1): «▶ N нових розділів» = останній розділ на прив'язаному джерелі (src/cards/released.ts)
  * − прочитано в Hikka, лише статус «Читаю». Прочитане — з того самого кешу Hikka (поле `read`, список читання, `readGet`).
+ *
+ * Українські постери аніме, манґи й ранобе (src/cards/covers.ts): свій <hikka-plus-cover> одразу після блоку з картинкою Hikka
+ * в div[data-slot="aspect-ratio"] — картки, таблиці, «Історія» й великий постер на сторінці тайтлу.
  */
 import type { ContentScriptContext } from '#imports';
 import { CARDS_EVENT, CARDS_REQ, type CardRow } from '../core/bridge';
+import { coversItem, wantAnimeCovers, type CoverMap } from './covers';
 import { cardsItem, DEFAULT_CARDS, type CardsPrefs } from './prefs';
 import { refreshReleased, releasedItem, type ReleasedMap } from './released';
 import { getSchedule, type Schedule } from './schedule';
 
 const TAG = 'hikka-plus-badges';
+const COVER_TAG = 'hikka-plus-cover';
+const COVER_CSS = `
+:host { all: initial; position: absolute; inset: 0; display: block; pointer-events: none; }
+img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.2s ease-in-out; }
+img.on { opacity: 1; }
+`;
+/** Сторінка тайтлу → ключ обкладинки (`<anime|manga|novel>:<slug>`) для великого постера в #content-left-side. */
+const pageCoverKey = () => {
+  const m = /^\/(anime|manga|novel)\/([^/?#]+)\/?$/.exec(location.pathname);
+  return m ? `${m[1]}:${m[2]}` : null;
+};
+/** Посилання на тайтл → ключ обкладинки. */
+const coverKeyOf = (a: HTMLAnchorElement) => {
+  const m = /^\/(anime|manga|novel)\/([^/?#]+)\/?$/.exec(a.getAttribute('href') ?? '');
+  return m ? `${m[1]}:${m[2]}` : null;
+};
+/** Картинку постера вже підмінило інше розширення (не з hikka.io) — не чіпаємо. */
+const fromHikka = (img: HTMLImageElement) => {
+  const src = img.getAttribute('src');
+  if (!src) return true;
+  try {
+    const h = new URL(src, location.href).hostname;
+    return h === 'hikka.io' || h.endsWith('.hikka.io');
+  } catch {
+    return false;
+  }
+};
 /** Мініатюри (віджет «Історія» у профілі, ~44 px) — той самий aspect-ratio, що й картки; плашки туди не лізуть (MK 2026-11-25). */
 const MIN_POSTER = 90;
 
@@ -95,10 +126,73 @@ export function initCards(ctx: ContentScriptContext) {
   const info = new Map<string, Info>();
   let schedule: Schedule = {};
   let released: ReleasedMap = {};
+  let covers: CoverMap = {};
+  /** Адреси, що не завантажились (мертве посилання джерела), — до перезавантаження сторінки не пробуємо. */
+  const badCovers = new Set<string>();
   let scheduled = false;
+
+  const renderCovers = () => {
+    const seen = new Set<Element>();
+    if (prefs.ua) {
+      const pageKey = pageCoverKey();
+      const anime: string[] = [];
+      for (const box of document.querySelectorAll<HTMLElement>('[data-slot="aspect-ratio"]')) {
+        let key: string | null = null;
+        let big = false;
+        const a = box.querySelector<HTMLAnchorElement>(':scope > a[href^="/anime/"], :scope > a[href^="/manga/"], :scope > a[href^="/novel/"]');
+        if (a) key = coverKeyOf(a);
+        else if (pageKey && box.closest('#content-left-side')) {
+          key = pageKey;
+          big = true;
+        }
+        if (!key) continue;
+        if (key.startsWith('anime:')) anime.push(key.slice(6));
+        const c = covers[key];
+        const src = c && (big ? (c.b ?? c.u) : c.u);
+        if (!c || !src || c.o || badCovers.has(src)) continue;
+        const img = box.querySelector('img');
+        if (!img || !fromHikka(img)) continue;
+        let top: Element = img;
+        while (top.parentElement && top.parentElement !== box) top = top.parentElement;
+        const next = top.nextElementSibling;
+        let host = next?.tagName === COVER_TAG.toUpperCase() ? (next as HTMLElement) : undefined;
+        if (!host) {
+          host = document.createElement(COVER_TAG);
+          host.attachShadow({ mode: 'open' });
+          top.after(host);
+        }
+        seen.add(host);
+        if (host.dataset.u === src) continue;
+        host.dataset.u = src;
+        const root = host.shadowRoot!;
+        const style = document.createElement('style');
+        style.textContent = COVER_CSS;
+        const pic = document.createElement('img');
+        pic.alt = '';
+        pic.decoding = 'async';
+        pic.referrerPolicy = 'no-referrer'; // manga.in.ua: hotlink-захист
+        const u = src;
+        pic.addEventListener('load', () => pic.classList.add('on'), { once: true });
+        pic.addEventListener(
+          'error',
+          () => {
+            badCovers.add(u);
+            schedule_();
+          },
+          { once: true },
+        );
+        pic.src = u;
+        root.replaceChildren(style, pic);
+      }
+      // Аніме-картки, про які ще не питали Mikai, — одним пакетом.
+      if (anime.length) wantAnimeCovers([...new Set(anime)], covers);
+    }
+    for (const h of document.querySelectorAll(COVER_TAG)) if (!seen.has(h)) h.remove();
+  };
 
   const render = () => {
     scheduled = false;
+    renderCovers();
     const seen = new Set<Element>();
     const reading: string[] = [];
     // Спершу лише читаємо DOM (включно з розмірами), потім пишемо — щоб не перераховувати розкладку на кожній картці.
@@ -159,7 +253,7 @@ export function initCards(ctx: ContentScriptContext) {
   // (0.6.0, було на кожному кадрі зі змінами). Плашки вимкнені й на сторінці їх немає — нічого не робимо.
   const schedule_ = () => {
     if (scheduled) return;
-    if (!prefs.on && !prefs.read && !document.querySelector(TAG)) return;
+    if (!prefs.on && !prefs.read && !prefs.ua && !document.querySelector(`${TAG}, ${COVER_TAG}`)) return;
     scheduled = true;
     window.setTimeout(render, 250);
   };
@@ -219,11 +313,22 @@ export function initCards(ctx: ContentScriptContext) {
     }),
   );
 
+  void coversItem.getValue().then((m) => {
+    covers = m;
+    schedule_();
+  });
+  ctx.onInvalidated(
+    coversItem.watch((m) => {
+      covers = m ?? {};
+      schedule_();
+    }),
+  );
+
   const obs = new MutationObserver(schedule_);
   obs.observe(document.body, { childList: true, subtree: true });
   ctx.onInvalidated(() => {
     obs.disconnect();
-    for (const h of document.querySelectorAll(TAG)) h.remove();
+    for (const h of document.querySelectorAll(`${TAG}, ${COVER_TAG}`)) h.remove();
   });
   // Міст з'являється не одразу; «через X» оновлюємо раз на хвилину, розклад — коли застаріє.
   ask();
