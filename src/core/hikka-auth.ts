@@ -81,6 +81,8 @@ export interface HikkaWatch {
 export type HikkaRequest =
   | { type: 'hp-hikka'; op: 'exchange'; reference: string }
   | { type: 'hp-hikka'; op: 'logout' }
+  /** Чи є згода Firefox на передачу даних у Hikka; open — немає → відкрити вкладку налаштувань «Hikka», де її можна дати. */
+  | { type: 'hp-hikka'; op: 'consent'; open?: boolean }
   | { type: 'hp-hikka'; op: 'getRead'; kind: ReadKind; slug: string }
   | { type: 'hp-hikka'; op: 'putRead'; kind: ReadKind; slug: string; read: HikkaRead }
   | { type: 'hp-hikka'; op: 'getWatch'; slug: string }
@@ -98,6 +100,33 @@ async function call<T>(msg: HikkaRequest): Promise<HikkaResponse<T>> {
   const res = (await browser.runtime.sendMessage(msg)) as HikkaResponse<T> | undefined;
   return res ?? { ok: false, error: 'network', message: 'Немає відповіді від фонового скрипта' };
 }
+
+/**
+ * Firefox (0.6.1, MK 2026-11-25 00:58): токен входу (authenticationInfo) і прочитане/переглянуте в список Hikka (websiteActivity)
+ * — НЕобов'язкова згода в data_collection_permissions. Просимо при «Увійти» (лише зі сторінки розширення — у content script
+ * permissions API немає); без згоди не входимо й нічого в Hikka не шлемо. У Chrome такої згоди немає — завжди так.
+ */
+export const HIKKA_DATA = ['authenticationInfo', 'websiteActivity'];
+type Perms = Parameters<typeof browser.permissions.request>[0];
+export const hikkaPerms = () => ({ data_collection: HIKKA_DATA }) as Perms;
+
+export async function hikkaDataOk(): Promise<boolean> {
+  if (!import.meta.env.FIREFOX) return true;
+  try {
+    const all = (await browser.permissions.getAll()) as { data_collection?: string[] };
+    return HIKKA_DATA.every((d) => all.data_collection?.includes(d));
+  } catch {
+    return false;
+  }
+}
+
+/** Попросити згоду (у Chrome — нічого не питаємо). Викликати першим ділом в обробнику кліку — потрібен жест користувача. */
+export function requestHikkaData(): Promise<boolean> {
+  return import.meta.env.FIREFOX ? browser.permissions.request(hikkaPerms()) : Promise.resolve(true);
+}
+
+/** З content script: є згода? Немає — фон відкриє вкладку налаштувань «Hikka». */
+export const hikkaConsent = (open = false) => call<boolean>({ type: 'hp-hikka', op: 'consent', open });
 
 export const exchangeReference = (reference: string) =>
   call<HikkaToken>({ type: 'hp-hikka', op: 'exchange', reference });

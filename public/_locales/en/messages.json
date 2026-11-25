@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "Hikka Plus",
+    "description": "Extension name (the same in every language)."
+  },
+  "extDescription": {
+    "message": "Anime player and manga & light-novel reader built right into hikka.io title pages. Unofficial extension.",
+    "description": "Short manifest description (Chrome: up to 132 characters)."
+  }
+}

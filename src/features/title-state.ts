@@ -18,6 +18,7 @@ import { takeNearMiss } from '../sources/match';
 import { renumberByVolume, type Chapter, type ContentFormat, type ReadSource, type RemoteTitle } from '../sources/types';
 import { loadRemoteRead, lowerHikkaChapters, queueHikkaChapters, resetRemoteRead, retryHikkaChapters } from './hikka-sync';
 import { HIKKA_LIST_EVENT } from '../core/bridge';
+import { noteReleased } from '../cards/released';
 
 // Hikka сама змінила запис у своєму списку (напр. «+/−» у віджеті зліва; сигнал — від hikka-bridge):
 // тихо перечитуємо число з Hikka — далі hikka-bar відмітить 1–N, як при заході на сторінку.
@@ -85,6 +86,19 @@ export const titleStore = new Store<TitleState | null>(null);
 export const readerStore = new Store<ReaderRequest | null>(null);
 
 export const useTitleState = () => useSyncExternalStore(titleStore.subscribe, titleStore.get);
+
+// Плашка «▶ N нових розділів» на картках (src/cards/released.ts): запам'ятати, скільки розділів у активного джерела й команди.
+let releasedDigest = '';
+titleStore.subscribe(() => {
+  const s = titleStore.get();
+  const st = s ? activeState(s) : undefined;
+  if (!s || !s.activeId || st?.status !== 'ready' || !st.remote) return;
+  const team = activeTeam(s);
+  const digest = `${s.page.kind}:${s.page.slug}|${s.activeId}|${st.remote.id}|${team}|${st.chapters.length}`;
+  if (digest === releasedDigest) return;
+  releasedDigest = digest;
+  void noteReleased(s.page.kind, s.page.slug, s.activeId, st.remote.id, team, st.chapters);
+});
 export const useReaderRequest = () => useSyncExternalStore(readerStore.subscribe, readerStore.get);
 
 // ---------- Похідні значення ----------

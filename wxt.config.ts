@@ -5,9 +5,11 @@ import { API_HOSTS } from './src/core/hosts';
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   manifest: ({ browser, manifestVersion }) => ({
-    name: 'Hikka Plus',
-    description:
-      'Плеєр аніме та читалка манґи й ранобе прямо на сторінках тайтлів hikka.io. Неофіційне розширення.',
+    // Основна мова — українська (0.6.1, MK 2026-11-24: «розширення для українців»; з неї AMO бере мову сторінки за замовчуванням).
+    // Тексти — public/_locales/{uk,en}/messages.json; інтерфейс самого розширення лише українською.
+    default_locale: 'uk',
+    name: '__MSG_extName__',
+    description: '__MSG_extDescription__',
     permissions: ['storage'],
     host_permissions: ['https://hikka.io/*', ...API_HOSTS.map((h) => `${h}/*`)],
     // Підсвітка пристроїв (src/lights/): адреса ТВ/моста/WLED у домашній мережі наперед невідома —
@@ -23,12 +25,13 @@ export default defineConfig({
         gecko: {
           id: 'hikka-plus@m0npet',
           // Вбудована згода Firefox на передачу даних (обов'язкова для AMO; PRIVACY.md — подробиці).
-          // Обов'язкові: назви/slug тайтлу, який відкрито, ідуть джерелам, Mikai, AnimeON, AniSkip (browsingActivity);
-          // вхід у Hikka — токен (authenticationInfo) і прочитане/переглянуте в список Hikka (websiteActivity) — MK 17:20.
-          // Необов'язкове: кольори кадру на пристрої підсвітки в локальній мережі (websiteContent) — просимо кнопкою «Підключити».
+          // Обов'язкове: назви/slug тайтлу, який відкрито, ідуть джерелам, Mikai, AnimeON, AniSkip (browsingActivity).
+          // Необов'язкові (0.6.1, MK 2026-11-25): вхід у Hikka — токен (authenticationInfo) і прочитане/переглянуте в список
+          // Hikka (websiteActivity) — просимо при «Увійти» (requestHikkaData, src/core/hikka-auth.ts); кольори кадру на пристрої
+          // підсвітки в локальній мережі (websiteContent) — кнопкою «Підключити».
           data_collection_permissions: {
-            required: ['browsingActivity', 'authenticationInfo', 'websiteActivity'],
-            optional: ['websiteContent'],
+            required: ['browsingActivity'],
+            optional: ['authenticationInfo', 'websiteActivity', 'websiteContent'],
           },
           // Вбудована згода є з Firefox 140 (Android — 142); на старіших довелося б робити власне вікно згоди.
           strict_min_version: '140.0',

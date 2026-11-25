@@ -80,6 +80,10 @@ export default defineUnlistedScript(() => {
   type Anime = { data_type?: unknown; slug?: unknown; episodes_released?: unknown; episodes_total?: unknown; status?: unknown; watch?: unknown };
   type Entry = { episodes?: unknown; status?: unknown };
   const isAnime = (a: unknown): a is Anime => !!a && typeof a === 'object' && (a as Anime).data_type === 'anime' && typeof (a as Anime).slug === 'string';
+  /** Манґа/ранобе (MangaResponse/NovelResponse бекенду Hikka): data_type, slug, chapters, status, `read` — запис того, хто зайшов. */
+  type Book = { data_type?: unknown; slug?: unknown; chapters?: unknown; status?: unknown; read?: unknown };
+  const isBook = (a: unknown): a is Book =>
+    !!a && typeof a === 'object' && ((a as Book).data_type === 'manga' || (a as Book).data_type === 'novel') && typeof (a as Book).slug === 'string';
   const int = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : -1);
 
   /** Знімок того, що кеш Hikka знає про аніме на сторінці: випущені серії й запис у списку того, хто зайшов. */
@@ -106,13 +110,29 @@ export default defineUnlistedScript(() => {
       }
       rows.set(slug, r);
     };
+    // Манґа/ранобе — ключ `<manga|novel>:<slug>`; [ключ, -1 (вихід рахує розширення), розділів усього, статус, прочитано, статус читання].
+    const putBook = (b: Book, own?: { chapters?: unknown; status?: unknown }) => {
+      const key = `${b.data_type as string}:${b.slug as string}`;
+      const r = rows.get(key) ?? [key, -1, -1, '', -1, ''];
+      if (int(b.chapters) >= 0) r[2] = int(b.chapters);
+      if (typeof b.status === 'string') r[3] = b.status;
+      const e = own ?? (Array.isArray(b.read) ? (b.read[0] as { chapters?: unknown; status?: unknown } | undefined) : undefined);
+      if (e && int(e.chapters) >= 0) {
+        r[4] = int(e.chapters);
+        r[5] = typeof e.status === 'string' ? e.status : '';
+      }
+      rows.set(key, r);
+    };
     const walk = (v: unknown, ownList: boolean, depth: number) => {
       if (!v || typeof v !== 'object' || depth > 6) return;
       if (Array.isArray(v)) return v.forEach((x) => walk(x, ownList, depth + 1));
       if (isAnime(v)) return put(v);
-      const o = v as { anime?: unknown; episodes?: unknown; status?: unknown };
+      if (isBook(v)) return putBook(v);
+      const o = v as { anime?: unknown; content?: unknown; episodes?: unknown; chapters?: unknown; status?: unknown };
       // Запис списку {anime, episodes, status}: чужий список — лише дані тайтлу, без «переглянуто».
       if (isAnime(o.anime)) return put(o.anime, ownList && int(o.episodes) >= 0 ? o : undefined);
+      // Запис списку читання {content, chapters, status} (ReadResponse).
+      if (isBook(o.content)) return putBook(o.content, ownList && int(o.chapters) >= 0 ? o : undefined);
       for (const x of Object.values(v)) if (x && typeof x === 'object') walk(x, ownList, depth + 1);
     };
     for (const q of all) {
@@ -126,9 +146,18 @@ export default defineUnlistedScript(() => {
         if (typeof slug === 'string') put(isAnime(d.anime) ? d.anime : ({ slug } as Anime), d);
         continue;
       }
-      // Лише кеш зі списками тайтлів (не коментарі, не статистика): усе, де трапляються об'єкти аніме.
-      if (!/anime|watch|schedule|franchise|collection|recommend|search/i.test(id)) continue;
-      walk(q.state.data, id === 'userWatchList' && !!me && k.path?.username === me, 0);
+      if (id === 'readGet') {
+        const slug = k.path?.slug;
+        const ct = (k.path as { content_type?: unknown } | undefined)?.content_type;
+        const d = q.state.data as { content?: unknown; chapters?: unknown; status?: unknown };
+        if (typeof slug === 'string' && (ct === 'manga' || ct === 'novel')) putBook(isBook(d.content) ? d.content : { data_type: ct, slug }, d);
+        continue;
+      }
+      // Лише кеш зі списками тайтлів (не коментарі, не статистика): усе, де трапляються об'єкти аніме, манґи, ранобе.
+      if (!/anime|manga|novel|read|watch|schedule|franchise|collection|recommend|search/i.test(id)) continue;
+      // Свій список (userWatchList / список читання) — за ім'ям того, хто зайшов; чужий — лише дані тайтлів.
+      const own = !!me && k.path?.username === me && /watch|read/i.test(id);
+      walk(q.state.data, own, 0);
     }
     return [...rows.values()];
   }

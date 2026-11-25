@@ -2,8 +2,12 @@
  * Провайдери серій: Mikai і AnimeON. Тайтл знаходимо точно — за id із посилань «Перегляд» Hikka
  * (`external` у GET api.hikka.io/anime/<slug>), без пошуку за назвою.
  *
- * Mikai: GET api.mikai.me/v1/anime/<id> → result.players[] — {team{id,name,teams[{avatarUid}]}, isSubs,
- *   providers[{name: MOONANIME|ASHDI|FENIX|TORTUGA, episodes[{number, playLink}]}]}. Dawn у JSON немає.
+ * Mikai (0.6.1, публічний API — Mikai дозволили користуватись, MK 2026-11-24 21:08; https://api.mikai.me/public/docs):
+ *   GET api.mikai.me/public/v1/anime/hikka:<slug>/player → result {anime{ids{mikai, slug, hikka}}, licensed,
+ *   releases[{id: "t_<team>:voice|sub", kind: voice|sub, teams[{id, name, avatar{small{webp}}}], episodes[{number,
+ *   sources[{provider: moon|ashdi|fenix|tortuga, embedUrl}]}]}]}. Тайтл — за slug Hikka (посилання на Mikai в Hikka не потрібне);
+ *   не знайшли, а посилання є — за id Mikai. Кеш — HTTP-кеш браузера (Cache-Control: public, max-age=300).
+ *   Запасний шлях — старий внутрішній GET api.mikai.me/v1/anime/<id> (players[].providers[]). Dawn у JSON немає.
  * AnimeON: GET /api/player/<id>/translations → {translations[{translation{id,name,isSub,studios[{avatar{preview}}]},
  *   player[{name: Moon|Ashdi|Fenix, id, episodesCount}]}]}; серії — /api/player/<id>/episodes?take&skip&playerId&translationId
  *   → {episodes[{id, episode}]}; адреса — /api/player/<episodeId>/episode → {videoUrl}.
@@ -58,6 +62,95 @@ type MikaiAnime = {
 };
 
 const MIKAI_KIND: Record<string, Exclude<PlayerKind, 'custom'>> = { MOONANIME: 'moon', ASHDI: 'ashdi', FENIX: 'fenix' };
+
+type MikaiRelease = {
+  id?: string;
+  kind?: string;
+  teams?: { id: number; name: string; avatar?: { small?: { webp?: string } } | null }[];
+  episodes?: { number: number; sources?: { provider: string; embedUrl: string }[] }[];
+};
+type MikaiPlayer = { anime?: { ids?: { mikai?: number; slug?: string } }; licensed?: boolean; releases?: MikaiRelease[] };
+
+const PUB_KIND: Record<string, Exclude<PlayerKind, 'custom'>> = { moon: 'moon', ashdi: 'ashdi', fenix: 'fenix' };
+
+/** Команди з публічного API Mikai. null — тайтлу немає на Mikai (404). */
+async function mikaiPublic(ref: string): Promise<WatchTeam[] | null> {
+  let res: { ok?: boolean; result?: MikaiPlayer };
+  try {
+    res = await getJson(`https://api.mikai.me/public/v1/anime/${ref}/player`);
+  } catch (e) {
+    if ((e as { status?: number })?.status === 404) return null;
+    throw e;
+  }
+  const r = res.result;
+  // Ліцензований тайтл: плеєра немає (Mikai просить показувати їхній блок license — поки просто «не знайдено»).
+  if (!r || r.licensed) return [];
+  const mid = r.anime?.ids?.mikai;
+  const mslug = r.anime?.ids?.slug;
+  const out: WatchTeam[] = [];
+  for (const rel of r.releases ?? []) {
+    const teams = (rel.teams ?? []).filter((t) => t?.name);
+    if (!teams.length) continue;
+    const sub = rel.kind === 'sub';
+    const byKind = new Map<Exclude<PlayerKind, 'custom'>, Map<number, string>>();
+    for (const ep of rel.episodes ?? []) {
+      if (!Number.isFinite(ep.number)) continue;
+      for (const s of ep.sources ?? []) {
+        const kind = PUB_KIND[s.provider];
+        if (!kind) continue; // tortuga прибрали (рішення MK)
+        const src = safeFrameSrc(s.embedUrl, kind);
+        if (!src) continue;
+        if (!byKind.has(kind)) byKind.set(kind, new Map());
+        if (!byKind.get(kind)!.has(ep.number)) byKind.get(kind)!.set(ep.number, src);
+      }
+    }
+    const players: WatchPlayer[] = [];
+    for (const kind of ['moon', 'ashdi', 'fenix'] as const) {
+      const byN = byKind.get(kind);
+      if (!byN?.size) continue;
+      players.push({
+        id: `mikai:${kind}`,
+        kind,
+        site: 'mikai',
+        label: '',
+        noAds: kind === 'moon',
+        episodes: [...byN.keys()].sort((x, y) => x - y),
+        src: async (n) => byN.get(n) ?? null,
+      });
+    }
+    if (!players.length) continue;
+    const name = teams.map((t) => t.name.trim()).join(' & ');
+    const avatar = teams.find((t) => t.avatar?.small?.webp)?.avatar?.small?.webp;
+    const teamId = /^t_(\d+)/.exec(rel.id ?? '')?.[1] ?? String(teams[0]!.id);
+    const v = sub ? 'sub' : 'dub';
+    out.push({
+      id: teamKey(name, sub),
+      name,
+      sub,
+      avatar: avatar && /^https:\/\/images\.mikai\.me\//.test(avatar) ? avatar : undefined,
+      players,
+      dawn: mid && mslug ? (ep) => `https://mikai.me/anime/${mid}-${mslug}?ep=${ep}&team=${teamId}&v=${v}&p=dawn` : undefined,
+    });
+  }
+  return out;
+}
+
+/**
+ * Команди Mikai для тайтлу Hikka: публічний API за slug Hikka → за id Mikai з посилання → старий внутрішній /v1.
+ * link — посилання «Перегляд» на Mikai з Hikka (може не бути).
+ */
+export async function mikaiTeamsFor(hikkaSlug: string, link?: { id: number; slug: string }): Promise<WatchTeam[]> {
+  try {
+    const bySlug = await mikaiPublic(`hikka:${encodeURIComponent(hikkaSlug)}`);
+    if (bySlug) return bySlug;
+    if (!link) return [];
+    const byId = await mikaiPublic(String(link.id));
+    if (byId) return byId;
+  } catch {
+    /* публічний API не відповів — пробуємо старий */
+  }
+  return link ? mikaiTeams(link.id, link.slug) : [];
+}
 
 export async function mikaiTeams(id: number, slug: string): Promise<WatchTeam[]> {
   const res = await getJson<{ ok: boolean; result: MikaiAnime }>(`https://api.mikai.me/v1/anime/${id}`);

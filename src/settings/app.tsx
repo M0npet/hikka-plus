@@ -4,7 +4,7 @@
  */
 import { browser } from '#imports';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { authErrorItem, hikkaConfigured, oauthUrl, returnItem, tokenItem } from '../core/hikka-auth';
+import { authErrorItem, hikkaConfigured, hikkaDataOk, oauthUrl, requestHikkaData, returnItem, tokenItem, watchLoginItem } from '../core/hikka-auth';
 import { applySourcePrefs, initSourcePrefs, setSourcePrefs, watchSourcePrefs, type SourcePrefs } from '../core/source-prefs';
 import { DEFAULT_SETTINGS, updateSettings, useSettings } from '../core/store';
 import { syncOnItem } from '../core/sync-flag';
@@ -189,11 +189,29 @@ function HikkaSection({ mode }: { mode: SettingsMode }) {
   const autoSync = useItem(autoSyncItem, true);
   const syncOn = useItem(syncOnItem, true);
 
-  const login = async () => {
-    await returnItem.setValue('/');
-    await authErrorItem.setValue(null);
-    await browser.tabs.create({ url: oauthUrl() });
-    if (mode === 'popup') window.close();
+  const [dataOk, setDataOk] = useState(!import.meta.env.FIREFOX);
+  useEffect(() => void hikkaDataOk().then(setDataOk), [token]);
+
+  const login = () => {
+    // Firefox: згода на передачу даних у Hikka (0.6.1) — першим ділом у кліку. Popup на запит дозволу закривається — тоді у вкладці.
+    if (!dataOk && mode === 'popup') {
+      void browser.tabs.create({ url: `${browser.runtime.getURL('/options.html')}#hikka` });
+      window.close();
+      return;
+    }
+    void requestHikkaData().then(async (ok) => {
+      setDataOk(ok);
+      if (!ok) {
+        await authErrorItem.setValue('Без дозволу на передачу даних у Hikka вхід неможливий');
+        return;
+      }
+      // Вхід почали з кнопки на сайті — повернемося на ту саму сторінку й з тим самим дозволом (серії аніме чи лише читання).
+      const back = (await returnItem.getValue()) || '/';
+      await returnItem.setValue(back);
+      await authErrorItem.setValue(null);
+      await browser.tabs.create({ url: oauthUrl(await watchLoginItem.getValue()) });
+      if (mode === 'popup') window.close();
+    });
   };
 
   return (
@@ -225,7 +243,10 @@ function HikkaSection({ mode }: { mode: SettingsMode }) {
         </>
       ) : (
         <div className="hp-set__item">
-          <span className="hp-grow hp-small hp-muted">Підключи свій список Hikka, щоб прочитане записувалося туди</span>
+          <span className="hp-grow hp-small hp-muted">
+            Підключи свій список Hikka, щоб прочитане записувалося туди
+            {import.meta.env.FIREFOX && !dataOk && '. Firefox спитає дозволу передавати в Hikka токен входу й прочитане/переглянуте'}
+          </span>
           <Button variant="default" size="sm" onClick={() => void login()}>
             Увійти
           </Button>
@@ -245,6 +266,19 @@ function HikkaSection({ mode }: { mode: SettingsMode }) {
 }
 
 /* ---------- Читалка ---------- */
+
+/** «▶ N нових розділів» на картках манґи й ранобе (src/cards/released.ts, 0.6.1). */
+function ReadCardsField() {
+  const [c, setC] = useCardsPrefs();
+  return (
+    <SwitchRow
+      label="Плашки нових розділів"
+      hint="«▶ N нових розділів» на тайтлах зі статусом «Читаю», якщо вони прив'язані до джерела (раз на 3 год перевіряємо, що вийшло)"
+      checked={c.read}
+      onChange={(read) => setC({ read })}
+    />
+  );
+}
 
 function ReaderSection() {
   const s = useSettings();
@@ -269,6 +303,7 @@ function ReaderSection() {
           checked={s.enabled}
           onChange={(enabled) => void updateSettings((x) => ({ ...x, enabled }))}
         />
+        <ReadCardsField />
       </div>
       <Tabs
         value={tab}
@@ -306,7 +341,6 @@ function ReaderSection() {
   );
 }
 
-/** Плеєр аніме (блок «Перегляд» на сторінці аніме). */
 /** Плашки на картках аніме (src/cards/): «▶ N нових», «N серія через X дн.». */
 function CardsFields() {
   const [c, setC] = useCardsPrefs();
@@ -325,6 +359,7 @@ function CardsFields() {
   );
 }
 
+/** Плеєр аніме (блок «Перегляд» на сторінці аніме). */
 function PlayerFields({ mode }: { mode: SettingsMode }) {
   const [w, setW] = useWatchPrefs();
   return (

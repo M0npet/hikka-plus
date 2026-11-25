@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { getJson } from '../core/net';
 import { hikkaConfigured, watchScopeItem, tokenItem } from '../core/hikka-auth';
 import { startHikkaLogin } from '../features/hikka-sync';
-import { animeonTeams, mergeTeams, mikaiTeams, parseWatchLinks } from './providers';
+import { animeonTeams, mergeTeams, mikaiTeamsFor, parseWatchLinks } from './providers';
 import { aniskipRaw, watchedAt, type AniSkip } from './threshold';
 import { mergeMarks, segsFromAniskip, type Marks, type Seg } from './skip-marks';
 import { getWatchSaved, updateWatchSaved, useWatchPrefs, type WatchSaved } from './watch-store';
@@ -74,7 +74,7 @@ export function WatchRoot({ slug }: { slug: string }) {
         const anime = await getJson<HikkaAnime>(`https://api.hikka.io/anime/${slug}`);
         const links = parseWatchLinks(anime.external ?? []);
         const [mk, ao] = await Promise.all([
-          links.mikai ? mikaiTeams(links.mikai.id, links.mikai.slug).catch(() => [] as WatchTeam[]) : [],
+          mikaiTeamsFor(slug, links.mikai).catch(() => [] as WatchTeam[]),
           links.animeon ? animeonTeams(links.animeon).catch(() => [] as WatchTeam[]) : [],
         ]);
         const teams = mergeTeams(mk, ao);

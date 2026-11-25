@@ -1,5 +1,7 @@
 // Парсер manga.in.ua (рушій DLE). Логіка запитів частково взята з Hikka Features
 // (rosset-nocpes/hikka-features, MIT) і переписана на DOMParser.
+// 0.6.1 (2026-11-25): сайт перейшов на новий шаблон MangaNew — розділи JSON-ом (POST mod=mgchapters, news_id),
+// сторінки розділу — прямо в HTML (main.rd-pages figure.rp img), пошук — article.card. Старий спосіб лишився запасним.
 import { titleNames } from '../core/hikka';
 import { getDoc, getText } from '../core/net';
 import { bestSimilarity, settleMatch } from './match';
@@ -8,6 +10,7 @@ import type { Chapter, ReadSource, RemoteTitle } from './types';
 const SITE = 'https://manga.in.ua';
 const EP_CHAPTERS = 'engine/ajax/controller.php?mod=load_chapters';
 const EP_IMAGES = 'engine/ajax/controller.php?mod=load_chapters_image';
+const EP_JSON = 'engine/ajax/controller.php?mod=mgchapters';
 const abs = (href: string) => (href.startsWith('http') ? href : `${SITE}/${href.replace(/^\//, '')}`);
 
 function userHash(html: string): string {
@@ -25,6 +28,39 @@ function hashKey(html: string, endpoint: string): string {
   return html.includes('dle_user_hash') ? 'dle_user_hash' : 'user_hash';
 }
 
+/** Назви команд у JSON сайту приходять з HTML-сутностями («Mulningsvél &amp; ЗУШ»). */
+const unescape = (s: string) => new DOMParser().parseFromString(s, 'text/html').documentElement.textContent ?? s;
+
+type JsonChapter = { alt?: boolean; date?: number; id?: number | string; link?: string; name?: string; num?: string | number; team?: string; tom?: string | number };
+
+/** Новий шаблон: POST mod=mgchapters {news_id} → {chapters: [...]}. null — не вдалося (тоді старий спосіб). */
+async function chaptersJson(newsId: string): Promise<Chapter[] | null> {
+  if (!newsId) return null;
+  let res: { chapters?: JsonChapter[] };
+  try {
+    res = JSON.parse(await getText(`${SITE}/${EP_JSON}`, { form: new URLSearchParams({ news_id: newsId }) })) as { chapters?: JsonChapter[] };
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(res.chapters)) return null;
+  const out: Chapter[] = [];
+  for (const c of res.chapters) {
+    // Альтернативний переклад того самого розділу — як і раніше, не показуємо.
+    if (c.alt || !c.link) continue;
+    const tom = c.tom != null ? String(c.tom) : '';
+    out.push({
+      id: String(c.id ?? c.link.split('/').pop()?.split('-')[0] ?? c.link),
+      volume: tom && tom !== '0' ? tom : null,
+      number: String(c.num ?? '0'),
+      name: c.name ? unescape(c.name) : undefined,
+      team: c.team ? unescape(c.team) : undefined,
+      date: typeof c.date === 'number' && c.date > 0 ? c.date * 1000 : undefined,
+      url: abs(c.link),
+    });
+  }
+  return out;
+}
+
 function parseDate(s: string): number | undefined {
   const m = s.match(/(\d{2})\.(\d{2})\.(\d{4})/);
   return m ? new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])).getTime() : undefined;
@@ -38,7 +74,7 @@ export const mangaInUa: ReadSource = {
   async search(query) {
     const form = new URLSearchParams({ do: 'search', subaction: 'search', story: query.trim(), search_start: '1' });
     const doc = await getDoc(`${SITE}/index.php?do=search`, { form });
-    return [...doc.querySelectorAll('main.main article.item')].flatMap((art) => {
+    return [...doc.querySelectorAll('main.main article.item, article.card')].flatMap((art) => {
       const a = art.querySelector('h3.card__title a');
       const href = a?.getAttribute('href');
       if (!href) return [];
@@ -83,8 +119,16 @@ export const mangaInUa: ReadSource = {
   async getChapters(id) {
     const html = await getText(abs(id));
     const doc = new DOMParser().parseFromString(html, 'text/html');
+    const n = (s: string | null) => Number.parseFloat((s ?? '0').replace(',', '.')) || 0;
+    const sortCh = (list: Chapter[]) => list.sort((a, b) => n(a.volume) - n(b.volume) || n(a.number) - n(b.number));
     const box = doc.querySelector<HTMLElement>('div#linkstocomics');
-    if (!box) return [];
+    if (!box) {
+      // Новий шаблон: id тайтлу — section#chapters[data-chapters] або число на початку адреси.
+      const newsId = doc.querySelector<HTMLElement>('[data-chapters]')?.dataset.chapters || /\/(\d+)-[^/]*$/.exec(abs(id))?.[1] || '';
+      const list = await chaptersJson(newsId);
+      if (!list) throw new Error('manga.in.ua: не вдалося отримати список розділів');
+      return sortCh(list);
+    }
     const form = new URLSearchParams({
       action: 'show',
       news_id: box.dataset.news_id ?? '',
@@ -111,13 +155,18 @@ export const mangaInUa: ReadSource = {
         url: abs(href),
       });
     }
-    const n = (s: string | null) => Number.parseFloat((s ?? '0').replace(',', '.')) || 0;
-    return out.sort((a, b) => n(a.volume) - n(b.volume) || n(a.number) - n(b.number));
+    return sortCh(out);
   },
 
   async getContent(chapter) {
     const html = await getText(chapter.url);
     const doc = new DOMParser().parseFromString(html, 'text/html');
+    // Новий шаблон: усі сторінки вже в HTML.
+    const inline = [...doc.querySelectorAll('main.rd-pages figure.rp img, .rd-pages .rp img')]
+      .map((i) => i.getAttribute('data-src') || i.getAttribute('src'))
+      .filter((x): x is string => !!x)
+      .map(abs);
+    if (inline.length) return { type: 'images', pages: inline.map((u, i) => ({ id: `${i}`, url: () => u })) };
     const params = new URLSearchParams({
       news_id: doc.querySelector<HTMLElement>('div#comics')?.dataset.news_id ?? '',
       action: 'show',

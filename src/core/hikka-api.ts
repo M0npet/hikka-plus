@@ -2,8 +2,10 @@
  * Запити до API Hikka з токеном користувача. Працює ЛИШЕ в background:
  * токен не передається в content script і не йде нікуди, крім api.hikka.io.
  */
+import { browser } from '#imports';
 import {
   HIKKA_CLIENT,
+  hikkaDataOk,
   tokenItem,
   type HikkaRead,
   type HikkaRequest,
@@ -93,7 +95,18 @@ function pickRead(r: Partial<HikkaRead> | undefined): HikkaRead {
 }
 
 export async function handleHikka(msg: HikkaRequest): Promise<HikkaResponse> {
+  // Без згоди Firefox на передачу даних (необов'язкова з 0.6.1) — нічого в Hikka не шлемо, токен не тримаємо.
+  if (msg.op !== 'logout' && !(await hikkaDataOk())) {
+    if (msg.op === 'consent') {
+      if (msg.open) await browser.tabs.create({ url: `${browser.runtime.getURL('/options.html')}#hikka` });
+      return { ok: true, data: false };
+    }
+    if (await tokenItem.getValue()) await tokenItem.setValue(null);
+    return { ok: false, error: 'auth', message: 'Немає дозволу Firefox на передачу даних у Hikka — увійдіть ще раз' };
+  }
   switch (msg.op) {
+    case 'consent':
+      return { ok: true, data: true };
     case 'exchange': {
       if (!HIKKA_CLIENT.reference || !CLIENT_SECRET) {
         return { ok: false, error: 'other', message: 'Клієнт Hikka не налаштований у цій збірці' };

@@ -10,13 +10,19 @@
  * (без Preact — на сторінці бувають сотні карток), pointer-events: none — клік іде в картку.
  * Постер: div[data-slot="aspect-ratio"] > a[href^="/anime/"] — плашки внизу зліва (справа вгорі — значок статусу Hikka).
  * Таблиця «Мої списки»: постер там крихітний — плашки в рядок після назви.
+ *
+ * Манґа й ранобе (0.6.1): «▶ N нових розділів» = останній розділ на прив'язаному джерелі (src/cards/released.ts)
+ * − прочитано в Hikka, лише статус «Читаю». Прочитане — з того самого кешу Hikka (поле `read`, список читання, `readGet`).
  */
 import type { ContentScriptContext } from '#imports';
 import { CARDS_EVENT, CARDS_REQ, type CardRow } from '../core/bridge';
 import { cardsItem, DEFAULT_CARDS, type CardsPrefs } from './prefs';
+import { refreshReleased, releasedItem, type ReleasedMap } from './released';
 import { getSchedule, type Schedule } from './schedule';
 
 const TAG = 'hikka-plus-badges';
+/** Мініатюри (віджет «Історія» у профілі, ~44 px) — той самий aspect-ratio, що й картки; плашки туди не лізуть (MK 2026-11-25). */
+const MIN_POSTER = 90;
 
 const CSS = `
 :host { all: initial; pointer-events: none; font-family: inherit; }
@@ -46,6 +52,15 @@ export function newText(n: number): string {
   return `${n} нових`;
 }
 
+/** «1 новий розділ», «2 нові розділи», «5 нових розділів». */
+export function newChaptersText(n: number): string {
+  const d = n % 10;
+  const dd = n % 100;
+  if (d === 1 && dd !== 11) return `${n} новий розділ`;
+  if (d >= 2 && d <= 4 && (dd < 12 || dd > 14)) return `${n} нові розділи`;
+  return `${n} нових розділів`;
+}
+
 /** «через 3 дн.», «через 5 год», «через 20 хв». */
 export function inText(sec: number): string {
   if (sec >= 86400) return `через ${Math.max(1, Math.round(sec / 86400))} дн.`;
@@ -62,21 +77,37 @@ export function badgesFor(info: Info | undefined, next: [number, number] | undef
   return out;
 }
 
-const slugOf = (a: HTMLAnchorElement) => /^\/anime\/([^/?#]+)/.exec(a.getAttribute('href') ?? '')?.[1] ?? '';
+/** Плашка манґи/ранобе: Hikka знає прочитане й статус, розширення — скільки вийшло на джерелі. */
+export function bookBadgesFor(info: Info | undefined, released: number | undefined): { cls: string; text: string }[] {
+  if (!info || info.ws !== 'reading' || info.watched < 0 || !released || released <= info.watched) return [];
+  return [{ cls: 'new', text: `▶ ${newChaptersText(released - info.watched)}` }];
+}
+
+/** Ключ картки: аніме — slug (як у знімку мосту), манґа/ранобе — `<manga|novel>:<slug>`. */
+const keyOf = (a: HTMLAnchorElement): { key: string; book: boolean } | null => {
+  const m = /^\/(anime|manga|novel)\/([^/?#]+)\/?$/.exec(a.getAttribute('href') ?? '');
+  if (!m) return null;
+  return m[1] === 'anime' ? { key: m[2]!, book: false } : { key: `${m[1]}:${m[2]}`, book: true };
+};
 
 export function initCards(ctx: ContentScriptContext) {
   let prefs: CardsPrefs = DEFAULT_CARDS;
   const info = new Map<string, Info>();
   let schedule: Schedule = {};
+  let released: ReleasedMap = {};
   let scheduled = false;
 
   const render = () => {
     scheduled = false;
     const seen = new Set<Element>();
-    if (prefs.on) {
-      for (const a of document.querySelectorAll<HTMLAnchorElement>('a[href^="/anime/"]')) {
-        const slug = slugOf(a);
-        if (!slug) continue;
+    const reading: string[] = [];
+    // Спершу лише читаємо DOM (включно з розмірами), потім пишемо — щоб не перераховувати розкладку на кожній картці.
+    type Job = { a: HTMLAnchorElement; box: Element; kind: 'poster' | 'inline'; list: { cls: string; text: string }[] };
+    const jobs: Job[] = [];
+    if (prefs.on || prefs.read) {
+      for (const a of document.querySelectorAll<HTMLAnchorElement>('a[href^="/anime/"], a[href^="/manga/"], a[href^="/novel/"]')) {
+        const k = keyOf(a);
+        if (!k || (k.book ? !prefs.read : !prefs.on)) continue;
         const parent = a.parentElement;
         let box: Element | null = null;
         let kind: 'poster' | 'inline' = 'poster';
@@ -88,9 +119,14 @@ export function initCards(ctx: ContentScriptContext) {
           kind = 'inline';
         }
         if (!box) continue;
-        const list = badgesFor(info.get(slug), schedule[slug], prefs);
+        if (kind === 'poster' && (box as HTMLElement).clientWidth < MIN_POSTER) continue;
+        const inf = info.get(k.key);
+        if (k.book && inf?.ws === 'reading') reading.push(k.key);
+        const list = k.book ? bookBadgesFor(inf, released[k.key]?.n) : badgesFor(inf, schedule[k.key], prefs);
+        if (list.length) jobs.push({ a, box, kind, list }); // зайвий host приберемо нижче
+      }
+      for (const { a, box, kind, list } of jobs) {
         let host = [...box.children].find((c) => c.tagName === TAG.toUpperCase()) as HTMLElement | undefined;
-        if (!list.length) continue; // зайвий host приберемо нижче
         if (!host) {
           host = document.createElement(TAG);
           host.attachShadow({ mode: 'open' });
@@ -116,12 +152,14 @@ export function initCards(ctx: ContentScriptContext) {
       }
     }
     for (const h of document.querySelectorAll(TAG)) if (!seen.has(h)) h.remove();
+    // Видимі тайтли «Читаю» з прив'язкою — перевірити, чи не вийшло нового (не частіше ніж раз на 3 год на тайтл).
+    if (reading.length) void refreshReleased([...new Set(reading)]);
   };
   // Hikka міняє DOM часто (таймери, коментарі, плеєр поруч) — перебираємо картки не частіше ніж раз на 250 мс
   // (0.6.0, було на кожному кадрі зі змінами). Плашки вимкнені й на сторінці їх немає — нічого не робимо.
   const schedule_ = () => {
     if (scheduled) return;
-    if (!prefs.on && !document.querySelector(TAG)) return;
+    if (!prefs.on && !prefs.read && !document.querySelector(TAG)) return;
     scheduled = true;
     window.setTimeout(render, 250);
   };
@@ -166,6 +204,17 @@ export function initCards(ctx: ContentScriptContext) {
     cardsItem.watch((p) => {
       prefs = { ...DEFAULT_CARDS, ...p };
       if (prefs.on) refreshSchedule();
+      schedule_();
+    }),
+  );
+
+  void releasedItem.getValue().then((m) => {
+    released = m;
+    schedule_();
+  });
+  ctx.onInvalidated(
+    releasedItem.watch((m) => {
+      released = m ?? {};
       schedule_();
     }),
   );

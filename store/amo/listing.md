@@ -1,8 +1,10 @@
 # Сторінка Hikka Plus на addons.mozilla.org
 
 Тексти для форми AMO (Developer Hub → Hikka Plus → «Edit Product Page»). Мова за замовчуванням
-у дополнения — English (en-US, бо в маніфесті немає `default_locale`), тож англійський текст — основний,
-український додається як переклад (перемикач мови вгорі форми → «Українська»).
+береться з маніфесту: до 0.6.0 включно — English (en-US), **з 0.6.1 — українська** (`default_locale: "uk"`,
+`public/_locales/`), тож після завантаження 0.6.1 основний текст — український, англійський — переклад.
+
+**Розмітка опису — Markdown** (`**жирний**`, списки); HTML-теги (`<b>`) AMO тепер виводить як текст.
 
 | Поле | Значення |
 |---|---|
@@ -20,7 +22,7 @@
 
 ---
 
-## Українська (uk)
+## Українська (uk) — мова за замовчуванням з 0.6.1
 
 **Summary** (≤ 250 символів):
 
@@ -31,7 +33,7 @@
 ```
 Hikka Plus додає на сторінки тайтлів hikka.io те, чого там бракує: перегляд і читання — без переходу на інші сайти. Усе вбудовано в саму сторінку й оформлено в стилі Hikka (тема, кольори й заокруглення беруться з вашої теми).
 
-<b>Аніме — блок «Перегляд»</b>
+**Аніме — блок «Перегляд»**
 • Плеєри українських озвучок прямо на сторінці аніме (дані — з Mikai та AnimeON, плеєри Ashdi, Moon, Fenix).
 • Сітка серій із позначками переглянутого, перемикання команд озвучки, «Ширше» на всю ширину сторінки і «На весь екран».
 • Опенінг і ендинг видно на смужці під плеєром (мітки самого плеєра, інакше приблизні з AniSkip), кнопка «Пропустити» (або пропуск сам).
@@ -41,18 +43,19 @@ Hikka Plus додає на сторінки тайтлів hikka.io те, чог
 • Підсвітка навколо плеєра з кольорів кадру (як Ambilight) — вимикається, прозорість і яскравість регулюються.
 • Експериментально: підсвітка телевізора Philips Ambilight, WLED, Philips Hue, Razer Chroma від відео (вимкнено за замовчуванням).
 
-<b>Манґа, манхва, ранобе — блок «Розділи» і читалка</b>
+**Манґа, манхва, ранобе — блок «Розділи» і читалка**
 • Розділи з українських сайтів: Zenko, manga.in.ua, Бака, Honey Manga, UAManga, DGManga, Animesvit, Смаколики, Runi, NovelHub, FanVers, Wattpad (лише українською).
 • Перемикач джерел і команд перекладу, автопідбір тайтлу, ручна прив'язка.
 • Читалка поверх сторінки: стрічка для манхви, посторінково (і справа наліво), налаштування шрифту й теми для ранобе; адреса розділу — в посиланні.
 • Підсвітка в читалці манґи й манхви: кольори сторінки м'яко розходяться по фону (вимикається, прозорість і яскравість — у налаштуваннях).
 • Прогрес «прочитано N з M», «Продовжити» з місця, де зупинились.
+• На картках манґи й ранобе — плашки «▶ N нових розділів» (для «Читаю», якщо тайтл прив'язано до джерела).
 
-<b>Синхронізація</b>
-• Вхід через Hikka (OAuth): прочитані розділи й переглянуті серії оновлюють ваш список Hikka.
+**Синхронізація**
+• Вхід через Hikka (OAuth, за вашою згодою — Firefox спитає при вході): прочитані розділи й переглянуті серії оновлюють ваш список Hikka.
 • Прогрес і налаштування — між вашими пристроями через синхронізацію браузера. Власного сервера в розширення немає.
 
-<b>Важливо</b>
+**Важливо**
 • Hikka Plus — неофіційне розширення, не пов'язане з командою Hikka.
 • Вміст показується з сайтів-джерел так, як вони його віддають; захист сайтів не обходиться — такі сайти лише посиланням. Плеєри — це iframe їхніх власників (можуть показувати свою рекламу).
 • Не заважає Hikka Features і Hikka Forge.
@@ -70,7 +73,7 @@ Hikka Plus додає на сторінки тайтлів hikka.io те, чог
 
 ---
 
-## English (en-US) — default locale
+## English (en-US) — переклад (до 0.6.0 — мова за замовчуванням)
 
 **Summary:**
 
@@ -81,7 +84,7 @@ Hikka Plus додає на сторінки тайтлів hikka.io те, чог
 ```
 Hikka Plus brings watching and reading into the title pages of hikka.io, the Ukrainian anime and manga tracker — no need to jump between sites. Everything is embedded into the page itself and follows your Hikka theme.
 
-<b>Anime — "Watch" block</b>
+**Anime — "Watch" block**
 • Ukrainian-dub players right on the anime page (episode data from Mikai and AnimeON; Ashdi, Moon and Fenix players).
 • Episode grid with watched marks, dub team switching, "Wider" layout and full screen.
 • Opening and ending shown on a bar under the player (the player's own marks, otherwise approximate ones from AniSkip), "Skip" button (or auto-skip).
@@ -91,18 +94,19 @@ Hikka Plus brings watching and reading into the title pages of hikka.io, the Ukr
 • Ambient glow around the player from the video frame — can be turned off, opacity and brightness adjustable.
 • Experimental: Philips Ambilight TV, WLED, Philips Hue and Razer Chroma lighting from the video (off by default).
 
-<b>Manga, manhwa, light novels — "Chapters" block and reader</b>
+**Manga, manhwa, light novels — "Chapters" block and reader**
 • Chapters from Ukrainian sites: Zenko, manga.in.ua, Baka, Honey Manga, UAManga, DGManga, Animesvit, Smakolyky, Runi, NovelHub, FanVers, Wattpad (Ukrainian only).
 • Source and translation team switcher, automatic title matching, manual linking.
 • Overlay reader: vertical strip for manhwa, paged mode (incl. right-to-left), font and theme settings for novels; the chapter is kept in the page URL.
 • Reader glow for manga and manhwa: the page's colours softly spread over the background (can be turned off; opacity and brightness are adjustable).
 • "Read N of M" progress, "Continue" from where you stopped.
+• Badges on manga and novel cards: "▶ N new chapters" (for "Reading" titles linked to a source).
 
-<b>Sync</b>
-• Sign in with Hikka (OAuth): read chapters and watched episodes update your Hikka list.
+**Sync**
+• Sign in with Hikka (OAuth, with your consent — Firefox asks when you sign in): read chapters and watched episodes update your Hikka list.
 • Progress and settings sync across your devices via browser sync. The extension has no server of its own.
 
-<b>Please note</b>
+**Please note**
 • Hikka Plus is unofficial and not affiliated with the Hikka team.
 • Content is shown from the source sites as they serve it; site protections are not bypassed — such sites are offered as links only. Players are their owners' iframes and may show their own ads.
 • Works alongside Hikka Features and Hikka Forge.

@@ -3,6 +3,7 @@ import { isAllowedUrl, XHR_HOSTS } from '@/src/core/hosts';
 import type { FetchRequest, FetchResponse } from '@/src/core/net';
 import type { HikkaRequest } from '@/src/core/hikka-auth';
 import { handleHikka } from '@/src/core/hikka-api';
+import { hikkaDataOk, tokenItem } from '@/src/core/hikka-auth';
 import { onLightsFrame, stopLights, watchLightsConf } from '@/src/lights/engine';
 import type { LightsMsg } from '@/src/lights/types';
 
@@ -52,8 +53,15 @@ async function dropOldFingerprints() {
   }
 }
 
+/** Згоду на передачу даних у Hikka забрали (about:addons → Дозволи) або її немає після оновлення з 0.6.0 — вийти. */
+async function dropTokenWithoutConsent() {
+  if (!(await hikkaDataOk()) && (await tokenItem.getValue())) await tokenItem.setValue(null);
+}
+
 export default defineBackground(() => {
   void dropOldFingerprints();
+  void dropTokenWithoutConsent();
+  browser.permissions.onRemoved.addListener(() => void dropTokenWithoutConsent());
   watchLightsConf();
   browser.runtime.onMessage.addListener((raw, sender, sendResponse) => {
     const msg = raw as FetchRequest | HikkaRequest | LightsMsg;

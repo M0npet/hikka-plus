@@ -5,6 +5,7 @@
 import { storage } from '#imports';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
+  hikkaConsent,
   authErrorItem,
   exchangeReference,
   getRead,
@@ -91,6 +92,10 @@ export async function startHikkaLogin(watch = false) {
   await returnItem.setValue(location.pathname + location.search);
   await authErrorItem.setValue(null);
   await watchLoginItem.setValue(watch);
+  // Firefox: спершу згода на передачу даних у Hikka. З content script її не попросити — фон відкриє вкладку
+  // налаштувань «Hikka», там «Увійти» спитає згоду й поверне сюди ж (returnItem/watchLoginItem уже записані).
+  const c = await hikkaConsent(true);
+  if (!c.ok || !c.data) return;
   location.assign(oauthUrl(watch));
 }
 
