@@ -105,7 +105,13 @@ export const uaManga: ReadSource = {
   },
 
   async autoMatch(title) {
-    // Спершу — точний збіг за посиланням на Hikka/MAL у самому тайтлі UAManga (перші кандидати пошуку).
+    // Найточніше — пошук UAManga за id трекера (/api/titles/source/hikka|mal/<id>, додали 2026-11-25; невідомий — 404).
+    const bySource = [`hikka/${encodeURIComponent(title.slug)}`, ...(title.mal_id != null ? [`mal/${title.mal_id}`] : [])];
+    for (const ref of bySource) {
+      const t = await getJson<UTitle>(`${SITE}/api/titles/source/${ref}`).catch(() => null);
+      if (t?.slug) return fromApi(t);
+    }
+    // Запасне — точний збіг за посиланням на Hikka/MAL у самому тайтлі UAManga (перші кандидати пошуку).
     const queries = [title.title_ua, title.title_en, title.title_original].filter((x): x is string => !!x?.trim()).slice(0, 2);
     const seen = new Set<string>();
     for (const q of queries) {
