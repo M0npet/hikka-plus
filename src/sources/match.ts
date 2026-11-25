@@ -40,6 +40,11 @@ export function bestSimilarity(a: string[], b: string[]): number {
 /** Поріг автопідбору й нижня межа для підказки «Схоже». */
 export const MATCH_MIN = 0.8;
 export const NEAR_MIN = 0.45;
+/** Збіг «точно»: для постера з джерела (src/cards/covers.ts) — назва майже така сама. */
+export const EXACT_MIN = 0.95;
+
+/** Позначити тайтл, знайдений за посиланням з Hikka, як точний. */
+export const exactly = (t: RemoteTitle): RemoteTitle => ({ ...t, exact: true });
 
 // Найкращий кандидат, що не дотягнув до автопідбору: джерело → тайтл Hikka → кандидат.
 const nearMisses = new WeakMap<object, Map<string, RemoteTitle>>();
@@ -54,7 +59,7 @@ export function settleMatch(
   best: { t: RemoteTitle; score: number } | null,
   min = MATCH_MIN,
 ): RemoteTitle | null {
-  if (best && best.score >= min) return best.t;
+  if (best && best.score >= min) return { ...best.t, exact: best.score >= EXACT_MIN };
   if (best && best.score >= NEAR_MIN) {
     let m = nearMisses.get(src);
     if (!m) nearMisses.set(src, (m = new Map()));
@@ -88,7 +93,7 @@ export async function autoMatchBy(
       const m = ext.url.match(linkRe);
       if (m?.[1]) {
         try {
-          return await src.getTitle(decodeURIComponent(m[1]));
+          return exactly(await src.getTitle(decodeURIComponent(m[1])));
         } catch (e) {
           rethrowRateLimit(e); // 429 — сайт просить почекати, а не «посилання застаріло»
           /* посилання застаріло — шукаємо за назвою */

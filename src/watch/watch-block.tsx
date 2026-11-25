@@ -4,7 +4,7 @@
  * «Ширше» — увесь блок на ширину сітки сторінки (wide-layout.ts); блок не переїжджає в DOM, iframe не перезавантажується.
  */
 import { browser } from '#imports';
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
 import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv, IconBulb, IconMoveH, IconMoveV, IconMoveBack, IconScan } from '../ui/icons';
 import { useLightsOff } from './lights-off';
@@ -205,8 +205,11 @@ export function WatchBlock(p: WatchBlockProps) {
   const [range, setRange] = useState('0');
   // З якої секунди почати після (пере)завантаження iframe.
   const startAt = useRef(init?.t ?? 0);
-  // Поточна позиція для смужки міток і кнопки «Пропустити» (з кроком 1 с — щоб не перемальовувати блок зайвий раз).
-  const [pos, setPos] = useState<{ ep: number; t: number; d: number } | null>(null);
+  // Поточна позиція (крок 1 с) — у маленькому сховищі: щосекунди перемальовується лише смужка міток (LiveMarksBar),
+  // а весь блок (сітка серій, меню) — лише коли кнопка «Пропустити» з'являється/зникає.
+  const posStore = useMemo(createPosStore, []);
+  const [skip, setSkip] = useState<(SkipState & { ep: number }) | null>(null);
+  const mkRef = useRef<MarksInfo | null>(null);
   const seekRef = useRef<((sec: number) => void) | null>(null);
   const skipped = useRef(new Set<string>());
   const frameRef = useRef<HTMLDivElement>(null);
@@ -344,12 +347,8 @@ export function WatchBlock(p: WatchBlockProps) {
 
   // Мітки OP/ED: кнопка «Пропустити» поверх плеєра (і в повному екрані) та автопропуск, якщо ввімкнено.
   const mk = marksOn && p.marks && p.marks.ep === ep ? p.marks : null;
-  const now = pos && pos.ep === ep ? pos : null;
-  const inSeg = (k: 'op' | 'ed') => {
-    const seg = mk?.m[k];
-    return seg && now && now.t >= seg.s && now.t < seg.e - 2 ? { kind: k, seg } : null;
-  };
-  const skipNow = inSeg('op') ?? inSeg('ed');
+  mkRef.current = mk;
+  const skipNow = mk && skip && skip.ep === ep ? skip : null;
   const doSkip = (kind: 'op' | 'ed', to: number) => {
     skipped.current.add(`${ep}:${kind}`);
     seekRef.current?.(to);
@@ -358,7 +357,8 @@ export function WatchBlock(p: WatchBlockProps) {
     if (!skipNow) return;
     const auto = skipNow.kind === 'op' ? p.prefs.skipOp : p.prefs.skipEd;
     // Сам — лише раз за серію і лише на початку шматка: якщо повернулися назад, щоб подивитися, — не заважаємо.
-    if (!auto || skipped.current.has(`${ep}:${skipNow.kind}`) || !now || now.t > skipNow.seg.s + 3) return;
+    const now = posStore.get();
+    if (!auto || skipped.current.has(`${ep}:${skipNow.kind}`) || !now || now.ep !== ep || now.t > skipNow.seg.s + 3) return;
     doSkip(skipNow.kind, skipNow.seg.e);
   }, [skipNow?.kind, skipNow?.seg.s, ep]);
 
@@ -447,7 +447,11 @@ export function WatchBlock(p: WatchBlockProps) {
             if (t > 3) picked.current = true;
             p.onTime?.(ep, t, d);
             const tt = Math.floor(t);
-            setPos((x) => (x && x.ep === ep && x.t === tt && x.d === d ? x : { ep, t: tt, d }));
+            posStore.set({ ep, t: tt, d });
+            const next = skipAt(mkRef.current, tt);
+            setSkip((x) =>
+              x?.ep === ep && x.kind === next?.kind && x.seg.s === next.seg.s && x.seg.e === next.seg.e ? x : next ? { ...next, ep } : null,
+            );
           }}
           onSegs={(m) => p.onSegs?.(ep, m)}
           seekRef={seekRef}
@@ -747,8 +751,8 @@ export function WatchBlock(p: WatchBlockProps) {
       <div className="hp-card">
         {bar}
         {frame}
-        {mk && (mk.m.op || mk.m.ed) && now && now.d > 0 && (
-          <MarksBar key={ep} info={mk} t={now.t} d={now.d} onSeek={(sec) => seekRef.current?.(sec)} />
+        {mk && (mk.m.op || mk.m.ed) && (
+          <LiveMarksBar key={ep} store={posStore} ep={ep} info={mk} onSeek={(sec) => seekRef.current?.(sec)} />
         )}
         {rest}
       </div>
@@ -771,6 +775,43 @@ export function WatchBlock(p: WatchBlockProps) {
 
 const SRC_NAMES: Record<MarkSrc, string> = { player: 'з плеєра', aniskip: 'AniSkip, приблизно' };
 const KIND_NAMES = { op: 'Опенінг', ed: 'Ендинг' } as const;
+
+type Pos = { ep: number; t: number; d: number };
+type PosStore = { get: () => Pos | null; set: (p: Pos) => void; sub: (f: () => void) => () => void };
+type SkipState = { kind: 'op' | 'ed'; seg: Seg };
+
+function createPosStore(): PosStore {
+  let cur: Pos | null = null;
+  const subs = new Set<() => void>();
+  return {
+    get: () => cur,
+    set(p) {
+      if (cur && cur.ep === p.ep && cur.t === p.t && cur.d === p.d) return;
+      cur = p;
+      subs.forEach((f) => f());
+    },
+    sub(f) {
+      subs.add(f);
+      return () => void subs.delete(f);
+    },
+  };
+}
+
+/** Чи зараз опенінг/ендинг (до кінця шматка лишилося > 2 с) — для кнопки «Пропустити». */
+function skipAt(mk: MarksInfo | null, t: number): SkipState | null {
+  for (const kind of ['op', 'ed'] as const) {
+    const seg = mk?.m[kind];
+    if (seg && t >= seg.s && t < seg.e - 2) return { kind, seg };
+  }
+  return null;
+}
+
+/** Смужка міток, що сама стежить за позицією — щоб щосекунди не перемальовувати весь блок. */
+function LiveMarksBar(p: { store: PosStore; ep: number; info: MarksInfo; onSeek: (sec: number) => void }) {
+  const now = useSyncExternalStore(p.store.sub, p.store.get);
+  if (!now || now.ep !== p.ep || !(now.d > 0)) return null;
+  return <MarksBar info={p.info} t={now.t} d={now.d} onSeek={p.onSeek} />;
+}
 
 /** Де OP і ED у цій серії: смужка на всю тривалість, клік — перемотка; під нею — час і звідки мітка. Показуємо, лише коли мітки є. */
 export function MarksBar({ info, t, d, onSeek }: { info: MarksInfo | null; t: number; d: number; onSeek: (sec: number) => void }) {

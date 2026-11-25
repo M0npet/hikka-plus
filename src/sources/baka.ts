@@ -2,7 +2,7 @@
 // (rosset-nocpes/hikka-features, MIT) і переписана на DOMParser.
 import { titleNames } from '../core/hikka';
 import { getDoc, rethrowRateLimit } from '../core/net';
-import { bestSimilarity, settleMatch } from './match';
+import { bestSimilarity, exactly, settleMatch } from './match';
 import { renumberByVolume, type Chapter, type ReadSource, type RemoteTitle } from './types';
 
 const SITE = 'https://baka.in.ua';
@@ -112,7 +112,7 @@ export const baka: ReadSource = {
 
   async autoMatch(title) {
     for (const ext of title.external) {
-      if (/baka\.in\.ua\/fictions\//.test(ext.url)) return this.getTitle(pathOf(ext.url));
+      if (/baka\.in\.ua\/fictions\//.test(ext.url)) return exactly(await this.getTitle(pathOf(ext.url)));
     }
     const names = titleNames(title);
     let best: { t: RemoteTitle; score: number } | null = null;

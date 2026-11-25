@@ -2,7 +2,7 @@ import type { HikkaTitle } from '../core/hikka';
 import { titleNames } from '../core/hikka';
 import { getJson, rethrowRateLimit } from '../core/net';
 import type { ReadKind } from '../core/page';
-import { bestSimilarity, settleMatch } from './match';
+import { bestSimilarity, exactly, settleMatch } from './match';
 import type {
   Chapter,
   ChapterContent,
@@ -108,7 +108,7 @@ export const zenko: ReadSource = {
     // 1. Пряме посилання на Zenko у блоці «Читати» на Hikka.
     for (const ext of title.external) {
       const m = ext.url.match(/zenko\.online\/titles\/(\d+)/);
-      if (m?.[1]) return this.getTitle(m[1]);
+      if (m?.[1]) return exactly(await this.getTitle(m[1]));
     }
     // 2. Пошук за назвами.
     const names = titleNames(title);

@@ -92,8 +92,10 @@ function StripImg({
   eager,
   original,
   nearness,
+  known,
 }: {
   url: string;
+  known?: { w: number; h: number };
   i: number;
   eager: boolean;
   original: boolean;
@@ -102,6 +104,8 @@ function StripImg({
   const ref = useRef<HTMLDivElement>(null);
   const [on, setOn] = useState(eager || !nearness);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  // Розмір від джерела — висота відома ще до завантаження (тло-заглушка лишається, доки картинка не прийде).
+  const box = size ?? known ?? null;
   useEffect(() => {
     const el = ref.current;
     if (!el || !nearness) return;
@@ -113,9 +117,9 @@ function StripImg({
   return (
     <div
       ref={ref}
-      className={`hp-strip__pg ${size ? 'hp-strip__pg--sized' : ''}`}
+      className={`hp-strip__pg ${size ? 'hp-strip__pg--sized' : known ? 'hp-strip__pg--known' : ''}`}
       data-page={i}
-      style={size ? { aspectRatio: `${size.w} / ${size.h}`, ...(original ? { width: `min(${size.w}px, 100vw)` } : {}) } : undefined}
+      style={box ? { aspectRatio: `${box.w} / ${box.h}`, ...(original ? { width: `min(${box.w}px, 100vw)` } : {}) } : undefined}
     >
       {on && (
         <img
@@ -162,7 +166,15 @@ export function StripView({
       }}
     >
       {content.pages.map((p, i) => (
-        <StripImg key={p.id} url={p.url(s.quality)} i={i} eager={i < 3} original={original} nearness={nearness} />
+        <StripImg
+          key={p.id}
+          url={p.url(s.quality)}
+          known={p.w && p.h && p.w > 0 && p.h > 0 ? { w: p.w, h: p.h } : undefined}
+          i={i}
+          eager={i < 3}
+          original={original}
+          nearness={nearness}
+        />
       ))}
     </div>
   );

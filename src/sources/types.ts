@@ -13,6 +13,9 @@ export interface RemoteTitle {
   chapterCount?: number;
   year?: number;
   url: string;
+  /** Автопідбір певен, що це той самий тайтл: посилання з блоку «Читати» на Hikka або назва майже збігається
+   *  (≥ EXACT_MIN). Лише з таких прив'язок беремо український постер (MK 2026-11-25, варіант A). */
+  exact?: boolean;
 }
 
 export interface Chapter {
@@ -30,7 +33,12 @@ export interface Chapter {
 
 export type ChapterContent =
   | { type: 'text'; html: string }
-  | { type: 'images'; pages: { id: string; url: (quality: ImageQualityHint) => string }[] };
+  | {
+      type: 'images';
+      /** `w`/`h` — розмір сторінки в пікселях, якщо джерело його віддає (UAManga): стрічка одразу має правильну висоту,
+       *  не стрибає під час завантаження й точно повертається до місця, де зупинились. */
+      pages: { id: string; url: (quality: ImageQualityHint) => string; w?: number; h?: number }[];
+    };
 
 export type ImageQualityHint = 'original' | 'high' | 'medium' | 'low';
 

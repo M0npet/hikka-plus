@@ -1,6 +1,6 @@
 import { noteCover } from '../cards/covers';
 import { useSyncExternalStore } from 'react';
-import { fetchHikkaTitle, type HikkaTitle } from '../core/hikka';
+import { fetchHikkaTitle, titleNames, type HikkaTitle } from '../core/hikka';
 import type { TitlePage } from '../core/page';
 import { isRateLimit, RATE_LIMIT_TEXT } from '../core/net';
 import {
@@ -348,7 +348,7 @@ export async function loadTitle(page: TitlePage) {
         ...b,
         links: {
           ...b.links,
-          [source.id]: remote ? { remoteId: remote.id, title: remote.title, url: remote.url, manual: false } : null,
+          [source.id]: remote ? { remoteId: remote.id, title: remote.title, url: remote.url, manual: false, exact: !!remote.exact } : null,
         },
         misses: { ...b.misses, [source.id]: remote ? 0 : Date.now() },
         near: withNear(b.near, source.id, near),
@@ -365,7 +365,7 @@ export async function loadTitle(page: TitlePage) {
     }),
   );
   // Прив'язки відомі — український постер з джерела (src/cards/covers.ts).
-  if (token === loadToken) void noteCover(kind, slug).catch(() => {});
+  if (token === loadToken) void noteCover(kind, slug, false, titleNames(hikka)).catch(() => {});
 }
 
 export function resetTitle() {
@@ -415,7 +415,7 @@ export async function bindManually(source: ReadSource, remote: RemoteTitle) {
     near: withNear(b.near, source.id, null),
   }));
   titleStore.set({ ...s, activeId: source.id, activeChosen: true });
-  void noteCover(kind, slug).catch(() => {});
+  void noteCover(kind, slug, false, s.hikka ? titleNames(s.hikka) : undefined).catch(() => {});
   await loadChapters(loadToken, source, remote, true);
 }
 
@@ -445,7 +445,7 @@ export async function unbindSource(sourceId: string) {
     nearNo: remoteId ? { ...b.nearNo, [sourceId]: remoteId } : b.nearNo,
     nearV: MATCH_VERSION,
   }));
-  void noteCover(kind, slug).catch(() => {});
+  void noteCover(kind, slug, false, s.hikka ? titleNames(s.hikka) : undefined).catch(() => {});
 }
 
 /** Підказка «Схоже» → «Ні»: прибрати й більше не пропонувати цей тайтл для цього джерела. */

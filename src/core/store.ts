@@ -167,6 +167,8 @@ export interface SourceLink {
   url?: string;
   /** true — користувач обрав вручну (автопідбір більше не чіпає). */
   manual: boolean;
+  /** Автопідбір: true — точно той самий тайтл (RemoteTitle.exact), false — лише схожа назва; немає — прив'язка до 0.6.1. */
+  exact?: boolean;
 }
 
 export interface Binding {

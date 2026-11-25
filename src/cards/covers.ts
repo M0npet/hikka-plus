@@ -12,6 +12,12 @@
  * розвідка `claude/research-ua-posters.md`). Шукати за назвою для кожної картки каталогу НЕ можна: десятки запитів
  * і хибні збіги. Тож постер з'являється після першого відкриття тайтлу.
  *
+ * Лише ТОЧНІ прив'язки (MK 2026-11-25, варіант A — щоб не було чужих обкладинок, як TBATE у «Героя щита»): ручна,
+ * автопідбір за посиланням з блоку «Читати» на Hikka або з назвою, що майже збігається (`SourceLink.exact`, ≥ EXACT_MIN).
+ * «Схоже» й неточний автопідбір — без постера з цього джерела (беремо наступне з COVER_SOURCES). Прив'язки до 0.6.1
+ * без `exact` — перевіряємо назву прив'язаного тайтлу проти назв Hikka. У меню «UA» користувач може обрати будь-яке
+ * прив'язане джерело — це його вибір.
+ *
  * Запит — один `getTitle` на джерелі при відкритті тайтлу, далі раз на 14 днів (той самий запит, що й читалка,
  * через background, `credentials: 'omit'`). Сама картинка вантажиться звичайним <img> з сайту джерела (без Referer).
  *
@@ -21,7 +27,8 @@
 import { storage } from '#imports';
 import type { ReadKind } from '../core/page';
 import { getJson, isRateLimit } from '../core/net';
-import { getBinding } from '../core/store';
+import { getBinding, type SourceLink } from '../core/store';
+import { bestSimilarity, EXACT_MIN } from '../sources/match';
 import { getSource, sourcesFor } from '../sources/registry';
 
 /** `<manga|novel>:<slug>` → обкладинка. */
@@ -80,17 +87,26 @@ function sized(u: string): string {
   return /^https:\/\/storage\.zenko\.online\//.test(u) ? u.replace(/([?&]width=)\d+/, '$1480') : u;
 }
 
+/** Чи певні ми, що прив'язаний тайтл — той самий (ручна прив'язка або точний автопідбір). `names` — назви тайтлу на Hikka. */
+function sure(l: SourceLink | null | undefined, names?: string[]): l is SourceLink {
+  if (!l) return false;
+  if (l.manual || l.exact) return true;
+  if (l.exact === false) return false;
+  // Прив'язка до 0.6.1 (без позначки): назва на джерелі має майже збігатися з назвою на Hikka.
+  return !!names?.length && bestSimilarity([l.title], names) >= EXACT_MIN;
+}
+
 /** Після відкриття тайтлу (і ручної прив'язки): запам'ятати українську обкладинку з прив'язаного джерела. */
-export async function noteCover(kind: ReadKind, slug: string, force = false): Promise<boolean> {
+export async function noteCover(kind: ReadKind, slug: string, force = false, names?: string[]): Promise<boolean> {
   const key = coverKey(kind, slug);
   const b = await getBinding(kind, slug);
   const enabled = new Set(sourcesFor(kind).map((s) => s.id));
   const cur = (await coversItem.getValue())[key];
   // Обране користувачем джерело — якщо прив'язка до нього ще є; інакше — перше з COVER_SOURCES.
   const chosen = cur?.p && enabled.has(cur.p) && b.links[cur.p] ? cur.p : undefined;
-  const pick = chosen ?? COVER_SOURCES[kind].find((id) => enabled.has(id) && b.links[id]);
+  const pick = chosen ?? COVER_SOURCES[kind].find((id) => enabled.has(id) && sure(b.links[id], names));
   if (!pick) {
-    // Прив'язок більше немає — і постера немає (вибір «оригінал» без постера не потрібен).
+    // Точних прив'язок немає — і постера немає (вибір «оригінал» без постера не потрібен).
     if (cur) await patch((m) => (delete m[key], m));
     return false;
   }

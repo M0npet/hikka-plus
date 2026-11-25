@@ -1,10 +1,11 @@
-import { getDoc, getJson } from '../core/net';
+import { getDoc, getJson, HttpError, rethrowRateLimit } from '../core/net';
 import { autoMatchBy, chapterNum } from './match';
 import type { Chapter, ReadSource, RemoteTitle } from './types';
 
 // UAManga: JSON API (UAManga дозволили ним користуватись — MK 2026-11-25): пошук /api/suggest, тайтл /api/titles/<slug>
 // (з `trackers` — посилання на Hikka й MAL, тож тайтл знаходимо точно), розділи /api/titles/<slug>/chapters,
-// сторінки — base64 у #reader-image-data. Розбір HTML лишився запасним.
+// сторінки — /api/titles/<slug>/chapters/<номер> (UAManga додали й задокументували 2026-11-25: https://uamanga.com/api/docs/;
+// ліцензовані тайтли анонімно — 403). Запасне — base64 у #reader-image-data, далі розбір HTML.
 const SITE = 'https://uamanga.com';
 
 interface USuggest {
@@ -117,18 +118,18 @@ export const uaManga: ReadSource = {
     // Найточніше — пошук UAManga за id трекера (/api/titles/source/hikka|mal/<id>, додали 2026-11-25; невідомий — 404).
     const bySource = [`hikka/${encodeURIComponent(title.slug)}`, ...(title.mal_id != null ? [`mal/${title.mal_id}`] : [])];
     for (const ref of bySource) {
-      const t = await getJson<UTitle>(`${SITE}/api/titles/source/${ref}`).catch(() => null);
+      const t = await getJson<UTitle>(`${SITE}/api/titles/source/${ref}`).catch((e) => (rethrowRateLimit(e), null));
       if (t?.slug) return fromApi(t);
     }
     // Запасне — точний збіг за посиланням на Hikka/MAL у самому тайтлі UAManga (перші кандидати пошуку).
     const queries = [title.title_ua, title.title_en, title.title_original].filter((x): x is string => !!x?.trim()).slice(0, 2);
     const seen = new Set<string>();
     for (const q of queries) {
-      const found = await this.search(q, title.kind).catch(() => [] as RemoteTitle[]);
+      const found = await this.search(q, title.kind).catch((e) => (rethrowRateLimit(e), [] as RemoteTitle[]));
       for (const c of found.slice(0, 3)) {
         if (seen.has(c.id)) continue;
         seen.add(c.id);
-        const t = await getApiTitle(c.id).catch(() => null);
+        const t = await getApiTitle(c.id).catch((e) => (rethrowRateLimit(e), null));
         if (t && sameAsHikka(t, title.slug, title.mal_id)) return fromApi(t);
       }
     }
@@ -181,6 +182,25 @@ export const uaManga: ReadSource = {
   },
 
   async getContent(chapter) {
+    // API сторінок: …/title/<slug>/chapter-12-5 → /api/titles/<slug>/chapters/12-5 → {pages: [{index, url, width, height}]}.
+    const m = chapter.url.match(/\/title\/([^/?#]+)\/chapter-([\w-]+)/);
+    if (m) {
+      try {
+        type UPage = { index?: number; url: string; width?: number; height?: number };
+        const r = await getJson<{ pages?: Partial<UPage>[] }>(`${SITE}/api/titles/${m[1]}/chapters/${m[2]}`);
+        const list = (r.pages ?? [])
+          .filter((x): x is UPage => typeof x?.url === 'string' && /^https?:/.test(x.url))
+          .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+        // Розмір 0 — «невідомий» (так у документації UAManga).
+        if (list.length)
+          return { type: 'images', pages: list.map((x, i) => ({ id: String(i), url: () => x.url, w: x.width || undefined, h: x.height || undefined })) };
+      } catch (e) {
+        rethrowRateLimit(e);
+        if (e instanceof HttpError && e.status === 403)
+          throw new Error('Цей тайтл ліцензований — на UAManga його можна читати лише після входу на сайті.');
+        /* інша помилка — пробуємо сторінку розділу */
+      }
+    }
     const doc = await getDoc(chapter.url);
     // Новий сайт: адреси сторінок — base64-JSON у <script id="reader-image-data"> (UAManga дозволили брати їх звідси — MK 2026-11-25).
     const data = doc.getElementById('reader-image-data')?.textContent;

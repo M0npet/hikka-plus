@@ -4,7 +4,7 @@
 // сторінки розділу — прямо в HTML (main.rd-pages figure.rp img), пошук — article.card. Старий спосіб лишився запасним.
 import { titleNames } from '../core/hikka';
 import { getDoc, getText, rethrowRateLimit } from '../core/net';
-import { bestSimilarity, settleMatch } from './match';
+import { bestSimilarity, exactly, settleMatch } from './match';
 import type { Chapter, ReadSource, RemoteTitle } from './types';
 
 const SITE = 'https://manga.in.ua';
@@ -95,7 +95,7 @@ export const mangaInUa: ReadSource = {
 
   async autoMatch(title) {
     const link = title.external.find((e) => /manga\.in\.ua\//.test(e.url));
-    if (link) return this.getTitle(link.url);
+    if (link) return exactly(await this.getTitle(link.url));
     const names = titleNames(title);
     let best: { t: RemoteTitle; score: number } | null = null;
     for (const q of names.slice(0, 2)) {
