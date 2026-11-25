@@ -19,17 +19,35 @@
  */
 import type { ContentScriptContext } from '#imports';
 import { CARDS_EVENT, CARDS_REQ, type CardRow } from '../core/bridge';
-import { coversItem, wantAnimeCovers, type CoverMap } from './covers';
+import { COVER_SOURCE_NAMES, coversItem, setCoverOriginal, wantAnimeCovers, type CoverKind, type CoverMap } from './covers';
 import { cardsItem, DEFAULT_CARDS, type CardsPrefs } from './prefs';
 import { refreshReleased, releasedItem, type ReleasedMap } from './released';
 import { getSchedule, type Schedule } from './schedule';
 
 const TAG = 'hikka-plus-badges';
 const COVER_TAG = 'hikka-plus-cover';
+// Значок «UA» (MK 2026-11-25: «значок что постер меняный», «будет кнопкой») — зліва вгорі (справа вгорі — статус Hikka,
+// знизу зліва — наші плашки); кнопка: український ↔ оригінал Hikka для тайтлу (Cover.o; MK 03:19: «кнопка на самом постере» —
+// окремий перемикач у шапках «Розділи»/«Перегляд» прибрано).
+// Обрано оригінал — значок напівпрозорий з рамкою. На мініатюрах (< MIN_POSTER) ховаємо через container query — без замірів.
 const COVER_CSS = `
-:host { all: initial; position: absolute; inset: 0; display: block; pointer-events: none; }
+:host { all: initial; position: absolute; inset: 0; display: block; pointer-events: none; container-type: inline-size; }
 img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.2s ease-in-out; }
 img.on { opacity: 1; }
+.ua {
+  all: unset; pointer-events: auto; cursor: pointer;
+  position: absolute; left: 6px; top: 6px; z-index: 1; box-sizing: border-box; max-width: calc(100% - 12px);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 1px 6px; border-radius: 6px; border: 1px solid transparent;
+  font: 600 11px/16px var(--font-sans, ui-sans-serif, system-ui, sans-serif); letter-spacing: 0.02em;
+  background: rgb(0 0 0 / 0.6); color: #fff; backdrop-filter: blur(4px);
+  opacity: 0; transition: opacity 0.2s ease-in-out, background-color 0.15s;
+}
+img.on + .ua, .ua.off { opacity: 1; }
+.ua:hover { background: rgb(0 0 0 / 0.8); }
+.ua.off { background: rgb(0 0 0 / 0.35); border-color: rgb(255 255 255 / 0.35); color: rgb(255 255 255 / 0.85); }
+.ua.off:hover { background: rgb(0 0 0 / 0.6); color: #fff; }
+@container (max-width: 89px) { .ua { display: none; } }
 `;
 /** Сторінка тайтлу → ключ обкладинки (`<anime|manga|novel>:<slug>`) для великого постера в #content-left-side. */
 const pageCoverKey = () => {
@@ -149,7 +167,7 @@ export function initCards(ctx: ContentScriptContext) {
         if (key.startsWith('anime:')) anime.push(key.slice(6));
         const c = covers[key];
         const src = c && (big ? (c.b ?? c.u) : c.u);
-        if (!c || !src || c.o || badCovers.has(src)) continue;
+        if (!c || !src || badCovers.has(src)) continue;
         const img = box.querySelector('img');
         if (!img || !fromHikka(img)) continue;
         let top: Element = img;
@@ -162,11 +180,40 @@ export function initCards(ctx: ContentScriptContext) {
           top.after(host);
         }
         seen.add(host);
-        if (host.dataset.u === src) continue;
-        host.dataset.u = src;
+        // Обрано оригінал (c.o) — картинку не малюємо (видно постер Hikka), лишаємо значок, щоб повернути український.
+        const orig = !!c.o;
+        const label = orig ? (big ? 'Показати UA постер' : 'UA') : big ? `UA постер${c.a ? ` · ${c.a}` : ''}` : 'UA';
+        const state = `${orig ? 'o' : 'u'}|${src}|${label}`;
+        if (host.dataset.s === state) continue;
+        host.dataset.s = state;
         const root = host.shadowRoot!;
         const style = document.createElement('style');
         style.textContent = COVER_CSS;
+        const from = COVER_SOURCE_NAMES[c.s] ?? c.s;
+        const by = c.a ? `${c.a}, ${from}` : from;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = orig ? 'ua off' : 'ua';
+        if (!big) btn.tabIndex = -1; // сотні карток — не засмічуємо Tab; з клавіатури — значок на великому постері тайтлу
+        btn.textContent = label;
+        btn.title = orig ? `Показати український постер (${by})` : `Український постер (${by}) — натисніть, щоб показати оригінал Hikka`;
+        btn.setAttribute('aria-pressed', String(!orig));
+        const [kind, ...rest] = key.split(':');
+        const slug = rest.join(':');
+        const stop = (e: Event) => {
+          // Значок лежить поверх посилання картки — клік не має відкривати тайтл.
+          e.preventDefault();
+          e.stopPropagation();
+        };
+        btn.addEventListener('pointerdown', stop);
+        btn.addEventListener('click', (e) => {
+          stop(e);
+          void setCoverOriginal(kind as CoverKind, slug, !orig); // coversItem.watch перемалює всі картки цього тайтлу
+        });
+        if (orig) {
+          root.replaceChildren(style, btn);
+          continue;
+        }
         const pic = document.createElement('img');
         pic.alt = '';
         pic.decoding = 'async';
@@ -182,7 +229,7 @@ export function initCards(ctx: ContentScriptContext) {
           { once: true },
         );
         pic.src = u;
-        root.replaceChildren(style, pic);
+        root.replaceChildren(style, pic, btn);
       }
       // Аніме-картки, про які ще не питали Mikai, — одним пакетом.
       if (anime.length) wantAnimeCovers([...new Set(anime)], covers);

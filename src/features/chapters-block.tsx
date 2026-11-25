@@ -3,8 +3,7 @@ import { titleNames } from '../core/hikka';
 import { chapterKey, posText, type ChapterProgress } from '../core/store';
 import { getSource, sourcesFor } from '../sources/registry';
 import { chapterNo, type Chapter, type ReadSource, type RemoteTitle } from '../sources/types';
-import { IconExternal, IconLink, IconSearch, IconSort } from '../ui/icons';
-import { CoverToggle } from '../cards/cover-toggle';
+import { IconClose, IconExternal, IconLink, IconSearch, IconSort } from '../ui/icons';
 import { Button, btn, ChipMenu, ChipTabs, Header, Progress, Select } from '../ui/kit';
 import { openReader } from './reader-url';
 import { HikkaSyncBar } from './hikka-bar';
@@ -22,6 +21,7 @@ import {
   setTeam,
   teamCounts,
   titleProgress,
+  unbindSource,
   useTitleState,
   visibleChapters,
   type TitleState,
@@ -66,7 +66,17 @@ export function ChaptersBlock() {
           <IconLink />
           {searchFor && binding ? 'Скасувати' : 'Знайти вручну'}
         </Button>
-        <CoverToggle kind={s.page.kind} slug={s.page.slug} />
+        {src && act?.remote && !searchFor && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void unbindSource(src.id)}
+            title={`Це не той тайтл — відв'язати «${act.remote.title}» на ${src.name} (більше не підбиратиметься автоматично)`}
+          >
+            <IconClose />
+            Відв'язати
+          </Button>
+        )}
       </Header>
 
       <div className="hp-card">

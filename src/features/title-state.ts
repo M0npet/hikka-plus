@@ -325,7 +325,9 @@ export async function loadTitle(page: TitlePage) {
         return;
       }
       setSource(token, source.id, { status: 'searching', chapters: [] });
-      const remote = await source.autoMatch(hikka).catch(() => null);
+      let remote = await source.autoMatch(hikka).catch(() => null);
+      // Користувач відв'язав цей тайтл («Відв'язати», unbindSource) — автопідбір його більше не прив'язує.
+      if (remote && remote.id === binding.nearNo?.[source.id]) remote = null;
       let near = remote ? null : takeNearMiss(source, hikka);
       if (near && near.id === binding.nearNo?.[source.id]) near = null;
       if (token !== loadToken) return;
@@ -402,6 +404,35 @@ export async function bindManually(source: ReadSource, remote: RemoteTitle) {
   titleStore.set({ ...s, activeId: source.id, activeChosen: true });
   void noteCover(kind, slug).catch(() => {});
   await loadChapters(loadToken, source, remote, true);
+}
+
+/**
+ * «Відв'язати» (MK 2026-11-25: «не тот тайтл привязал»): прибрати прив'язку активного джерела — ручну чи автопідбір.
+ * Цей тайтл на джерелі більше не пропонуємо й не прив'язуємо автоматично (nearNo); активним стає наступне знайдене
+ * джерело; постер і «нових розділів» беруться вже з нього (noteCover / noteReleased).
+ */
+export async function unbindSource(sourceId: string) {
+  const s = titleStore.get();
+  const st = s?.sources[sourceId];
+  if (!s || !st) return;
+  const { kind, slug } = s.page;
+  const remoteId = st.remote?.id;
+  titleStore.set({
+    ...s,
+    sources: { ...s.sources, [sourceId]: { status: 'not-found', chapters: [] } },
+    ...(s.activeId === sourceId ? { activeId: null, activeChosen: false } : {}),
+  });
+  pickActive(loadToken);
+  await patchBinding(kind, slug, (b) => ({
+    ...b,
+    active: b.active === sourceId ? null : b.active,
+    links: { ...b.links, [sourceId]: null },
+    misses: { ...b.misses, [sourceId]: Date.now() },
+    near: withNear(b.near, sourceId, null),
+    nearNo: remoteId ? { ...b.nearNo, [sourceId]: remoteId } : b.nearNo,
+    nearV: MATCH_VERSION,
+  }));
+  void noteCover(kind, slug).catch(() => {});
 }
 
 /** Підказка «Схоже» → «Ні»: прибрати й більше не пропонувати цей тайтл для цього джерела. */
