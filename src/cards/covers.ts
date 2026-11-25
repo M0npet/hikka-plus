@@ -19,7 +19,6 @@
  * але під значками Hikka; pointer-events: none. Якщо постер уже підмінило інше розширення (картинка не з hikka.io) — не чіпаємо.
  */
 import { storage } from '#imports';
-import { useEffect, useState } from 'react';
 import type { ReadKind } from '../core/page';
 import { getJson } from '../core/net';
 import { getBinding } from '../core/store';
@@ -40,6 +39,8 @@ export type Cover = {
   at: number;
   /** 1 — для цього тайтлу користувач обрав оригінальний постер Hikka. */
   o?: 1;
+  /** Джерело постера, яке користувач обрав сам (меню кнопки «UA», MK 2026-11-25); інакше — за COVER_SOURCES. */
+  p?: string;
 };
 export type CoverMap = Record<string, Cover>;
 
@@ -80,25 +81,61 @@ function sized(u: string): string {
 }
 
 /** Після відкриття тайтлу (і ручної прив'язки): запам'ятати українську обкладинку з прив'язаного джерела. */
-export async function noteCover(kind: ReadKind, slug: string): Promise<void> {
+export async function noteCover(kind: ReadKind, slug: string, force = false): Promise<boolean> {
   const key = coverKey(kind, slug);
   const b = await getBinding(kind, slug);
   const enabled = new Set(sourcesFor(kind).map((s) => s.id));
-  const pick = COVER_SOURCES[kind].find((id) => enabled.has(id) && b.links[id]);
   const cur = (await coversItem.getValue())[key];
+  // Обране користувачем джерело — якщо прив'язка до нього ще є; інакше — перше з COVER_SOURCES.
+  const chosen = cur?.p && enabled.has(cur.p) && b.links[cur.p] ? cur.p : undefined;
+  const pick = chosen ?? COVER_SOURCES[kind].find((id) => enabled.has(id) && b.links[id]);
   if (!pick) {
     // Прив'язок більше немає — і постера немає (вибір «оригінал» без постера не потрібен).
     if (cur) await patch((m) => (delete m[key], m));
-    return;
+    return false;
   }
   const link = b.links[pick]!;
-  if (cur && cur.s === pick && cur.id === link.remoteId && Date.now() - cur.at < TTL_MS) return;
+  if (!force && cur && cur.s === pick && cur.id === link.remoteId && Date.now() - cur.at < TTL_MS) return true;
   const t = await getSource(pick)
     ?.getTitle(link.remoteId)
     .catch(() => null);
   const u = t?.cover && /^https:\/\//.test(t.cover) ? sized(t.cover) : null;
-  if (!u) return;
-  await patch((m) => ({ ...m, [key]: { u, s: pick, id: link.remoteId, at: Date.now(), ...(m[key]?.o ? { o: 1 as const } : {}) } }));
+  if (!u) return false;
+  await patch((m) => {
+    const p = m[key]?.p;
+    return { ...m, [key]: { u, s: pick, id: link.remoteId, at: Date.now(), ...(m[key]?.o ? { o: 1 as const } : {}), ...(p ? { p } : {}) } };
+  });
+  return true;
+}
+
+/** Варіанти для меню кнопки «UA»: аніме — Mikai; манґа/ранобе — усі ввімкнені джерела з прив'язкою. */
+export async function coverChoices(kind: CoverKind, slug: string): Promise<{ id: string; name: string }[]> {
+  if (kind === 'anime') return [{ id: 'mikai', name: 'Mikai (uaposters)' }];
+  const b = await getBinding(kind, slug);
+  return sourcesFor(kind)
+    .filter((x) => b.links[x.id])
+    .map((x) => ({ id: x.id, name: x.name }));
+}
+
+/**
+ * Вибір у меню кнопки «UA»: 'orig' — оригінал Hikka; інакше — постер з цього джерела (запит getTitle одразу).
+ * false — на джерелі немає обкладинки (вибір не змінюється).
+ */
+export async function setCoverSource(kind: CoverKind, slug: string, id: string): Promise<boolean> {
+  if (id === 'orig') return (await setCoverOriginal(kind, slug, true), true);
+  if (kind === 'anime') return (await setCoverOriginal(kind, slug, false), true);
+  const key = coverKey(kind, slug);
+  const prev = (await coversItem.getValue())[key];
+  await patch((m) => {
+    const c = m[key];
+    if (!c) return m;
+    const { o: _o, ...rest } = c;
+    return { ...m, [key]: { ...rest, p: id } };
+  });
+  if (await noteCover(kind, slug, true)) return true;
+  // Обкладинки немає — повернути, як було.
+  if (prev) await patch((m) => ({ ...m, [key]: prev }));
+  return false;
 }
 
 type MikaiImg = { big?: { webp?: string; jpg?: string }; medium?: { webp?: string; jpg?: string } };
@@ -108,6 +145,9 @@ type MikaiAnime = {
 } | null;
 
 const pending = new Set<string>();
+/** Mikai не відповів — ці slug не просимо до `failUntil` (раніше просили знову кожні 2 с, поки сторінка відкрита). */
+const failed = new Map<string, number>();
+const FAIL_MS = 10 * 60_000;
 let flushTimer = 0;
 let lastFlush = 0;
 let inflight = false;
@@ -118,6 +158,7 @@ export function wantAnimeCovers(slugs: string[], known: CoverMap) {
   for (const slug of slugs) {
     const c = known[coverKey('anime', slug)];
     if (c && now - c.at < (c.u ? TTL_MS : NONE_TTL_MS)) continue;
+    if ((failed.get(slug) ?? 0) > now) continue;
     pending.add(slug);
   }
   if (!pending.size || flushTimer || inflight) return;
@@ -151,14 +192,16 @@ async function flushAnime() {
       return m;
     });
   } catch {
-    /* Mikai не відповів — спробуємо на наступній сторінці */
+    // Mikai не відповів — ці тайтли не просимо 10 хв.
+    const until = Date.now() + FAIL_MS;
+    for (const s of batch) failed.set(s, until);
   } finally {
     inflight = false;
     if (pending.size) flushTimer = window.setTimeout(flushAnime, 2000);
   }
 }
 
-/** Перемикач на сторінці тайтлу: оригінальний постер Hikka чи український. */
+/** Оригінальний постер Hikka чи український (кнопка «UA» на постері, src/cards/cards.ts). */
 export function setCoverOriginal(kind: CoverKind, slug: string, original: boolean) {
   const key = coverKey(kind, slug);
   return patch((m) => {
@@ -178,14 +221,5 @@ export const COVER_SOURCE_NAMES: Record<string, string> = {
   mangainua: 'Manga.in.ua',
 };
 
-/** Обкладинка тайтлу (для перемикача на сторінці тайтлу); undefined — українського постера немає. */
-export function useCover(kind: CoverKind, slug: string): Cover | undefined {
-  const key = coverKey(kind, slug);
-  const [c, setC] = useState<Cover | undefined>();
-  useEffect(() => {
-    const pickC = (m: CoverMap | null) => (m?.[key]?.u ? m[key] : undefined);
-    void coversItem.getValue().then((m) => setC(pickC(m)));
-    return coversItem.watch((m) => setC(pickC(m)));
-  }, [key]);
-  return c;
-}
+/** Назва джерела постера для підказки (будь-яке джерело — користувач міг обрати й не з COVER_SOURCES). */
+export const coverSourceName = (id: string) => COVER_SOURCE_NAMES[id] ?? getSource(id)?.name ?? id;

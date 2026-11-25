@@ -74,7 +74,7 @@ export function ChaptersBlock() {
             title={`Це не той тайтл — відв'язати «${act.remote.title}» на ${src.name} (більше не підбиратиметься автоматично)`}
           >
             <IconClose />
-            Відв'язати
+            Відв'язати {src.name}
           </Button>
         )}
       </Header>

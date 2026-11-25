@@ -19,36 +19,74 @@
  */
 import type { ContentScriptContext } from '#imports';
 import { CARDS_EVENT, CARDS_REQ, type CardRow } from '../core/bridge';
-import { COVER_SOURCE_NAMES, coversItem, setCoverOriginal, wantAnimeCovers, type CoverKind, type CoverMap } from './covers';
+import { coverChoices, coverSourceName, coversItem, setCoverSource, wantAnimeCovers, type CoverKind, type CoverMap } from './covers';
 import { cardsItem, DEFAULT_CARDS, type CardsPrefs } from './prefs';
 import { refreshReleased, releasedItem, type ReleasedMap } from './released';
 import { getSchedule, type Schedule } from './schedule';
 
 const TAG = 'hikka-plus-badges';
 const COVER_TAG = 'hikka-plus-cover';
-// Значок «UA» (MK 2026-11-25: «значок что постер меняный», «будет кнопкой») — зліва вгорі (справа вгорі — статус Hikka,
-// знизу зліва — наші плашки); кнопка: український ↔ оригінал Hikka для тайтлу (Cover.o; MK 03:19: «кнопка на самом постере» —
-// окремий перемикач у шапках «Розділи»/«Перегляд» прибрано).
-// Обрано оригінал — значок напівпрозорий з рамкою. На мініатюрах (< MIN_POSTER) ховаємо через container query — без замірів.
+// Кнопка «UA» на самому постері (MK 2026-11-25: «значок что постер меняный», «будет кнопкой», 03:29 «лучше сделать и
+// справа снизу»): справа внизу (справа вгорі — статус Hikka, зліва внизу — наші плашки), іконка + «UA»; український
+// постер ↔ оригінал Hikka для тайтлу (Cover.o). Показано український — колір як у плашки «нових» (--primary Hikka),
+// оригінал — темне скло. На мініатюрах (< MIN_POSTER) кнопки немає — container query, без замірів.
 const COVER_CSS = `
 :host { all: initial; position: absolute; inset: 0; display: block; pointer-events: none; container-type: inline-size; }
 img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.2s ease-in-out; }
 img.on { opacity: 1; }
 .ua {
-  all: unset; pointer-events: auto; cursor: pointer;
-  position: absolute; left: 6px; top: 6px; z-index: 1; box-sizing: border-box; max-width: calc(100% - 12px);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  padding: 1px 6px; border-radius: 6px; border: 1px solid transparent;
-  font: 600 11px/16px var(--font-sans, ui-sans-serif, system-ui, sans-serif); letter-spacing: 0.02em;
-  background: rgb(0 0 0 / 0.6); color: #fff; backdrop-filter: blur(4px);
-  opacity: 0; transition: opacity 0.2s ease-in-out, background-color 0.15s;
+  all: unset; pointer-events: auto; cursor: pointer; box-sizing: border-box;
+  position: absolute; right: 8px; bottom: 8px; z-index: 3;
+  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 7px 0 6px;
+  border-radius: 7px; border: 1px solid var(--primary-border, transparent);
+  font: 600 12px/1 var(--font-sans, ui-sans-serif, system-ui, sans-serif); letter-spacing: 0.03em;
+  background: var(--primary, oklch(30% 0.05 343)); color: var(--primary-foreground, oklch(72% 0.18 343));
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+  opacity: 0; transition: opacity 0.2s ease-in-out, filter 0.15s, transform 0.15s;
 }
-img.on + .ua, .ua.off { opacity: 1; }
-.ua:hover { background: rgb(0 0 0 / 0.8); }
-.ua.off { background: rgb(0 0 0 / 0.35); border-color: rgb(255 255 255 / 0.35); color: rgb(255 255 255 / 0.85); }
-.ua.off:hover { background: rgb(0 0 0 / 0.6); color: #fff; }
-@container (max-width: 89px) { .ua { display: none; } }
+.ua svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+img.on ~ .ua, .ua.off { opacity: 1; }
+.ua:hover { filter: brightness(1.2); }
+.ua:active { transform: scale(0.95); }
+.ua:focus-visible { outline: 2px solid var(--ring, #fff); outline-offset: 2px; }
+.ua.off { background: rgb(0 0 0 / 0.6); color: rgb(255 255 255 / 0.9); border-color: rgb(255 255 255 / 0.18); }
+.big { height: 30px; padding: 0 10px 0 8px; font-size: 13px; right: 10px; bottom: 10px; }
+.big svg { width: 16px; height: 16px; }
+.menu {
+  pointer-events: auto; position: absolute; right: 8px; bottom: 38px; z-index: 4; box-sizing: border-box;
+  min-width: 150px; max-width: calc(100% - 16px); max-height: calc(100% - 50px); overflow: auto;
+  padding: 4px; border-radius: 9px; border: 1px solid var(--border, rgb(255 255 255 / 0.12));
+  background: var(--popover, rgb(15 15 18 / 0.96)); color: var(--popover-foreground, #fff);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.5);
+  font: 500 13px/18px var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+}
+.big ~ .menu, .menu.big { right: 10px; bottom: 46px; }
+.menu .h { padding: 4px 8px 6px; font-size: 11px; font-weight: 600; opacity: 0.6; text-transform: uppercase; letter-spacing: 0.04em; }
+.menu button {
+  all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.menu button:hover, .menu button:focus-visible { background: var(--accent, rgb(255 255 255 / 0.08)); }
+.menu button[aria-checked="true"] { color: var(--primary-foreground, oklch(72% 0.18 343)); }
+.menu button::before { content: ""; flex: none; width: 12px; text-align: center; }
+.menu button[aria-checked="true"]::before { content: "✓"; }
+.menu .note { padding: 4px 8px; font-size: 12px; opacity: 0.7; white-space: normal; }
+@container (max-width: 89px) { .ua, .menu { display: none; } }
 `;
+/** Іконка «картинка» (як IconImage у src/ui/icons.tsx) — без Preact і без innerHTML. */
+const IMAGE_PATHS = ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M9 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', 'm21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21'];
+const imageIcon = () => {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const d of IMAGE_PATHS) {
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', d);
+    svg.append(path);
+  }
+  return svg;
+};
 /** Сторінка тайтлу → ключ обкладинки (`<anime|manga|novel>:<slug>`) для великого постера в #content-left-side. */
 const pageCoverKey = () => {
   const m = /^\/(anime|manga|novel)\/([^/?#]+)\/?$/.exec(location.pathname);
@@ -76,7 +114,8 @@ const MIN_POSTER = 90;
 const CSS = `
 :host { all: initial; pointer-events: none; font-family: inherit; }
 :host([data-kind="poster"]) {
-  position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 2;
+  /* справа місце під кнопку «UA» постера (≈ 50 px) — довга плашка на неї не залазить */
+  position: absolute; left: 8px; right: 58px; bottom: 8px; z-index: 2;
   display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
 }
 :host([data-kind="inline"]) { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 8px; vertical-align: middle; }
@@ -139,6 +178,79 @@ const keyOf = (a: HTMLAnchorElement): { key: string; book: boolean } | null => {
   return m[1] === 'anime' ? { key: m[2]!, book: false } : { key: `${m[1]}:${m[2]}`, book: true };
 };
 
+/**
+ * Меню кнопки «UA» (MK 2026-11-25 03:32: «выбор источника постера»): оригінал Hikka або постер з будь-якого джерела,
+ * до якого тайтл прив'язаний (вибір — Cover.p / Cover.o, src/cards/covers.ts). Живе в Shadow DOM постера;
+ * закривається вибором, кліком повз, Esc. Вибір перемальовує всі картки тайтлу (coversItem.watch).
+ */
+let closeOpenMenu: (() => void) | null = null;
+function toggleCoverMenu(root: ShadowRoot, btn: HTMLButtonElement, kind: CoverKind, slug: string, current: string, big: boolean) {
+  const had = root.querySelector('.menu');
+  closeOpenMenu?.();
+  if (had) return;
+  const menu = document.createElement('div');
+  menu.className = big ? 'menu big' : 'menu';
+  menu.setAttribute('role', 'menu');
+  const head = document.createElement('div');
+  head.className = 'h';
+  head.textContent = 'Постер';
+  menu.append(head);
+  const swallow = (e: Event) => e.stopPropagation();
+  menu.addEventListener('pointerdown', swallow);
+  menu.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  const close = () => {
+    menu.remove();
+    btn.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('pointerdown', outside, true);
+    document.removeEventListener('keydown', onKey, true);
+    if (closeOpenMenu === close) closeOpenMenu = null;
+  };
+  const outside = (e: Event) => {
+    const path = e.composedPath();
+    if (!path.includes(menu) && !path.includes(btn)) close();
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    close();
+    btn.focus();
+  };
+  const item = (id: string, name: string) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'menuitemradio');
+    b.setAttribute('aria-checked', String(id === current));
+    b.textContent = name;
+    b.addEventListener('click', () => {
+      if (id === current) return close();
+      menu.querySelectorAll('button').forEach((x) => (x.disabled = true));
+      void setCoverSource(kind, slug, id).then((ok) => {
+        if (ok) return close();
+        menu.querySelectorAll('button').forEach((x) => (x.disabled = false));
+        b.disabled = true;
+        let note = menu.querySelector('.note');
+        if (!note) menu.append((note = Object.assign(document.createElement('div'), { className: 'note' })));
+        note.textContent = `На «${name}» немає обкладинки.`;
+      });
+    });
+    return b;
+  };
+  menu.append(item('orig', 'Оригінал Hikka'));
+  root.append(menu);
+  btn.setAttribute('aria-expanded', 'true');
+  document.addEventListener('pointerdown', outside, true);
+  document.addEventListener('keydown', onKey, true);
+  closeOpenMenu = close;
+  void coverChoices(kind, slug).then((list) => {
+    if (!menu.isConnected) return;
+    for (const x of list) menu.append(item(x.id, x.name));
+    (menu.querySelector('button[aria-checked="true"]') as HTMLButtonElement | null)?.focus({ preventScroll: true });
+  });
+}
+
 export function initCards(ctx: ContentScriptContext) {
   let prefs: CardsPrefs = DEFAULT_CARDS;
   const info = new Map<string, Info>();
@@ -182,22 +294,24 @@ export function initCards(ctx: ContentScriptContext) {
         seen.add(host);
         // Обрано оригінал (c.o) — картинку не малюємо (видно постер Hikka), лишаємо значок, щоб повернути український.
         const orig = !!c.o;
-        const label = orig ? (big ? 'Показати UA постер' : 'UA') : big ? `UA постер${c.a ? ` · ${c.a}` : ''}` : 'UA';
+        const label = 'UA';
         const state = `${orig ? 'o' : 'u'}|${src}|${label}`;
         if (host.dataset.s === state) continue;
         host.dataset.s = state;
         const root = host.shadowRoot!;
         const style = document.createElement('style');
         style.textContent = COVER_CSS;
-        const from = COVER_SOURCE_NAMES[c.s] ?? c.s;
+        const from = coverSourceName(c.s);
         const by = c.a ? `${c.a}, ${from}` : from;
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = orig ? 'ua off' : 'ua';
+        btn.className = `ua${orig ? ' off' : ''}${big ? ' big' : ''}`;
         if (!big) btn.tabIndex = -1; // сотні карток — не засмічуємо Tab; з клавіатури — значок на великому постері тайтлу
-        btn.textContent = label;
-        btn.title = orig ? `Показати український постер (${by})` : `Український постер (${by}) — натисніть, щоб показати оригінал Hikka`;
-        btn.setAttribute('aria-pressed', String(!orig));
+        btn.append(imageIcon(), label);
+        btn.title = orig ? 'Показано оригінал Hikka — обрати постер' : `Український постер (${by}) — обрати постер`;
+        btn.setAttribute('aria-label', btn.title);
+        btn.setAttribute('aria-haspopup', 'menu');
+        btn.setAttribute('aria-expanded', 'false');
         const [kind, ...rest] = key.split(':');
         const slug = rest.join(':');
         const stop = (e: Event) => {
@@ -208,7 +322,7 @@ export function initCards(ctx: ContentScriptContext) {
         btn.addEventListener('pointerdown', stop);
         btn.addEventListener('click', (e) => {
           stop(e);
-          void setCoverOriginal(kind as CoverKind, slug, !orig); // coversItem.watch перемалює всі картки цього тайтлу
+          toggleCoverMenu(root, btn, kind as CoverKind, slug, orig ? 'orig' : c.s, big);
         });
         if (orig) {
           root.replaceChildren(style, btn);
@@ -217,6 +331,8 @@ export function initCards(ctx: ContentScriptContext) {
         const pic = document.createElement('img');
         pic.alt = '';
         pic.decoding = 'async';
+        pic.loading = 'lazy'; // картки поза екраном не вантажимо й не декодуємо
+        pic.fetchPriority = 'low';
         pic.referrerPolicy = 'no-referrer'; // manga.in.ua: hotlink-захист
         const u = src;
         pic.addEventListener('load', () => pic.classList.add('on'), { once: true });
@@ -375,7 +491,14 @@ export function initCards(ctx: ContentScriptContext) {
     }),
   );
 
-  const obs = new MutationObserver(schedule_);
+  // Свої вставки (<hikka-plus-badges>/<hikka-plus-cover>) не будять перебір знову — інакше кожна вставка постера
+  // запускала ще один прохід по всіх картках (MK 2026-11-25 03:34: «обнова с постерами грузит проц»).
+  const ours = (n: Node) => n.nodeType === 1 && ((n as Element).tagName === TAG.toUpperCase() || (n as Element).tagName === COVER_TAG.toUpperCase());
+  const obs = new MutationObserver((recs) => {
+    for (const r of recs) {
+      if (![...r.addedNodes, ...r.removedNodes].every(ours)) return schedule_();
+    }
+  });
   obs.observe(document.body, { childList: true, subtree: true });
   ctx.onInvalidated(() => {
     obs.disconnect();
