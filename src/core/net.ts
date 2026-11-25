@@ -16,6 +16,8 @@ export interface FetchResponse {
   status: number;
   body: string;
   error?: string;
+  /** Заголовок Retry-After (на 429/503). */
+  retryAfter?: string | null;
 }
 
 export class HttpError extends Error {
@@ -25,7 +27,46 @@ export class HttpError extends Error {
   ) {
     super(message);
   }
+  /** `String(e)` у повідомленнях інтерфейсу — без «Error: ». */
+  override toString() {
+    return this.message;
+  }
 }
+
+/** Текст для 429: сайт обмежує частоту запитів. */
+export const RATE_LIMIT_TEXT = 'Сайт просить почекати — спробуйте за хвилину';
+
+/** Сайт обмежив частоту (429) — запит не робили або він не пройшов. */
+export const isRateLimit = (e: unknown) => e instanceof HttpError && e.status === 429;
+
+/** Для `catch` у пошуку/автопідборі: «не знайшлося» ковтаємо, а 429 — ні (інакше тайтл запишеться як «немає»). */
+export function rethrowRateLimit(e: unknown) {
+  if (isRateLimit(e)) throw e;
+}
+
+// Хост → до якого часу не чіпати (після 429). Поки пауза — запити до нього не йдуть зовсім:
+// автопідбір, «нових розділів» і пошук не добивають сайт, що вже попросив почекати.
+const cooldown = new Map<string, number>();
+const DEFAULT_PAUSE_MS = 60_000;
+const MAX_PAUSE_MS = 10 * 60_000;
+
+function pauseFor(retryAfter: string | null | undefined): number {
+  const v = retryAfter?.trim();
+  if (v) {
+    const sec = Number(v);
+    const ms = Number.isFinite(sec) ? sec * 1000 : Date.parse(v) - Date.now();
+    if (Number.isFinite(ms) && ms > 0) return Math.min(ms, MAX_PAUSE_MS);
+  }
+  return DEFAULT_PAUSE_MS;
+}
+
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return '';
+  }
+};
 
 /**
  * Запит через background: там є host_permissions, тож CORS не заважає.
@@ -37,8 +78,14 @@ export async function getText(url: string, init?: { form?: URLSearchParams; json
     : init?.json !== undefined
       ? { type: 'hp-fetch', url, method: 'POST', json: JSON.stringify(init.json) }
       : { type: 'hp-fetch', url };
+  const host = hostOf(url);
+  if ((cooldown.get(host) ?? 0) > Date.now()) throw new HttpError(429, RATE_LIMIT_TEXT);
   const res = (await browser.runtime.sendMessage(msg)) as FetchResponse | undefined;
   if (!res) throw new HttpError(0, 'Немає відповіді від фонового скрипта');
+  if (res.status === 429) {
+    cooldown.set(host, Date.now() + pauseFor(res.retryAfter));
+    throw new HttpError(429, RATE_LIMIT_TEXT);
+  }
   if (!res.ok) throw new HttpError(res.status, res.error || `HTTP ${res.status}`);
   return res.body;
 }

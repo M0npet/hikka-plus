@@ -20,7 +20,7 @@
  */
 import { storage } from '#imports';
 import type { ReadKind } from '../core/page';
-import { getJson } from '../core/net';
+import { getJson, isRateLimit } from '../core/net';
 import { getBinding } from '../core/store';
 import { getSource, sourcesFor } from '../sources/registry';
 
@@ -98,7 +98,11 @@ export async function noteCover(kind: ReadKind, slug: string, force = false): Pr
   if (!force && cur && cur.s === pick && cur.id === link.remoteId && Date.now() - cur.at < TTL_MS) return true;
   const t = await getSource(pick)
     ?.getTitle(link.remoteId)
-    .catch(() => null);
+    .catch((e) => {
+      // 429 при виборі в меню — сказати «почекайте», а не «немає обкладинки».
+      if (force && isRateLimit(e)) throw e;
+      return null;
+    });
   const u = t?.cover && /^https:\/\//.test(t.cover) ? sized(t.cover) : null;
   if (!u) return false;
   await patch((m) => {
@@ -119,9 +123,9 @@ export async function coverChoices(kind: CoverKind, slug: string): Promise<{ id:
 
 /**
  * Вибір у меню кнопки «UA»: 'orig' — оригінал Hikka; інакше — постер з цього джерела (запит getTitle одразу).
- * false — на джерелі немає обкладинки (вибір не змінюється).
+ * false — на джерелі немає обкладинки, 'limit' — сайт просить почекати (429); в обох випадках вибір не змінюється.
  */
-export async function setCoverSource(kind: CoverKind, slug: string, id: string): Promise<boolean> {
+export async function setCoverSource(kind: CoverKind, slug: string, id: string): Promise<boolean | 'limit'> {
   if (id === 'orig') return (await setCoverOriginal(kind, slug, true), true);
   if (kind === 'anime') return (await setCoverOriginal(kind, slug, false), true);
   const key = coverKey(kind, slug);
@@ -132,10 +136,17 @@ export async function setCoverSource(kind: CoverKind, slug: string, id: string):
     const { o: _o, ...rest } = c;
     return { ...m, [key]: { ...rest, p: id } };
   });
-  if (await noteCover(kind, slug, true)) return true;
-  // Обкладинки немає — повернути, як було.
+  let res: boolean | 'limit';
+  try {
+    res = await noteCover(kind, slug, true);
+  } catch (e) {
+    if (!isRateLimit(e)) throw e;
+    res = 'limit';
+  }
+  if (res === true) return true;
+  // Обкладинки немає / сайт просить почекати — повернути, як було.
   if (prev) await patch((m) => ({ ...m, [key]: prev }));
-  return false;
+  return res;
 }
 
 type MikaiImg = { big?: { webp?: string; jpg?: string }; medium?: { webp?: string; jpg?: string } };

@@ -1,6 +1,6 @@
 import type { HikkaTitle } from '../core/hikka';
 import { titleNames } from '../core/hikka';
-import { getJson } from '../core/net';
+import { getJson, rethrowRateLimit } from '../core/net';
 import type { ReadKind } from '../core/page';
 import { bestSimilarity, settleMatch } from './match';
 import type {
@@ -117,7 +117,8 @@ export const zenko: ReadSource = {
       let found: RemoteTitle[];
       try {
         found = await this.search(q, title.kind);
-      } catch {
+      } catch (e) {
+        rethrowRateLimit(e);
         continue;
       }
       for (const t of found.slice(0, 10)) {

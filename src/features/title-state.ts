@@ -2,6 +2,7 @@ import { noteCover } from '../cards/covers';
 import { useSyncExternalStore } from 'react';
 import { fetchHikkaTitle, type HikkaTitle } from '../core/hikka';
 import type { TitlePage } from '../core/page';
+import { isRateLimit, RATE_LIMIT_TEXT } from '../core/net';
 import {
   chapterKey,
   getBinding,
@@ -238,6 +239,8 @@ function pickActive(token: number) {
     for (const id of order) {
       const st = s.sources[id];
       if (!st || st.status === 'searching') return s; // чекаємо пріоритетніше джерело
+      // 429 під час автопідбору (нічого не прив'язано) — не робимо його активним, беремо наступне знайдене.
+      if (st.status === 'error' && !st.remote) continue;
       if (st.status !== 'not-found') return s.activeId === id ? s : { ...s, activeId: id };
     }
     return s;
@@ -325,7 +328,17 @@ export async function loadTitle(page: TitlePage) {
         return;
       }
       setSource(token, source.id, { status: 'searching', chapters: [] });
-      let remote = await source.autoMatch(hikka).catch(() => null);
+      let limited = false;
+      let remote = await source.autoMatch(hikka).catch((e) => {
+        limited = isRateLimit(e);
+        return null;
+      });
+      // Сайт попросив почекати (429) — це не «не знайдено»: нічого не записуємо, наступного заходу шукаємо знову.
+      if (limited) {
+        setSource(token, source.id, { status: 'error', error: RATE_LIMIT_TEXT });
+        pickActive(token);
+        return;
+      }
       // Користувач відв'язав цей тайтл («Відв'язати», unbindSource) — автопідбір його більше не прив'язує.
       if (remote && remote.id === binding.nearNo?.[source.id]) remote = null;
       let near = remote ? null : takeNearMiss(source, hikka);

@@ -1,4 +1,5 @@
 import { titleNames, type HikkaTitle } from '../core/hikka';
+import { rethrowRateLimit } from '../core/net';
 import type { RemoteTitle } from './types';
 /** Нормалізація назви для порівняння: нижній регістр, лише літери й цифри. */
 export function normalize(s: string): string {
@@ -88,7 +89,8 @@ export async function autoMatchBy(
       if (m?.[1]) {
         try {
           return await src.getTitle(decodeURIComponent(m[1]));
-        } catch {
+        } catch (e) {
+          rethrowRateLimit(e); // 429 — сайт просить почекати, а не «посилання застаріло»
           /* посилання застаріло — шукаємо за назвою */
         }
       }
@@ -122,7 +124,8 @@ export async function autoMatchBy(
     const query = q.replace(/[^\p{L}\p{N}]+/gu, ' ').trim() || q;
     try {
       found = await src.search(query, title.kind);
-    } catch {
+    } catch (e) {
+      rethrowRateLimit(e); // далі не шукаємо: решта запитів лише продовжить паузу
       continue;
     }
     for (const t of found.slice(0, 10)) {

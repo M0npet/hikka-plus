@@ -19,6 +19,7 @@
  */
 import type { ContentScriptContext } from '#imports';
 import { CARDS_EVENT, CARDS_REQ, type CardRow } from '../core/bridge';
+import { RATE_LIMIT_TEXT } from '../core/net';
 import { coverChoices, coverSourceName, coversItem, setCoverSource, wantAnimeCovers, type CoverKind, type CoverMap } from './covers';
 import { cardsItem, DEFAULT_CARDS, type CardsPrefs } from './prefs';
 import { refreshReleased, releasedItem, type ReleasedMap } from './released';
@@ -228,12 +229,12 @@ function toggleCoverMenu(root: ShadowRoot, btn: HTMLButtonElement, kind: CoverKi
       if (id === current) return close();
       menu.querySelectorAll('button').forEach((x) => (x.disabled = true));
       void setCoverSource(kind, slug, id).then((ok) => {
-        if (ok) return close();
+        if (ok === true) return close();
         menu.querySelectorAll('button').forEach((x) => (x.disabled = false));
-        b.disabled = true;
+        b.disabled = ok === false; // 429 — можна натиснути ще раз за хвилину
         let note = menu.querySelector('.note');
         if (!note) menu.append((note = Object.assign(document.createElement('div'), { className: 'note' })));
-        note.textContent = `На «${name}» немає обкладинки.`;
+        note.textContent = ok === 'limit' ? `«${name}»: ${RATE_LIMIT_TEXT.toLowerCase()}.` : `На «${name}» немає обкладинки.`;
       });
     });
     return b;

@@ -17,6 +17,7 @@
 
 ## Структура
 - `entrypoints/background.ts` — fetch за allowlist (`src/core/hosts.ts`), CORS обходимо тут.
+- `src/core/net.ts` — запити з content script через background. 429 → `HttpError(429, RATE_LIMIT_TEXT)` («Сайт просить почекати — спробуйте за хвилину») і пауза на хост (`Retry-After`, інакше 60 с, ≤10 хв): поки пауза — запити до хоста не йдуть. У `catch` пошуку/автопідбору — `rethrowRateLimit(e)`: 429 не можна ковтати як «не знайдено» (`title-state` інакше запише `misses` на 3 дні). Бака: сторінка тайтлу в кеші 60 с, `getLatest` — лише найновіший том.
 - `entrypoints/content/` — монтування блоків (`src/core/mount.ts`, self-healing для SPA), стилі `style.css`.
   Зміну сторінки в SPA перевіряти за `location.pathname` ідемпотентно: подія `wxt:locationchange` (Navigation API) приходить ДО оновлення адреси.
 - `src/features/title-state.ts` — спільний стан тайтлу (кнопка, блок, читалка).

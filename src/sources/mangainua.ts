@@ -3,7 +3,7 @@
 // 0.6.1 (2026-11-25): сайт перейшов на новий шаблон MangaNew — розділи JSON-ом (POST mod=mgchapters, news_id),
 // сторінки розділу — прямо в HTML (main.rd-pages figure.rp img), пошук — article.card. Старий спосіб лишився запасним.
 import { titleNames } from '../core/hikka';
-import { getDoc, getText } from '../core/net';
+import { getDoc, getText, rethrowRateLimit } from '../core/net';
 import { bestSimilarity, settleMatch } from './match';
 import type { Chapter, ReadSource, RemoteTitle } from './types';
 
@@ -99,7 +99,7 @@ export const mangaInUa: ReadSource = {
     const names = titleNames(title);
     let best: { t: RemoteTitle; score: number } | null = null;
     for (const q of names.slice(0, 2)) {
-      const found = await this.search(q, 'manga').catch(() => []);
+      const found = await this.search(q, 'manga').catch((e) => (rethrowRateLimit(e), []));
       for (const t of found.slice(0, 10)) {
         const score = bestSimilarity([t.title.replace(/^\([^)]*\)\s*/, '')], names);
         if (!best || score > best.score) best = { t, score };

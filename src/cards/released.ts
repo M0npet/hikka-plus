@@ -7,6 +7,7 @@
  * Запити — ті самі, що й при відкритті тайтлу (через background, `credentials: 'omit'`); нових хостів немає.
  */
 import { storage } from '#imports';
+import { isRateLimit } from '../core/net';
 import type { ReadKind } from '../core/page';
 import { getSource } from '../sources/registry';
 import { renumberByVolume, type Chapter } from '../sources/types';
@@ -101,7 +102,10 @@ export async function refreshReleased(keys: string[]) {
           const sum = summarize(src.getLatest ? await src.getLatest(r.id) : renumberByVolume(await src.getChapters(r.id)), r.t);
           if (sum.n) next = { ...next, ...sum }; // порожня відповідь (напр. лише платні нові розділи) — старе число не затираємо
         }
-      } catch {
+      } catch (e) {
+        // 429 — сайт просить почекати: не позначаємо як перевірене, спробуємо після паузи
+        // (поки вона триває, net.ts запитів до цього сайту не шле — решта тайтлів того ж джерела не добиває його).
+        if (isRateLimit(e)) continue;
         /* сайт не відповів — спробуємо через 3 год, старе число лишаємо */
       }
       await patch((x) => (x[key] ? { ...x, [key]: next } : x));

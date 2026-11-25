@@ -34,7 +34,7 @@ async function handle(msg: FetchRequest): Promise<FetchResponse> {
       credentials: 'omit',
       signal: ctrl.signal,
     });
-    return { ok: res.ok, status: res.status, body: await res.text() };
+    return { ok: res.ok, status: res.status, body: await res.text(), retryAfter: res.headers.get('retry-after') };
   } catch (e) {
     return { ok: false, status: 0, body: '', error: String(e) };
   } finally {
