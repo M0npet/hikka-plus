@@ -2135,16 +2135,6 @@ select {
   max-height: min(70vh, 520px);
   overflow-y: auto;
 }
-/* Вибір плеєра в меню ⚙ (MK 2026-11-26 15:34). */
-.hp-watch__menuplayers {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: -4px -8px 0;
-}
-.hp-watch__menuplayers > .hp-setrow__label {
-  padding: 0 8px 4px;
-}
 /* Меню над плеєром (серії, озвучка, плеєр, налаштування) — напівпрозоре скло (MK 2026-11-26 15:28). */
 .hp-watch__tools .hp-popover {
   border-color: var(--hp-ob-border);

@@ -56,10 +56,10 @@ test('блок «Перегляд»: Mikai public API + назви серій', 
   // Озвучка — у лівій панелі поверх плеєра (рядка над плеєром немає; панель видно при русі миші).
   await expect(watch().locator('.hp-watch__tools--left').getByText(TEAM)).toHaveCount(1, { timeout: 20_000 });
   await expect(watch().locator('.hp-watch__bar')).toHaveCount(0);
-  // Плеєр — у меню ⚙, видно завжди (навіть коли плеєр один).
-  await watch().locator('[aria-label="Налаштування плеєра"]').dispatchEvent('click');
-  await expect(watch().locator('.hp-watch__menuplayers [role=option][aria-selected=true]')).toContainText('Fenix');
-  await page.keyboard.press('Escape');
+  // Відео ще не пустили — наші панелі видно й без руху миші (MK 2026-11-26 15:41).
+  await expect(watch().locator('.hp-watch__tools--left')).toHaveClass(/hp-watch__tools--on/);
+  // Плеєр — на лівій панелі поряд з озвучкою (видно завжди, навіть коли плеєр один).
+  await expect(watch().locator('.hp-watch__tools--left .hp-watch__toolplayer')).toContainText('Fenix');
   await fenixFrame(1);
   expect(hits.get(`GET api.mikai.me/public/v1/anime/hikka:${SLUG}/player`)).toBeGreaterThan(0);
 
@@ -73,6 +73,8 @@ test('«Наступна серія» з назвою на порозі зара
   await f.evaluate(() => (window as unknown as { __tick: (t: number) => void }).__tick(1300));
   const next = watch().locator('.hp-ob--primary');
   await expect(next).toContainText('Наступна серія', { timeout: 10_000 });
+  // Відео йде, миша не рухається — панелі ховаються.
+  await expect(watch().locator('.hp-watch__tools--left')).not.toHaveClass(/hp-watch__tools--on/, { timeout: 5_000 });
   await expect(next.locator('.hp-ob__sub')).toHaveText(EP_TITLES[2]);
   await next.click();
   await fenixFrame(2);

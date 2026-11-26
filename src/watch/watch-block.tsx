@@ -410,11 +410,15 @@ export function WatchBlock(p: WatchBlockProps) {
   const [tools, setTools] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [epOpen, setEpOpen] = useState(false);
+  const [playerOpen, setPlayerOpen] = useState(false);
   const toolsT = useRef(0);
   const toolsHover = useRef(false);
   const wakeTools = (on: boolean) => {
+    // Миша вийшла з плеєра — не ховаємо одразу (MK 2026-11-26 15:41: меню «резко пропадает и появляется»): часто це
+    // перехід на нашу ж панель, а прихована панель (pointer-events: none) не ловить мишу — вона знову в плеєрі → {active: 1}
+    // → панель видно → … Ховаємо, як і без руху, через TOOLS_IDLE після останньої активності.
+    if (!on) return;
     clearTimeout(toolsT.current);
-    if (!on) return void (toolsHover.current || setTools(false));
     setTools(true);
     toolsT.current = window.setTimeout(() => !toolsHover.current && setTools(false), TOOLS_IDLE);
   };
@@ -438,6 +442,17 @@ export function WatchBlock(p: WatchBlockProps) {
   };
   const holdOff = () => clearInterval(holdT.current);
   useEffect(() => () => clearInterval(holdT.current), []);
+  // Відео ще не пустили або пауза (MK 2026-11-26 15:41: «когда я еще не нажимал на плеер, наше меню тоже должно
+  // показываться») — панелі видно весь час, як і панель самого плеєра. «Стоїть» = позиція не мінялася 1,5 с.
+  const tick = useRef({ t: -1, at: 0 });
+  const [still, setStill] = useState(true);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const s = Date.now() - tick.current.at > 1500;
+      setStill((x) => (x === s ? x : s));
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
   const [range, setRange] = useState('0');
   // З якої секунди почати після (пере)завантаження iframe.
   const startAt = useRef(init?.t ?? 0);
@@ -689,7 +704,7 @@ export function WatchBlock(p: WatchBlockProps) {
 
   const st = p.episodes[ep];
   const ed = p.edInfo && p.edInfo.ep === ep ? p.edInfo : null;
-  // Пункт списку плеєрів у меню ⚙.
+  // Пункт списку плеєрів (ліва панель поверх плеєра).
   const playerItem = (x: WatchPlayer) => (
     <>
       <span className="hp-grow hp-ellipsis">{x.label || PLAYER_NAMES[x.kind]}</span>
@@ -743,6 +758,7 @@ export function WatchBlock(p: WatchBlockProps) {
             // Почали дивитися — більше не перескакуємо самі на «першу непереглянуту» (інакше при заліку серії
             // на початку ендингу блок перемикав на наступну посеред ендингу).
             if (t > 3) picked.current = true;
+            if (t !== tick.current.t) tick.current = { t, at: Date.now() };
             p.onTime?.(ep, t, d);
             const tt = Math.floor(t);
             posStore.set({ ep, t: tt, d });
@@ -858,10 +874,10 @@ export function WatchBlock(p: WatchBlockProps) {
     )}
     {/*
       Ліворуч угорі поверх плеєра (MK 2026-11-26 13:33): «◀ Серія N ▶» і озвучка зі списком команд — щоб у повному екрані
-      можна було гортати серії й міняти озвучку. Плеєр — у меню ⚙ (MK 2026-11-26 15:34); рядка над плеєром і Dawn більше немає.
+      можна було гортати серії й міняти озвучку, і плеєр (MK 2026-11-26 15:41); рядка над плеєром і Dawn більше немає.
     */}
     <div
-      className={cx('hp-watch__tools', 'hp-watch__tools--left', `hp-watch__tools--${player.kind}`, (tools || teamOpen || epOpen) && 'hp-watch__tools--on')}
+      className={cx('hp-watch__tools', 'hp-watch__tools--left', `hp-watch__tools--${player.kind}`, (tools || still || teamOpen || epOpen || playerOpen) && 'hp-watch__tools--on')}
       onPointerEnter={() => {
         toolsHover.current = true;
         wakeTools(true);
@@ -926,10 +942,24 @@ export function WatchBlock(p: WatchBlockProps) {
           />
         </>
       )}
+      {/* Плеєр — на панелі, видно завжди (MK 2026-11-26 15:41: «я говорил плеер не прятать»; у ⚙ його більше немає). */}
+      <span className="hp-watch__toolsep" aria-hidden="true" />
+      <Picker
+        className="hp-watch__toolteam hp-watch__toolplayer"
+        triggerClass="hp-watch__tool hp-watch__tool--team"
+        label="Плеєр"
+        items={players}
+        value={player}
+        keyOf={(x) => x.id}
+        trigger={<span className="hp-ellipsis">{PLAYER_NAMES[player.kind]}</span>}
+        item={playerItem}
+        onOpen={setPlayerOpen}
+        onPick={(x) => x.id !== player.id && pickPlayer(x)}
+      />
     </div>
     {/* Кнопки блоку — панеллю поверх плеєра, справа вгорі (MK 2026-11-26 13:22); стиль — як у кнопок «Пропустити» (.hp-ob). */}
     <div
-      className={cx('hp-watch__tools', `hp-watch__tools--${player.kind}`, (tools || menu) && 'hp-watch__tools--on')}
+      className={cx('hp-watch__tools', `hp-watch__tools--${player.kind}`, (tools || still || menu) && 'hp-watch__tools--on')}
       onPointerEnter={() => {
         toolsHover.current = true;
         wakeTools(true);
@@ -947,24 +977,6 @@ export function WatchBlock(p: WatchBlockProps) {
           </Button>
           {menu && (
             <div className="hp-popover hp-popover--end hp-watch__menu">
-              {/* Вибір плеєра — тут (MK 2026-11-26 15:34: «выбор плеера перенести в меню плеера»); завжди, навіть з одним (15:36). */}
-              {players.length > 0 && (
-                <div className="hp-watch__menuplayers" role="listbox" aria-label="Плеєр">
-                  <span className="hp-setrow__label">Плеєр</span>
-                  {players.map((x) => (
-                    <div
-                      key={x.id}
-                      role="option"
-                      aria-selected={x.id === player.id}
-                      className="hp-option hp-watch__opt"
-                      onClick={() => x.id !== player.id && pickPlayer(x)}
-                    >
-                      <Check on={x.id === player.id} />
-                      {playerItem(x)}
-                    </div>
-                  ))}
-                </div>
-              )}
               <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної; вручну — клавіша N у плеєрі" checked={p.prefs.autoNext} onChange={(v) => p.onPrefs({ autoNext: v })} />
               <SwitchRow label="Відлік на ендингу" hint={`Кнопка «Наступна серія» — і через ${NEXT_COUNTDOWN} с перехід сам`} checked={!!p.prefs.nextCountdown} onChange={(v) => p.onPrefs({ nextCountdown: v })} />
               <SwitchRow label="Відмічати в Hikka" hint="Серія зараховується, коли дійшли до ендингу" checked={p.prefs.hikkaSync} onChange={(v) => p.onPrefs({ hikkaSync: v })} />
