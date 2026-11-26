@@ -82,7 +82,11 @@ export function updateWatchSaved(slug: string, fn: (s: WatchSaved) => WatchSaved
   const prev = queues.get(slug) ?? Promise.resolve();
   const next = prev.then(async () => {
     const cur = await getWatchSaved(slug);
-    await storage.setItem(key(slug), { ...fn(cur), u: Date.now() });
+    const nx = fn(cur);
+    // Нічого не змінилось (напр. блок при відкритті тайтлу повідомив ту саму команду/плеєр/серію) — не пишемо:
+    // інакше новий u щоразу штовхав би запис у storage.sync і будив слухачів в усіх вкладках (аудит 2026-11-26).
+    if (JSON.stringify({ ...nx, u: 0 }) === JSON.stringify({ ...cur, u: 0 })) return;
+    await storage.setItem(key(slug), { ...nx, u: Date.now() });
     scheduleWatchPush(slug);
   });
   queues.set(slug, next.catch(() => {}));

@@ -77,10 +77,17 @@ export function mikaiTeamMax(r: MikaiPlayerLite | undefined, team: string): numb
   return max;
 }
 
+const DAY_MS = 24 * 3600_000;
+
 // Записи з різних вкладок і фону — по черзі.
 let queue: Promise<unknown> = Promise.resolve();
 export function updateDubs(fn: (m: DubMap) => DubMap): Promise<void> {
-  const next = queue.then(async () => dubsItem.setValue(fn({ ...(await dubsItem.getValue()) })));
+  const next = queue.then(async () => {
+    const cur = await dubsItem.getValue();
+    const nx = fn(structuredClone(cur));
+    // Без змін — без запису (будив би слухачів і перераховував значок).
+    if (JSON.stringify(nx) !== JSON.stringify(cur)) await dubsItem.setValue(nx);
+  });
   queue = next.catch(() => {});
   return next;
 }
@@ -106,6 +113,8 @@ export async function noteDubSeen(slug: string, t: { name: string; team: string;
       return m;
     }
     const keep = cur && cur.team === t.team && cur.n === t.n;
+    // Те саме й «at» свіже (до доби) — нічого не міняємо: at потрібен лише для чистки через 60 днів.
+    if (keep && cur.seen === t.n && cur.name === t.name && cur.tn === t.tn && now - cur.at < DAY_MS) return m;
     m[slug] = { name: t.name, team: t.team, tn: t.tn, n: t.n, seen: t.n, at: now, nu: keep ? cur.nu : now };
     return pruneDubs(m, now);
   });

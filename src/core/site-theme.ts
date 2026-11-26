@@ -63,7 +63,14 @@ export function trackSiteTheme(onCleanup: (fn: () => void) => void) {
       void siteThemeItem.setValue(t).catch(() => {});
     }, 400);
   };
-  save();
+  // Те, що вже збережено, — щоб не переписувати ту саму тему при кожному завантаженні сторінки (аудит 2026-11-26).
+  void siteThemeItem
+    .getValue()
+    .then((t) => {
+      if (t && !last) last = JSON.stringify(t);
+    })
+    .catch(() => {})
+    .finally(save);
   const obs = new MutationObserver(save);
   obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
   obs.observe(document.head, { childList: true });
