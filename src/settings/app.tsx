@@ -359,7 +359,7 @@ function ReaderSection() {
   );
 }
 
-/** Плашки на картках аніме (src/cards/): «▶ N нових»; блок у віконці картки (src/cards/popup.ts); «Серія N через X дн.». */
+/** Плашки на картках аніме (src/cards/): «▶ N нових»; блок у віконці картки (src/cards/popup.ts) і в трекері на головній (tracker.ts); «Серія N через X дн.». */
 function CardsFields() {
   const [c, setC] = useCardsPrefs();
   return (
@@ -376,7 +376,13 @@ function CardsFields() {
         checked={c.pop}
         onChange={(pop) => setC({ pop })}
       />
-      <SwitchRow label="Коли наступна серія" hint="«Серія N · через X дн.» за розкладом Hikka — у віконці картки й у таблиці списків" checked={c.next} onChange={(next) => setC({ next })} />
+      <SwitchRow
+        label="Блок у трекері на головній"
+        hint="Під «Дивлюсь» / «Читаю» на головній Hikka: «Продовжити» з місця, де зупинились, нові серії в озвучці, коли наступна серія"
+        checked={c.trk}
+        onChange={(trk) => setC({ trk })}
+      />
+      <SwitchRow label="Коли наступна серія" hint="«Серія N · через X дн.» за розкладом Hikka — у віконці картки, у трекері на головній і в таблиці списків" checked={c.next} onChange={(next) => setC({ next })} />
     </>
   );
 }

@@ -6,6 +6,8 @@ import { IconClose, IconExpand, IconExternal, IconLeft, IconList, IconPause, Ico
 import { closeReader, moveReader } from '../reader-url';
 import { contentFormat, neighbor, setChapterRead, setTeam, teamCounts, titleProgress, useReaderRequest, useTitleState } from '../title-state';
 import { SettingsPanel } from './settings-panel';
+import { pickTitle } from '../../core/title-lang';
+import { useTitleLang } from '../../ui/use-title-lang';
 import { Button, btn, Progress, Select } from '../../ui/kit';
 import { NovelView, PagedView, StripView, tapZone, useNearness } from './views';
 import { ReaderGlow } from './glow';
@@ -48,6 +50,7 @@ export function Reader() {
   const s = useTitleState();
   const req = useReaderRequest();
   const settings = useSettings();
+  const lang = useTitleLang();
 
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [panel, setPanel] = useState<'none' | 'chapters' | 'settings'>('none');
@@ -562,7 +565,8 @@ export function Reader() {
   if (!s || !req) return null;
 
   const themeCls = isNovel && settings.novel.theme !== 'site' ? `hp-theme-${settings.novel.theme}` : '';
-  const title = s.hikka?.title_ua || s.hikka?.title_en || srcState?.remote?.title || '';
+  // Для манґи/ранобе «оригінальна» назва Hikka — title_original.
+  const title = (s.hikka && pickTitle({ ua: s.hikka.title_ua, en: s.hikka.title_en, ja: s.hikka.title_original }, lang)) || srcState?.remote?.title || '';
   const label = chapter ? chapterLabel(chapter) : '';
   const idx = chapter ? [...new Set(list.map((c) => chapterKey(c.number)))].indexOf(chapterKey(chapter.number)) : -1;
   const total = new Set(list.map((c) => chapterKey(c.number))).size;

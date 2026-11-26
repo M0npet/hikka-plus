@@ -31,6 +31,11 @@ export type WatchBlockProps = {
   teams: WatchTeam[];
   /** Стан серій за номером. */
   episodes: Record<number, EpisodeState>;
+  /** Назви серій з Hikka (`/anime/{slug}/episodes`) за номером. */
+  epTitles?: Record<number, string>;
+  /** Наступний сезон (Hikka franchise): кнопка поверх плеєра на останній серії замість «Наступна серія». */
+  sequel?: { slug: string; title: string; soon: boolean } | null;
+  onSequel?: (slug: string) => void;
   /** Серій за Hikka (сітка показує й ще не додані на сайти). */
   total?: number;
   hikka?: HikkaLine;
@@ -66,6 +71,11 @@ export type WatchBlockProps = {
 
 /* ---------- Меню серій у панелі поверх плеєра (MK 2026-11-26 13:39: окремо, посторінково) ---------- */
 
+/** Підказка клітинки серії: «Серія N: Назва — стан». */
+function epHint(n: number, title: string | undefined, state: string) {
+  return `Серія ${n}${title ? `: ${title}` : ''}${state ? ` — ${state}` : ''}`;
+}
+
 /** Серій на сторінці меню (6 × 4). */
 const EP_PAGE = 24;
 
@@ -73,6 +83,7 @@ function EpisodeMenu({
   ep,
   count,
   episodes,
+  titles,
   teamHas,
   onPick,
   onOpen,
@@ -80,6 +91,7 @@ function EpisodeMenu({
   ep: number;
   count: number;
   episodes: Record<number, EpisodeState>;
+  titles?: Record<number, string>;
   teamHas: (n: number) => boolean;
   onPick: (n: number) => void;
   onOpen?: (open: boolean) => void;
@@ -87,6 +99,8 @@ function EpisodeMenu({
   const [open, setOpen] = useState(false);
   const pages = Math.max(1, Math.ceil(count / EP_PAGE));
   const [page, setPage] = useState(0);
+  /** Серія під курсором — її назва в рядку під сіткою (інакше — поточної). */
+  const [hover, setHover] = useState(0);
   const wrap = useRef<HTMLDivElement>(null);
   const onOpenRef = useRef(onOpen);
   onOpenRef.current = onOpen;
@@ -94,6 +108,7 @@ function EpisodeMenu({
   // Відкрили — сторінка з поточною серією.
   useEffect(() => {
     if (open) setPage(Math.min(pages - 1, Math.floor((ep - 1) / EP_PAGE)));
+    setHover(0);
   }, [open]);
   useEffect(() => {
     if (!open || !wrap.current) return;
@@ -128,7 +143,7 @@ function EpisodeMenu({
         className="hp-watch__tool hp-watch__tool--ep"
         aria-haspopup="dialog"
         aria-expanded={open}
-        title="Вибрати серію"
+        title={titles?.[ep] ? `Серія ${ep}: ${titles[ep]}` : 'Вибрати серію'}
         onClick={() => setOpen((o) => !o)}
       >
         Серія {ep}
@@ -162,7 +177,10 @@ function EpisodeMenu({
                   className={cx('hp-watch__epcell', n === ep && 'hp-watch__epcell--on', seen && 'hp-watch__epcell--seen')}
                   disabled={!teamHas(n)}
                   aria-current={n === ep || undefined}
-                  title={!teamHas(n) ? `Серії ${n} ще немає в цієї команди` : seen ? `Серія ${n} — переглянуто` : s?.pos ? `Серія ${n} — ${Math.round(s.pos * 100)}%` : `Серія ${n}`}
+                  title={epHint(n, titles?.[n], !teamHas(n) ? 'ще немає в цієї команди' : seen ? 'переглянуто' : s?.pos ? `${Math.round(s.pos * 100)}%` : '')}
+                  onPointerEnter={() => setHover(n)}
+                  onPointerLeave={() => setHover(0)}
+                  onFocus={() => setHover(n)}
                   onClick={() => {
                     setOpen(false);
                     if (n !== ep) onPick(n);
@@ -174,6 +192,11 @@ function EpisodeMenu({
               );
             })}
           </div>
+          {titles?.[hover || ep] ? (
+            <div className="hp-watch__epline" aria-live="polite">
+              <b>{hover || ep}.</b> {titles[hover || ep]}
+            </div>
+          ) : null}
           {pages > 1 && pages <= 12 && (
             <div className="hp-watch__epdots" role="tablist" aria-label="Сторінки серій">
               {Array.from({ length: pages }, (_, i) => (
@@ -368,6 +391,8 @@ export function WatchBlock(p: WatchBlockProps) {
   // «Наступна серія» поверх плеєра (MK 2026-11-26): з порогу зарахування (початок ендингу) до кінця серії.
   // left — секунд до самостійного переходу (лише з WatchPrefs.nextCountdown; рахуємо за позицією відео — пауза зупиняє відлік).
   const [next, setNext] = useState<{ ep: number; left: number | null } | null>(null);
+  // «Наступний сезон ▶» — з порогу зарахування останньої серії сезону (за Hikka), якщо в тайтлу є продовження.
+  const [season, setSeason] = useState(0);
   const nextT0 = useRef(new Map<number, number>());
   const nextOff = useRef(new Set<number>());
   const nextFired = useRef(new Set<number>());
@@ -451,6 +476,9 @@ export function WatchBlock(p: WatchBlockProps) {
   goEpRef.current = goEp;
   const canNextRef = useRef<(n: number) => boolean>(() => false);
   canNextRef.current = (n: number) => n < count && teamHas(n + 1);
+  // Остання серія сезону — лише коли Hikka знає кількість серій (в онгоінгу команда може просто відставати).
+  const seasonRef = useRef<(n: number) => boolean>(() => false);
+  seasonRef.current = (n: number) => !!p.sequel && !!p.total && n >= p.total;
   const toggleWide = (v: boolean) => {
     // iframe не перезавантажується (блок не переїжджає в DOM, wide-layout.ts) — позицію не чіпаємо.
     setWide(v);
@@ -516,6 +544,11 @@ export function WatchBlock(p: WatchBlockProps) {
   mkRef.current = mk;
   const skipNow = mk && skip && skip.ep === ep ? skip : null;
   const nextNow = next && next.ep === ep ? next : null;
+  const seasonNow = season === ep && p.sequel ? p.sequel : null;
+  const goSeason = (to: string) => {
+    if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
+    p.onSequel?.(to);
+  };
   // Fenix з власними мітками сам показує «Пропустити OP/ED» і «Наступна серія» (там же, де наші) — дублів не малюємо;
   // клавіші S/N і автопропуск працюють як і раніше (MK 2026-11-26 13:44: «у феникса свои кнопки»).
   const fenixOwn = player?.kind === 'fenix' && (mk?.m.op?.src === 'player' || mk?.m.ed?.src === 'player');
@@ -524,6 +557,7 @@ export function WatchBlock(p: WatchBlockProps) {
   hotkeyRef.current = (key) => {
     if (key === 'skip' && skipNow) doSkip(skipNow.kind, skipNow.seg.e);
     if (key === 'next' && ep < count && teamHas(ep + 1)) goEp(ep + 1);
+    else if (key === 'next' && seasonNow) goSeason(seasonNow.slug);
   };
   /** Після ендингу ще є що дивитися (сцена після титрів / анонс) — тоді «Пропустити ендинг» веде туди. */
   const afterEd = (edEnd: number) => {
@@ -653,6 +687,7 @@ export function WatchBlock(p: WatchBlockProps) {
               nextFired.current.delete(ep);
             }
             setNext((x) => (x?.ep === nx?.ep && x?.left === nx?.left ? x : nx));
+            setSeason(thr && thr.ep === ep && tt >= thr.at && seasonRef.current(ep) ? ep : 0);
           }}
           onSegs={(m) => p.onSegs?.(ep, m)}
           seekRef={seekRef}
@@ -677,27 +712,46 @@ export function WatchBlock(p: WatchBlockProps) {
         />
       )}
     </div>
-    {(skipNow || nextNow) && !fenixOwn && (
+    {(((skipNow || nextNow) && !fenixOwn) || seasonNow) && (
       // Кнопки поверх плеєра — у стилі самого плеєра (MK 2026-11-26 13:03): Moon / Fenix / Ashdi, інакше — Hikka (style.css, .hp-ob).
+      // «Наступний сезон» Fenix сам не показує — малюємо й поверх його міток.
       <div className={`hp-watch__over hp-watch__over--${player.kind}`}>
-        {skipNow && (
+        {skipNow && !fenixOwn && (
           <button type="button" className="hp-ob" title="Клавіша S у плеєрі" onClick={() => doSkip(skipNow.kind, skipNow.seg.e)}>
             <IconFwd />
             <span>{skipNow.kind === 'op' ? 'Пропустити опенінг' : afterEd(skipNow.seg.e) ? 'Сцена після титрів' : 'Пропустити ендинг'}</span>
             <kbd className="hp-ob__key">S</kbd>
           </button>
         )}
-        {nextNow && (
+        {seasonNow && (
+          <button
+            type="button"
+            className="hp-ob hp-ob--primary"
+            title={`${seasonNow.soon ? 'Анонс' : 'Наступний сезон'}: ${seasonNow.title} (клавіша N у плеєрі)`}
+            onClick={() => goSeason(seasonNow.slug)}
+          >
+            <IconSkipFwd />
+            <span className="hp-ob__text">
+              Наступний сезон
+              <span className="hp-ob__sub">{seasonNow.soon ? `Анонс · ${seasonNow.title}` : seasonNow.title}</span>
+            </span>
+            <kbd className="hp-ob__key">N</kbd>
+          </button>
+        )}
+        {nextNow && !fenixOwn && (
           <span className="hp-ob__group">
             <button
               type="button"
               className="hp-ob hp-ob--primary"
-              title="Клавіша N у плеєрі"
+              title={p.epTitles?.[ep + 1] ? `Серія ${ep + 1}: ${p.epTitles[ep + 1]} (клавіша N у плеєрі)` : 'Клавіша N у плеєрі'}
               style={nextNow.left !== null ? ({ '--hp-ob-p': `${(1 - nextNow.left / NEXT_COUNTDOWN) * 100}%` } as CSSProperties) : undefined}
               onClick={() => goEp(ep + 1)}
             >
               <IconSkipFwd />
-              <span>Наступна серія</span>
+              <span className="hp-ob__text">
+                Наступна серія
+                {p.epTitles?.[ep + 1] ? <span className="hp-ob__sub">{p.epTitles[ep + 1]}</span> : null}
+              </span>
               {nextNow.left !== null ? <span className="hp-ob__count">{Math.ceil(nextNow.left)}</span> : <kbd className="hp-ob__key">N</kbd>}
               {nextNow.left !== null && <span className="hp-ob__bar" aria-hidden="true" />}
             </button>
@@ -737,7 +791,7 @@ export function WatchBlock(p: WatchBlockProps) {
       <Button variant="ghost" size="sm" icon className="hp-watch__tool" aria-label="Попередня серія" title="Попередня серія" disabled={ep <= 1} onClick={() => goEp(ep - 1)}>
         <IconLeft />
       </Button>
-      <EpisodeMenu ep={ep} count={count} episodes={p.episodes} teamHas={teamHas} onPick={goEp} onOpen={setEpOpen} />
+      <EpisodeMenu ep={ep} count={count} episodes={p.episodes} titles={p.epTitles} teamHas={teamHas} onPick={goEp} onOpen={setEpOpen} />
       <Button
         variant="ghost"
         size="sm"
@@ -953,6 +1007,11 @@ export function WatchBlock(p: WatchBlockProps) {
             Серія {ep}
             <span className="hp-header__count"> з {count}</span>
           </span>
+          {p.epTitles?.[ep] ? (
+            <span className="hp-watch__eptitle" title={p.epTitles[ep]}>
+              {p.epTitles[ep]}
+            </span>
+          ) : null}
           <span className="hp-watch__hint">
             {st?.watched ? (
               <>
@@ -1019,7 +1078,7 @@ export function WatchBlock(p: WatchBlockProps) {
                   className={cx(btn(on ? 'default' : 'secondary', 'md'), 'hp-watch__ep', seen && !on && 'hp-watch__ep--seen')}
                   disabled={!teamHas(n)}
                   aria-current={on || undefined}
-                  title={!teamHas(n) ? `Серії ${n} ще немає в цієї команди` : !has(n) ? `Серія ${n} — у плеєрі ${PLAYER_NAMES[playerFor(n)!.kind]}` : seen ? `Серія ${n} — переглянуто` : s?.pos ? `Серія ${n} — ${Math.round(s.pos * 100)}%` : `Серія ${n}`}
+                  title={epHint(n, p.epTitles?.[n], !teamHas(n) ? 'ще немає в цієї команди' : !has(n) ? `у плеєрі ${PLAYER_NAMES[playerFor(n)!.kind]}` : seen ? 'переглянуто' : s?.pos ? `${Math.round(s.pos * 100)}%` : '')}
                   onClick={() => goEp(n)}
                 >
                   {n}

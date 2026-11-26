@@ -1,5 +1,5 @@
 import { defineUnlistedScript } from '#imports';
-import { CARDS_EVENT, CARDS_REQ, HIKKA_LIST_EVENT, NAV_EVENT, READ_CHANGED_EVENT, READ_COUNT_EVENT, READ_COUNT_REQ, WATCH_COUNT_EVENT, WATCH_COUNT_REQ, type CardRow } from '@/src/core/bridge';
+import { CARDS_EVENT, CARDS_REQ, HIKKA_LIST_EVENT, NAV_EVENT, READ_CHANGED_EVENT, READ_COUNT_EVENT, READ_COUNT_REQ, TITLE_LANG_EVENT, TITLE_LANG_REQ, WATCH_COUNT_EVENT, WATCH_COUNT_REQ, type CardRow } from '@/src/core/bridge';
 
 /**
  * Виконується в контексті сторінки hikka.io (не в ізольованому світі content script).
@@ -47,6 +47,23 @@ export default defineUnlistedScript(() => {
   // Зворотний бік: Hikka сама змінила свій запис (напр. «+/−» у віджеті «у списку») — кажемо content script
   // перечитати число з Hikka. Ловимо успішні оновлення запитів читання/перегляду в кеші TanStack Query.
   let unsub: (() => void) | null = null;
+
+  /** Запит `profileUi` (GET /user/me/ui, лише після входу) → мова назв для content script (src/core/title-lang.ts). */
+  function reportLang(q: QueryStateLike) {
+    const k = q.queryKey[0] as { _id?: unknown } | undefined;
+    if (!k || typeof k !== 'object' || k._id !== 'profileUi' || q.state?.status !== 'success') return;
+    const v = (q.state.data as { preferences?: { title_language?: unknown } } | null)?.preferences?.title_language;
+    if (typeof v === 'string' && v) document.dispatchEvent(new CustomEvent(TITLE_LANG_EVENT, { detail: v }));
+  }
+  function scanLang() {
+    client ??= findClient();
+    try {
+      client?.getQueryCache().getAll?.().forEach(reportLang);
+    } catch {
+      client = null;
+    }
+  }
+  document.addEventListener(TITLE_LANG_REQ, scanLang);
 
   /** Запит `watchGet` (віджет «у списку» аніме) → лічильник серій для content script. */
   function reportWatch(q: QueryStateLike, want?: string) {
@@ -188,9 +205,11 @@ export default defineUnlistedScript(() => {
     client ??= findClient();
     if (!client) return;
     sendCards(true);
+    scanLang();
     unsub = client.getQueryCache().subscribe((ev) => {
       if (ev.type !== 'updated' || ev.action?.type !== 'success') return;
       sendCards();
+      reportLang(ev.query);
       reportWatch(ev.query);
       reportRead(ev.query);
       const k = ev.query.queryKey[0] as { _id?: unknown } | undefined;

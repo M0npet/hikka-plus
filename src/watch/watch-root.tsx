@@ -2,7 +2,7 @@
  * Блок «Перегляд» зі справжніми даними: Hikka (id сайтів, MAL id, кількість серій) → Mikai + AnimeON → WatchBlock.
  * Тут же: збереження позиції, зарахування серії з початку ендингу, лічильник у Hikka.
  */
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { getJson } from '../core/net';
 import { hikkaConfigured, watchScopeItem, tokenItem } from '../core/hikka-auth';
 import { startHikkaLogin } from '../features/hikka-sync';
@@ -11,7 +11,12 @@ import { aniskipRaw, watchedAt, type AniSkip } from './threshold';
 import { mergeMarks, segsFromAniskip, type Marks, type Seg } from './skip-marks';
 import { flushWatchPush, getWatchSaved, pullWatchSaved, updateWatchSaved, useWatchPrefs, watchSyncedWatch, type WatchSaved } from './watch-store';
 import { noteDubSeen } from './dub-alerts';
+import { epTitleText, getEpisodeTitles, type EpTitles } from './episode-titles';
+import { getSequel, sequelTitle, type Sequel } from './sequel';
+import { pickTitle, titleLangItem } from '../core/title-lang';
+import { useTitleLang } from '../ui/use-title-lang';
 import { HIKKA_LIST_EVENT, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '../core/bridge';
+import { navigate } from '../cards/popup';
 import { loadHikkaWatch, lowerHikkaEpisodes, markHikkaEpisodes, type HikkaWatchState } from './hikka-watch';
 import { WatchBlock, type HikkaLine } from './watch-block';
 import type { EpisodeState, WatchTeam } from './types';
@@ -71,6 +76,38 @@ export function WatchRoot({ slug }: { slug: string }) {
   const [hikka, setHikka] = useState<HikkaWatchState>({ status: 'loading' });
   const [edInfo, setEdInfo] = useState<{ ep: number; at: number; ed: boolean } | null>(null);
   const [marks, setMarks] = useState<MarksInfo | null>(null);
+  // Мова назв — як у користувача Hikka (src/core/title-lang.ts).
+  const lang = useTitleLang();
+  const [epRaw, setEpRaw] = useState<EpTitles>({});
+
+  // Назви серій (Hikka /episodes, кеш на 3 дні) — меню серій, сітка, «Наступна серія».
+  useEffect(() => {
+    let off = false;
+    setEpRaw({});
+    void getEpisodeTitles(slug).then((t) => !off && setEpRaw(t));
+    return () => {
+      off = true;
+    };
+  }, [slug]);
+  const epTitles = useMemo(() => {
+    const m: Record<number, string> = {};
+    for (const [n, v] of Object.entries(epRaw)) m[Number(n)] = epTitleText(v, lang);
+    return m;
+  }, [epRaw, lang]);
+
+  // Наступний сезон (Hikka franchise → sequel) — кнопка поверх плеєра на останній серії.
+  const [seqRaw, setSeqRaw] = useState<Sequel | null>(null);
+  useEffect(() => {
+    let off = false;
+    setSeqRaw(null);
+    void getSequel(slug).then((s) => !off && setSeqRaw(s));
+    return () => {
+      off = true;
+    };
+  }, [slug]);
+  const sequel = useMemo(() => (seqRaw ? { slug: seqRaw.slug, title: sequelTitle(seqRaw, lang), soon: seqRaw.soon } : null), [seqRaw, lang]);
+  // SPA-перехід Hikka через міст — без перезавантаження; є серії — одразу до плеєра нового сезону.
+  const onSequel = useCallback((to: string) => navigate(`/anime/${to}`, !sequel?.soon), [sequel]);
 
   // Нові серії в озвучках (dub-alerts.ts): стежимо за командою Mikai, яку дивляться, і все, що вийшло, — побачене.
   const dubRef = useRef<{ name: string; mikai: WatchTeam[] } | null>(null);
@@ -102,9 +139,11 @@ export function WatchRoot({ slug }: { slug: string }) {
         const license = mk.license;
         await pullWatchSaved(slug); // позиція з інших пристроїв (якщо там новіша)
         const s = await getWatchSaved(slug);
+        const lang = await titleLangItem.getValue();
         if (off) return;
         setSaved(s);
-        dubRef.current = { name: (anime.title_ua || anime.title_en || anime.title_ja || slug).trim(), mikai: mk.teams };
+        const name = pickTitle({ ua: anime.title_ua, en: anime.title_en, ja: anime.title_ja }, lang) || slug;
+        dubRef.current = { name, mikai: mk.teams };
         noteDub(s);
         setLoad(teams.length ? { status: 'ready', teams, anime, anitube: links.anitube, license } : { status: 'not-found', anitube: links.anitube, license });
       } catch (e) {
@@ -370,6 +409,9 @@ export function WatchRoot({ slug }: { slug: string }) {
       error={load.status === 'error' ? load.message : undefined}
       teams={load.status === 'ready' ? load.teams : []}
       episodes={episodes}
+      epTitles={epTitles}
+      sequel={sequel}
+      onSequel={onSequel}
       total={total ?? undefined}
       hikka={hikkaLine}
       anitube={load.status === 'ready' || load.status === 'not-found' ? load.anitube : undefined}

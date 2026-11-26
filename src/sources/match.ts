@@ -1,6 +1,7 @@
 import { titleNames, type HikkaTitle } from '../core/hikka';
 import { rethrowRateLimit } from '../core/net';
 import type { RemoteTitle } from './types';
+import { kovalenko } from './kovalenko';
 /** Нормалізація назви для порівняння: нижній регістр, лише літери й цифри. */
 export function normalize(s: string): string {
   return s
@@ -101,14 +102,18 @@ export async function autoMatchBy(
       }
     }
   }
-  const names = titleNames(title);
+  const hikkaNames = titleNames(title);
   // Укр. сайти шукають переважно за українською назвою, а вона в Hikka буває й лише в синонімах
   // («Коли я переродився слизом» при основній «Про моє переродження в слиз») — тож спершу всі
   // кириличні назви (до 3), потім англійська й оригінальна.
-  const cyr = names.filter((n) => /[а-яіїєґ]/i.test(n));
+  const cyr = hikkaNames.filter((n) => /[а-яіїєґ]/i.test(n));
   // Латиниця — англійська, ромадзі й латинські синоніми (до 3); японська/китайська назва укр. сайтам не допоможе.
-  const latin = names.filter((n) => !cyr.includes(n) && /[a-z]/i.test(n));
+  const latin = hikkaNames.filter((n) => !cyr.includes(n) && /[a-z]/i.test(n));
   const queries = [...cyr.slice(0, 3), ...latin.slice(0, 3)];
+  // Транслітерація ромадзі за Коваленком (kovalenko.ts): багато тайтлів на укр. сайтах названо так («Шінґекі но Кьоджін»).
+  // Порівнюємо й з нею; шукаємо нею — лише якщо звичайні назви не дали збігу (як і частини назви нижче).
+  const translit = [...new Set(latin.map(kovalenko).filter((x): x is string => !!x && !cyr.includes(x)))].slice(0, 2);
+  const names = [...hikkaNames, ...translit];
   // Запасні запити — частина назви: пошук деяких сайтів (NovelHub) шукає фразу цілком, тож інший
   // переклад («Сходження Героя щита» ↔ «Становлення Героя Щита») знаходиться лише за «Героя щита».
   // Ідуть, лише якщо повні назви не дали навіть кандидата для «Схоже».
@@ -120,9 +125,10 @@ export async function autoMatchBy(
         return w.length >= 3 ? [w.slice(-2).join(' '), w.slice(0, 2).join(' ')] : [];
       }),
     ),
-  ].filter((q) => !queries.includes(q));
+  ].filter((q) => !queries.includes(q) && !translit.includes(q));
   let best: { t: RemoteTitle; score: number } | null = null;
-  for (const q of [...queries, ...partial]) {
+  for (const q of [...queries, ...translit, ...partial]) {
+    if (translit.includes(q) && ((best as { score: number } | null)?.score ?? 0) >= MATCH_MIN) break;
     if (partial.includes(q) && ((best as { score: number } | null)?.score ?? 0) >= NEAR_MIN) break;
     let found: RemoteTitle[];
     // Без розділових знаків: пошук деяких сайтів (Honey) нічого не знаходить за «I'm the …».

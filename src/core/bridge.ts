@@ -49,3 +49,11 @@ export type CardRow = [slug: string, released: number, total: number, status: st
 
 /** content script → сторінка: SPA-перехід Hikka на шлях (може бути з #read=…) — «Продовжити» у віконці картки (src/cards/popup.ts). */
 export const NAV_EVENT = 'hikka-plus:nav';
+
+/**
+ * Мова назв користувача Hikka (src/core/title-lang.ts): кеш `profileUi` (GET /user/me/ui, лише після входу) →
+ * content script, detail — `preferences.title_language` (`title_ua` / `title_en` / `title_ja` / `title_original`).
+ */
+export const TITLE_LANG_EVENT = 'hikka-plus:title-lang';
+/** Content script → сторінка: «повідом мову назв». */
+export const TITLE_LANG_REQ = 'hikka-plus:title-lang-req';

@@ -14,6 +14,9 @@ Hikka Plus — неофіційне розширення для [hikka.io](https
 
 ### 1. Hikka (api.hikka.io)
 - **Завжди:** адреса (slug) тайтлу, який ви відкрили на hikka.io, — щоб отримати його назви й посилання на сайти з читанням чи переглядом. Ці дані публічні.
+- **Назви серій** у плеєрі: для відкритого аніме — публічний список серій Hikka (`/anime/<slug>/episodes`, без входу й без ваших даних), зберігається локально на 3 дні.
+- **Наступний сезон:** на останній серії аніме (і у віконці картки, коли тайтл переглянуто повністю) — публічні зв'язки франшизи Hikka (`/related/anime/<slug>/franchise`, без входу й без ваших даних), зберігаються локально на 3 дні.
+- **Мова назв** (українська / англійська / оригінальна) — та, що обрана у вашому профілі Hikka: розширення бере її з даних, які сторінка Hikka вже завантажила сама (окремого запиту немає), і зберігає локально.
 - **Плашки на картках аніме** («N серія через X дн.»): раз на 3 години — публічний розклад серій Hikka (`/schedule/anime`, без входу й без ваших даних). «▶ N нових» рахується з того, що сторінка Hikka вже завантажила сама, — окремих запитів немає. Вимикається у вкладці «Плеєр» («Плашки на картках»).
 - **Лише якщо ви увійшли через «Увійти в Hikka»:** розширення отримує від Hikka токен доступу з дозволами лише на ваш список читання (`read:readlist`, `update:readlist`), а якщо ви окремо натиснули «Відмічати в Hikka» у плеєрі — ще й на список перегляду (`read:watchlist`, `update:watchlist`). Токен зберігається лише локально і надсилається тільки на api.hikka.io. З ним розширення читає ваш запис про тайтл і оновлює кількість прочитаних розділів чи переглянутих серій — лише для тайтлу, який ви читаєте чи дивитесь, і лише коли ввімкнено «Оновлювати лічильник у Hikka» / «Відмічати серії в Hikka». Автоматично лічильник лише збільшується; зменшується тільки тоді, коли ви самі знімаєте позначку «прочитано» чи натискаєте «Скасувати».
 - Пароль від Hikka розширення не бачить: вхід відбувається на сайті Hikka.
@@ -80,6 +83,9 @@ Hikka Plus is an unofficial extension for [hikka.io](https://hikka.io) that adds
 
 ### 1. Hikka (api.hikka.io)
 - **Always:** the identifier (slug) of the title page you opened on hikka.io, to fetch its public names and links.
+- **Episode titles** in the player: for the opened anime, the public Hikka episode list (`/anime/<slug>/episodes`, no sign-in, none of your data), cached locally for 3 days.
+- **Next season:** on the last episode of an anime (and in the card pop-up once a title is fully watched) — the public Hikka franchise relations (`/related/anime/<slug>/franchise`, no sign-in, none of your data), cached locally for 3 days.
+- **Title language** (Ukrainian / English / original) — the one chosen in your Hikka profile: taken from data the Hikka page has already loaded itself (no extra request) and stored locally.
 - **Badges on anime cards** ("episode N in X days"): every 3 hours the public Hikka episode schedule (`/schedule/anime`, no sign-in, none of your data). "▶ N new" is computed from what the Hikka page has already loaded itself — no extra requests. Can be turned off in the Player tab ("Плашки на картках").
 - **Only if you sign in with "Увійти в Hikka":** Hikka issues an access token limited to your reading list (`read:readlist`, `update:readlist`) and, only if you separately press "Відмічати в Hikka" in the player, your watch list (`read:watchlist`, `update:watchlist`). The token is stored locally and sent only to api.hikka.io. It is used to read your list entry for the current title and update the number of read chapters / watched episodes, only while "Оновлювати лічильник у Hikka" / "Відмічати серії в Hikka" is on. Automatic updates only increase the count; it decreases only when you manually unmark a chapter or press "Скасувати".
 - The extension never sees your Hikka password; sign-in happens on hikka.io.

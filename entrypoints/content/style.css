@@ -2065,6 +2065,22 @@ select {
   opacity: 0.35;
   cursor: default;
 }
+/* Назва серії під сіткою меню (наведена, інакше поточна). Ширина — як у сітки (6 × 40 + 5 × 4). */
+.hp-watch__epline {
+  width: 260px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--hp-muted-fg);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.hp-watch__epline > b {
+  color: var(--hp-fg, inherit);
+  font-variant-numeric: tabular-nums;
+}
 .hp-watch__epdots {
   display: flex;
   justify-content: center;
@@ -2184,6 +2200,20 @@ select {
 .hp-ob:focus-visible {
   outline: 2px solid #fff;
   outline-offset: 2px;
+}
+/* «Наступна серія» + назва дрібним рядком під нею. */
+.hp-ob__text {
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.hp-ob__sub {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.8em;
+  font-weight: 400;
+  opacity: 0.75;
 }
 .hp-ob > .hp-icon {
   width: 1.15em;
@@ -2343,6 +2373,14 @@ select {
   font-size: 14px;
   line-height: 20px;
   font-weight: 600;
+}
+.hp-watch__eptitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--hp-muted-fg);
 }
 .hp-watch__hint {
   display: inline-flex;

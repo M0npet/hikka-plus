@@ -8,13 +8,17 @@
  * (персонажі) зі своїм віконцем — беремо те, чий заголовок h3 є в тексті картки.
  * Вставляємо лише свій <hikka-plus-pop> (Shadow DOM, без Preact) останнім у віконце; кольори — змінні Hikka.
  * Дані — ті самі, що й для плашок (знімок кешу Hikka через міст, розклад, «вийшло на джерелі»), плюс своє збережене:
- * позиція плеєра (src/watch/watch-store.ts) і прогрес читалки (src/core/store.ts). Жодних нових запитів.
+ * позиція плеєра (src/watch/watch-store.ts) і прогрес читалки (src/core/store.ts). Новий запит — лише коли аніме
+ * переглянуто повністю: продовження з Hikka (src/watch/sequel.ts, кеш 3 дні) → «Наступний сезон».
  * «Продовжити» — SPA-перехід Hikka через міст (NAV_EVENT), без перезавантаження сторінки.
  */
 import { NAV_EVENT } from '../core/bridge';
 import type { ReadKind } from '../core/page';
 import { getProgress, getSettings, posText, type Progress } from '../core/store';
 import { getWatchSaved, type WatchSaved } from '../watch/watch-store';
+import { getSequel, sequelTitle, type Sequel } from '../watch/sequel';
+import { titleLangItem, type TitleLang } from '../core/title-lang';
+import { dubNew, dubsItem, type DubMap } from '../watch/dub-alerts';
 import type { CardsPrefs } from './prefs';
 import type { ReleasedMap } from './released';
 import type { Schedule } from './schedule';
@@ -31,7 +35,9 @@ export type PopState = {
   released: ReleasedMap;
 };
 
-type Target = { kind: 'anime' | ReadKind; slug: string; content: HTMLElement };
+/** Куди малювати свій блок: тайтл і елемент Hikka, останнім дитям якого стає наш хост. */
+export type Spot = { kind: 'anime' | ReadKind; slug: string; content: HTMLElement };
+type Target = Spot;
 
 const CSS = `
 :host { all: initial; display: block; font: 400 14px/20px var(--font-sans, ui-sans-serif, system-ui, sans-serif); color: var(--popover-foreground, #fff); }
@@ -144,17 +150,30 @@ function findTarget(): Target | null {
   return null;
 }
 
-type Line = {
+export type Line = {
   progress?: { done: number; out: number; total: number; verb: string };
   chips: { cls: string; text: string; icon?: string[]; title?: string }[];
   go?: { verb: string; text: string; sub?: string; path: string; scroll?: boolean };
 };
 
-function animeLine(slug: string, st: PopState, saved: WatchSaved | null): Line | null {
-  const inf = st.info.get(slug);
+/** Переглянуто серій (своє збережене або список Hikka). */
+function animeDone(slug: string, st: PopState, saved: WatchSaved | null) {
   const eps = saved?.eps ?? {};
   const localMax = Math.max(0, ...Object.entries(eps).filter(([, e]) => e.w).map(([k]) => Number(k)));
-  const done = Math.max(localMax, inf?.watched ?? -1, 0);
+  return Math.max(localMax, st.info.get(slug)?.watched ?? -1, 0);
+}
+
+/** Аніме переглянуто повністю — тоді шукаємо наступний сезон. */
+function animeAllDone(slug: string, st: PopState, saved: WatchSaved | null) {
+  const inf = st.info.get(slug);
+  const done = animeDone(slug, st, saved);
+  return inf?.ws === 'completed' || (!!inf && inf.total > 0 && done >= inf.total);
+}
+
+function animeLine(slug: string, st: PopState, saved: WatchSaved | null, sequel: Sequel | null | undefined, lang: TitleLang): Line | null {
+  const inf = st.info.get(slug);
+  const eps = saved?.eps ?? {};
+  const done = animeDone(slug, st, saved);
   const out = inf && inf.released > 0 ? inf.released : 0;
   const total = inf && inf.total > 0 ? inf.total : 0;
   const line: Line = { chips: [] };
@@ -177,6 +196,8 @@ function animeLine(slug: string, st: PopState, saved: WatchSaved | null): Line |
     line.go = { verb: 'Продовжити', text: `Серія ${cur}`, sub: saved?.t && saved.t > 5 ? clock(saved.t) : undefined, path: `/anime/${slug}`, scroll: true };
   } else if (done > 0 && done < limit) {
     line.go = { verb: 'Дивитися далі', text: `Серія ${done + 1}`, path: `/anime/${slug}`, scroll: true };
+  } else if (sequel && animeAllDone(slug, st, saved)) {
+    line.go = { verb: sequel.soon ? 'Наступний сезон · анонс' : 'Наступний сезон', text: sequelTitle(sequel, lang), path: `/anime/${sequel.slug}`, scroll: !sequel.soon };
   }
   return line.progress || line.chips.length || line.go ? line : null;
 }
@@ -270,7 +291,7 @@ function draw(root: ShadowRoot, line: Line, book: boolean) {
 }
 
 /** SPA-перехід Hikka (міст у контексті сторінки, entrypoints/hikka-bridge.ts); аніме — ще й прокрутити до плеєра. */
-function navigate(path: string, toPlayer: boolean) {
+export function navigate(path: string, toPlayer: boolean) {
   document.dispatchEvent(new CustomEvent(NAV_EVENT, { detail: path }));
   if (!toPlayer) return;
   const t0 = Date.now();
@@ -287,14 +308,55 @@ function navigate(path: string, toPlayer: boolean) {
  * розклад, «вийшло»); відкрите — домалювати/оновити свій блок, закрилось — прибрати. dispose() — при вивантаженні.
  */
 export function createPopup(getState: () => PopState) {
-  let cur: { key: string; host: HTMLElement; state: string; saved: WatchSaved | null; prog: Progress | null; reader: boolean } | null = null;
+  return createSpot(getState, { tag: POP_TAG, find: findTarget, on: (st) => st.prefs.pop, progress: true, dubs: false });
+}
+
+/**
+ * Свій блок поруч із тайтлом Hikka (віконце картки, трекер на головній — src/cards/tracker.ts): find() — де він зараз,
+ * on() — чи ввімкнено; progress — своя смужка «Переглянуто X з Y» (у трекері Hikka її вже показує);
+ * dubs — «+N в озвучці» (нові серії в команді з src/watch/dub-alerts.ts).
+ */
+export function createSpot(
+  getState: () => PopState,
+  o: { tag: string; find: () => Spot | null; on: (st: PopState) => boolean; progress: boolean; dubs: boolean },
+) {
+  // sequel: undefined — ще не питали, null — немає (або питаємо).
+  let cur: {
+    key: string;
+    host: HTMLElement;
+    state: string;
+    saved: WatchSaved | null;
+    prog: Progress | null;
+    reader: boolean;
+    sequel?: Sequel | null;
+  } | null = null;
   let timer = 0;
+  // Мова назв користувача Hikka — для «Наступний сезон».
+  let lang: TitleLang = 'title_ua';
+  void titleLangItem.getValue().then((v) => (lang = v));
+  const unLang = titleLangItem.watch((v) => {
+    lang = v ?? 'title_ua';
+    schedule();
+  });
+  // Нові серії в озвучках (лише де o.dubs).
+  let dubs: DubMap = {};
+  let unDubs = () => {};
+  if (o.dubs) {
+    void dubsItem.getValue().then((m) => {
+      dubs = m;
+      schedule();
+    });
+    unDubs = dubsItem.watch((m) => {
+      dubs = m ?? {};
+      schedule();
+    });
+  }
 
   const run = () => {
     timer = 0;
     const st = getState();
-    const t = findTarget();
-    if (!t || !st.prefs.pop) {
+    const t = o.find();
+    if (!t || !o.on(st)) {
       if (cur && !cur.host.isConnected) cur = null;
       if (!t && cur) {
         cur.host.remove();
@@ -305,9 +367,9 @@ export function createPopup(getState: () => PopState) {
     const key = `${t.kind}:${t.slug}`;
     if (!cur || cur.key !== key || !cur.host.isConnected || cur.host.parentElement !== t.content) {
       cur?.host.remove();
-      let host = t.content.querySelector<HTMLElement>(`:scope > ${POP_TAG}`);
+      let host = t.content.querySelector<HTMLElement>(`:scope > ${o.tag}`);
       if (!host) {
-        host = document.createElement(POP_TAG);
+        host = document.createElement(o.tag);
         host.attachShadow({ mode: 'open' });
         t.content.append(host);
       }
@@ -328,7 +390,23 @@ export function createPopup(getState: () => PopState) {
         });
       }
     }
-    const line = t.kind === 'anime' ? animeLine(t.slug, st, cur.saved) : bookLine(t.kind, t.slug, st, cur.prog, cur.reader);
+    if (t.kind === 'anime' && cur.sequel === undefined && animeAllDone(t.slug, st, cur.saved)) {
+      const mine = cur;
+      mine.sequel = null;
+      void getSequel(t.slug).then((s) => {
+        mine.sequel = s;
+        if (cur === mine && s) schedule();
+      });
+    }
+    let line = t.kind === 'anime' ? animeLine(t.slug, st, cur.saved, cur.sequel, lang) : bookLine(t.kind, t.slug, st, cur.prog, cur.reader);
+    if (line && !o.progress) delete line.progress;
+    const d = o.dubs && t.kind === 'anime' ? dubs[t.slug] : undefined;
+    const dn = d ? dubNew(d) : 0;
+    if (dn > 0) {
+      line ??= { chips: [] };
+      line.chips.unshift({ cls: 'new', text: `+${dn} в озвучці`, title: `${d!.tn}: ${dn} ${plural(dn, 'нова серія', 'нові серії', 'нових серій')} з минулого перегляду` });
+    }
+    if (line && !line.progress && !line.chips.length && !line.go) line = null;
     const state = JSON.stringify(line);
     if (state === cur.state) return;
     cur.state = state;
@@ -347,9 +425,11 @@ export function createPopup(getState: () => PopState) {
   };
   const dispose = () => {
     if (timer) clearTimeout(timer);
+    unLang();
+    unDubs();
     cur?.host.remove();
     cur = null;
-    for (const h of document.querySelectorAll(POP_TAG)) h.remove();
+    for (const h of document.querySelectorAll(o.tag)) h.remove();
   };
   return { schedule, dispose };
 }

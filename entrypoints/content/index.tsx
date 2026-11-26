@@ -14,6 +14,7 @@ import { initSourcePrefs, watchSourcePrefs } from '@/src/core/source-prefs';
 import { trackSiteTheme } from '@/src/core/site-theme';
 import { getSettings, watchSettings } from '@/src/core/store';
 import { initCards } from '@/src/cards/cards';
+import { listenTitleLang } from '@/src/core/title-lang';
 
 export default defineContentScript({
   matches: ['https://hikka.io/*'],
@@ -22,6 +23,8 @@ export default defineContentScript({
 
   async main(ctx) {
     console.info('[Hikka Plus] content script запущено', browser.runtime.getManifest().version);
+    // Мова назв користувача Hikka — з кешу сторінки через міст (слухаємо до того, як міст запуститься).
+    listenTitleLang();
     // Міст у контекст сторінки: після запису в список Hikka оновлює її власний кеш (лічильник зліва).
     void injectScript('/hikka-bridge.js', { keepInDom: true }).catch(() => {});
     // Повернення з підтвердження входу на Hikka.
