@@ -99,6 +99,14 @@ test('меню серій над плеєром: «Відмічати» знім
   const lb = (await left.boundingBox())!;
   await page.mouse.move(lb.x + 10, lb.y + lb.height / 2);
   await expect.poll(() => f.evaluate(() => (window as unknown as { __moves: number }).__moves), { timeout: 5_000 }).toBeGreaterThan(1);
+  // Повернулися в сам кадр (справжній рух у плеєрі → {active: 1}) — більше не імітуємо рух.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.move(box.x + box.width / 2 + 15, box.y + box.height / 2 + 5);
+  const moves = () => f.evaluate(() => (window as unknown as { __moves: number }).__moves);
+  const m0 = await moves();
+  await page.waitForTimeout(2_200);
+  expect(await moves()).toBe(m0);
+  await page.mouse.move(lb.x + 10, lb.y + lb.height / 2);
   await left.locator('.hp-watch__tool--ep').click();
   const menu = watch().locator('.hp-watch__eppop');
   await menu.locator('.hp-watch__epmark').click();

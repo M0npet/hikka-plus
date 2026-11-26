@@ -435,13 +435,22 @@ export function WatchBlock(p: WatchBlockProps) {
       /* ще about:blank або фрейм прибрано */
     }
   };
+  // Не за pointerenter/leave окремих панелей (MK 15:48: «пропустил рамки, ограничения кнопок»): pointerover/move на всьому
+  // блоці плеєра (.hp-watch__view) — миша на будь-якому нашому елементі (рамка, проміжок, кнопка, меню) → {hold}.
+  // Відпускаємо, коли фрейм каже про СПРАВЖНІЙ рух миші в самому плеєрі ({active: 1}; перехід у iframe hikka.io бачить
+  // не завжди, особливо на заокруглених краях) або миша вийшла з блоку.
+  const holding = useRef(false);
   const holdOn = () => {
-    clearInterval(holdT.current);
+    if (holding.current) return;
+    holding.current = true;
     holdPing();
     holdT.current = window.setInterval(holdPing, 1000);
   };
-  const holdOff = () => clearInterval(holdT.current);
-  useEffect(() => () => clearInterval(holdT.current), []);
+  const holdOff = () => {
+    holding.current = false;
+    clearInterval(holdT.current);
+  };
+  useEffect(() => holdOff, []);
   // Відео ще не пустили або пауза (MK 2026-11-26 15:41: «когда я еще не нажимал на плеер, наше меню тоже должно
   // показываться») — панелі видно весь час, як і панель самого плеєра. «Стоїть» = позиція не мінялася 1,5 с.
   const tick = useRef({ t: -1, at: 0 });
@@ -731,7 +740,13 @@ export function WatchBlock(p: WatchBlockProps) {
     setPlayerId(x.id);
   };
   const frame = (
-    <div ref={viewRef} className="hp-watch__view">
+    <div
+      ref={viewRef}
+      className="hp-watch__view"
+      onPointerOver={(e) => (e.target as Element).tagName !== 'IFRAME' && holdOn()}
+      onPointerMove={(e) => (e.target as Element).tagName !== 'IFRAME' && holdOn()}
+      onPointerLeave={holdOff}
+    >
     {ambient && !p.renderFrame && (
       <canvas
         ref={setGlowEl}
@@ -791,7 +806,10 @@ export function WatchBlock(p: WatchBlockProps) {
           onSegs={(m) => p.onSegs?.(ep, m)}
           seekRef={seekRef}
           onHotkey={(key) => hotkeyRef.current(key)}
-          onActive={wakeTools}
+          onActive={(on) => {
+            if (on) holdOff(); // справжній рух у самому плеєрі — він уже сам бачить мишу
+            wakeTools(on);
+          }}
           countAt={frameEp === ep && ed && !st?.watched ? ed.at : null}
           countEd={!!ed?.ed}
           onEnded={() => {
@@ -814,7 +832,7 @@ export function WatchBlock(p: WatchBlockProps) {
     {(((skipNow || nextNow) && !fenixOwn) || seasonNow) && (
       // Кнопки поверх плеєра — у стилі самого плеєра (MK 2026-11-26 13:03): Moon / Fenix / Ashdi, інакше — Hikka (style.css, .hp-ob).
       // «Наступний сезон» Fenix сам не показує — малюємо й поверх його міток.
-      <div className={`hp-watch__over hp-watch__over--${player.kind}`} onPointerEnter={holdOn} onPointerLeave={holdOff}>
+      <div className={`hp-watch__over hp-watch__over--${player.kind}`}>
         {skipNow && !fenixOwn && (
           <button type="button" className="hp-ob" title="Клавіша S у плеєрі" onClick={() => doSkip(skipNow.kind, skipNow.seg.e)}>
             <IconFwd />
@@ -881,12 +899,10 @@ export function WatchBlock(p: WatchBlockProps) {
       onPointerEnter={() => {
         toolsHover.current = true;
         wakeTools(true);
-        holdOn();
       }}
       onPointerLeave={() => {
         toolsHover.current = false;
         wakeTools(true);
-        holdOff();
       }}
     >
       <Button variant="ghost" size="sm" icon className="hp-watch__tool" aria-label="Попередня серія" title="Попередня серія" disabled={ep <= 1} onClick={() => goEp(ep - 1)}>
@@ -963,12 +979,10 @@ export function WatchBlock(p: WatchBlockProps) {
       onPointerEnter={() => {
         toolsHover.current = true;
         wakeTools(true);
-        holdOn();
       }}
       onPointerLeave={() => {
         toolsHover.current = false;
         wakeTools(true);
-        holdOff();
       }}
     >
         <div className="hp-select" ref={menuWrap}>

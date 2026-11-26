@@ -331,7 +331,8 @@ function hotkeys() {
  */
 function activity() {
   let last = 0;
-  const ping = () => {
+  const ping = (e: Event) => {
+    if (!e.isTrusted) return; // наш власний {hold} (holdControls) — не справжній рух у плеєрі
     const now = Date.now();
     if (now - last < 300) return;
     last = now;
