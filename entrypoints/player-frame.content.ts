@@ -352,10 +352,7 @@ function activity() {
  * mousemove контейнера, Fenix і PlayerJS (Ashdi) — так само на русі миші. Лише подія, стан плеєра не чіпаємо.
  */
 function holdControls() {
-  window.addEventListener('message', (e) => {
-    if (e.source !== window.parent || e.origin !== PARENT) return;
-    const d = e.data as { type?: unknown; hold?: unknown } | null;
-    if (d?.type !== AMBIENT_REQ || !d.hold) return;
+  const fire = () => {
     const x = innerWidth / 2;
     const y = innerHeight / 2;
     const el = document.elementFromPoint(x, y) ?? document.querySelector('video') ?? document.body;
@@ -365,6 +362,25 @@ function holdControls() {
     el.dispatchEvent(new MouseEvent('mouseover', init));
     el.dispatchEvent(new PointerEvent('pointermove', init));
     el.dispatchEvent(new MouseEvent('mousemove', init));
+  };
+  // Коли востаннє hikka.io просив {hold} (миша на нашому шарі); 0 — миша справді рухалась у плеєрі.
+  let heldAt = 0;
+  window.addEventListener('message', (e) => {
+    if (e.source !== window.parent || e.origin !== PARENT) return;
+    const d = e.data as { type?: unknown; hold?: unknown } | null;
+    if (d?.type !== AMBIENT_REQ || !d.hold) return;
+    heldAt = Date.now();
+    fire();
+  });
+  for (const ev of ['pointermove', 'pointerdown'] as const)
+    document.addEventListener(ev, (e) => e.isTrusted && (heldAt = 0), { passive: true, capture: true });
+  // Firefox шле mouseleave у кадр запізно (MK 2026-11-26 16:31–16:34, «с рамки на среднюю часть»): миша вже на нашій
+  // панелі, {hold} уже прийшов, а потім плеєр ловить mouseleave і ховає панель — до наступного {hold} через 1 с.
+  // Нещодавно тримали → після обробників плеєра (setTimeout) одразу показуємо знову, і ще раз — якщо плеєр ховає з затримкою.
+  document.documentElement.addEventListener('mouseleave', () => {
+    if (!heldAt || Date.now() - heldAt > 1500) return;
+    setTimeout(fire, 0);
+    setTimeout(fire, 150);
   });
 }
 

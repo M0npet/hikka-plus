@@ -444,9 +444,9 @@ export function WatchBlock(p: WatchBlockProps) {
   /** Плеєр міг уже побачити mouseleave і сховати панель (MK 16:06: на лінії в 1 px панель Fenix «пропадает сразу») —
    *  кажемо одразу, а не чекаємо тику: на pointerover (now) не частіше ніж раз на 100 мс, на рух — раз на 300 мс
    *  (повернення з iframe браузер часто дає лише pointermove, без pointerover). */
-  const holdOn = (now = false) => {
+  const holdOn = (now = false, force = false) => {
     if (holding.current) {
-      if (Date.now() - pingAt.current > (now ? 100 : 300)) {
+      if (force || Date.now() - pingAt.current > (now ? 100 : 300)) {
         pingAt.current = Date.now();
         holdPing();
       }
@@ -465,6 +465,9 @@ export function WatchBlock(p: WatchBlockProps) {
   // Миша вийшла з кадру ({active: 0}). Повернення з iframe на наш елемент браузер часто не повідомляє жодною подією
   // (ні pointerover, ні pointermove — перевірено в E2E, MK 16:06 «лінія в 1 px»), а :hover ставить правильно —
   // дивимося, що під мишею: наш елемент у блоці плеєра → тримаємо одразу; повторно через 60 мс (:hover міг ще не оновитись).
+  // Без обмеження частоти (MK 2026-11-26 16:31, «с рамки на среднюю часть»): Firefox шле mouseleave у кадр запізно — коли
+  // миша вже йде з рамки на кнопку, а наш пінг з рамки щойно був (< 100 мс) → пропускали, і Fenix стояв схованим до тику (1 с).
+  // {active: 0} фрейм шле з того ж mouseleave, після якого плеєр ховає панель, тож цей пінг завжди приходить після нього.
   const holdIfOurs = () => {
     const check = () => {
       const view = viewRef.current;
@@ -472,7 +475,7 @@ export function WatchBlock(p: WatchBlockProps) {
       if (!view || !root) return;
       const hov = root.querySelectorAll(':hover');
       const last = hov[hov.length - 1];
-      if (last && last.tagName !== 'IFRAME' && view.contains(last)) holdOn(true);
+      if (last && last.tagName !== 'IFRAME' && view.contains(last)) holdOn(true, true);
     };
     check();
     window.setTimeout(check, 60);
