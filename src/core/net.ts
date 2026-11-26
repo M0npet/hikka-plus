@@ -72,6 +72,16 @@ const hostOf = (url: string) => {
  * Запит через background: там є host_permissions, тож CORS не заважає.
  * Куки сторонніх сайтів не надсилаються.
  */
+/**
+ * Фон (entrypoints/background.ts) ставить сюди свій обробник hp-fetch: тоді запити з фону йдуть напряму, а не
+ * runtime.sendMessage самому собі (так не працює). Завдяки цьому джерела читання (src/sources) працюють і з фону —
+ * перевірка нових розділів (src/features/chapter-check.ts). getDoc у фоні — лише де є DOMParser (Firefox MV2).
+ */
+let direct: ((m: FetchRequest) => Promise<FetchResponse>) | null = null;
+export function setDirectFetch(f: (m: FetchRequest) => Promise<FetchResponse>) {
+  direct = f;
+}
+
 export async function getText(url: string, init?: { form?: URLSearchParams; json?: unknown }): Promise<string> {
   const msg: FetchRequest = init?.form
     ? { type: 'hp-fetch', url, method: 'POST', form: init.form.toString() }
@@ -80,7 +90,7 @@ export async function getText(url: string, init?: { form?: URLSearchParams; json
       : { type: 'hp-fetch', url };
   const host = hostOf(url);
   if ((cooldown.get(host) ?? 0) > Date.now()) throw new HttpError(429, RATE_LIMIT_TEXT);
-  const res = (await browser.runtime.sendMessage(msg)) as FetchResponse | undefined;
+  const res = direct ? await direct(msg) : ((await browser.runtime.sendMessage(msg)) as FetchResponse | undefined);
   if (!res) throw new HttpError(0, 'Немає відповіді від фонового скрипта');
   if (res.status === 429) {
     cooldown.set(host, Date.now() + pauseFor(res.retryAfter));

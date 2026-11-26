@@ -156,9 +156,12 @@
   color: inherit;
   text-decoration: none;
 }
-.hp-dub__link:hover .hp-dub__name {
-  text-decoration: underline;
-  text-underline-offset: 2px;
+/* :hover — лише мишею (як у style.css): на дотику підкреслення «липне» після тапу. */
+@media (hover: hover) {
+  .hp-dub__link:hover .hp-dub__name {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
 }
 .hp-dub__name,
 .hp-dub__meta {

@@ -21,6 +21,7 @@ import {
   type DubCheckResult,
   type DubMap,
 } from './dub-alerts';
+import { getChapPrefs } from '../features/chapter-alerts';
 
 function useDubs(): DubMap {
   const [v, setV] = useState<DubMap>({});
@@ -40,9 +41,9 @@ function useDubPrefs(): [DubPrefs, (p: Partial<DubPrefs>) => void] {
   return [v, (p) => void getDubPrefs().then((x) => dubPrefsItem.setValue({ ...x, ...p }))];
 }
 
-const NOTES = { permissions: ['notifications'] } as Parameters<typeof browser.permissions.request>[0];
+export const NOTES = { permissions: ['notifications'] } as Parameters<typeof browser.permissions.request>[0];
 
-function useNotesPerm(): [boolean, () => void] {
+export function useNotesPerm(): [boolean, () => void] {
   const [ok, setOk] = useState(false);
   useEffect(() => {
     const check = () => void browser.permissions.contains(NOTES).then(setOk, () => setOk(false));
@@ -57,12 +58,13 @@ function useNotesPerm(): [boolean, () => void] {
   return [ok, () => void browser.permissions.contains(NOTES).then(setOk)];
 }
 
-const openTab = () => {
-  void browser.tabs.create({ url: `${browser.runtime.getURL('/options.html')}#player` });
+/** Відкрити налаштування у вкладці (з popup: дозвіл на сповіщення там не спитати — Firefox закриває popup). */
+export const openTab = (section = 'player') => {
+  void browser.tabs.create({ url: `${browser.runtime.getURL('/options.html')}#${section}` });
   window.close();
 };
 
-function ago(ms: number) {
+export function ago(ms: number) {
   if (!ms) return 'ще не перевіряли';
   const min = Math.round((Date.now() - ms) / 60_000);
   if (min < 1) return 'щойно';
@@ -137,7 +139,8 @@ export function DubFields({ mode }: { mode: 'popup' | 'page' }) {
   const setNotify = async (on: boolean) => {
     if (!on) {
       setP({ notify: false });
-      void browser.permissions.remove(NOTES).then(recheck, recheck);
+      // Дозвіл спільний з «Нові розділи» (src/features/chapter-settings.tsx) — забираємо, лише коли там теж вимкнено.
+      if (!(await getChapPrefs()).notify) void browser.permissions.remove(NOTES).then(recheck, recheck);
       return;
     }
     if (mode === 'popup' && !notesOk) return openTab();

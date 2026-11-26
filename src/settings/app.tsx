@@ -14,6 +14,7 @@ import { DEFAULT_WIDE_ANIM, NEXT_COUNTDOWN, useWatchPrefs } from '../watch/watch
 import { useCardsPrefs } from '../cards/prefs';
 import { AmbientFields, MenuOpacityField } from '../watch/ambient-fields';
 import { DubFields, DubPopupNews } from '../watch/dub-settings';
+import { ChapFields, ChapPopupNews } from '../features/chapter-settings';
 import { DeviceLights } from '../lights/settings';
 import { LINK_SOURCES } from '../sources/links';
 import { SOURCES } from '../sources/registry';
@@ -71,11 +72,12 @@ export function SettingsApp({ mode }: { mode: SettingsMode }) {
         )}
       </div>
       {mode === 'popup' && <DubPopupNews />}
+      {mode === 'popup' && <ChapPopupNews />}
       <Tabs value={section} options={SECTIONS} onChange={setSection} label="Розділ налаштувань" />
       <div className="hp-set__body">
         {section === 'sources' && <SourcesSection />}
         {section === 'hikka' && <HikkaSection mode={mode} />}
-        {section === 'reader' && <ReaderSection />}
+        {section === 'reader' && <ReaderSection mode={mode} />}
         {section === 'player' && <PlayerFields mode={mode} />}
         {section === 'data' && <DataSection mode={mode} />}
       </div>
@@ -298,7 +300,7 @@ function UaCoversField() {
   );
 }
 
-function ReaderSection() {
+function ReaderSection({ mode }: { mode: SettingsMode }) {
   const s = useSettings();
   const [tab, setTab] = useState<'novel' | 'manga' | 'webtoon'>('novel');
   return (
@@ -322,6 +324,7 @@ function ReaderSection() {
           onChange={(enabled) => void updateSettings((x) => ({ ...x, enabled }))}
         />
         <ReadCardsField />
+        {s.enabled && <ChapFields mode={mode} />}
       </div>
       <Tabs
         value={tab}

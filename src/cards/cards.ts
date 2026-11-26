@@ -20,6 +20,7 @@
  */
 import type { ContentScriptContext } from '#imports';
 import { CARDS_EVENT, CARDS_REQ, type CardRow } from '../core/bridge';
+import { onBodyMutations } from '../core/dom-watch';
 import { RATE_LIMIT_TEXT } from '../core/net';
 import { coverChoices, coverSourceName, coversItem, setCoverSource, wantAnimeCovers, type CoverKind, type CoverMap } from './covers';
 import { cardsItem, DEFAULT_CARDS, type CardsPrefs } from './prefs';
@@ -506,7 +507,7 @@ export function initCards(ctx: ContentScriptContext) {
   // запускала ще один прохід по всіх картках (MK 2026-11-25 03:34: «обнова с постерами грузит проц»).
   const ours = (n: Node) =>
     n.nodeType === 1 && [TAG, COVER_TAG, POP_TAG, TRACKER_TAG].some((t) => (n as Element).tagName === t.toUpperCase());
-  const obs = new MutationObserver((recs) => {
+  const off = onBodyMutations((recs) => {
     // Віконце картки з'являється/зникає — свій блок одразу (за 16 мс), не чекаючи 250 мс перебору карток.
     if (prefs.pop) popup.schedule();
     if (prefs.trk) tracker.schedule();
@@ -514,9 +515,8 @@ export function initCards(ctx: ContentScriptContext) {
       if (![...r.addedNodes, ...r.removedNodes].every(ours)) return schedule_();
     }
   });
-  obs.observe(document.body, { childList: true, subtree: true });
   ctx.onInvalidated(() => {
-    obs.disconnect();
+    off();
     for (const h of document.querySelectorAll(`${TAG}, ${COVER_TAG}`)) h.remove();
   });
   // Міст з'являється не одразу; «через X» оновлюємо раз на хвилину, розклад — коли застаріє.

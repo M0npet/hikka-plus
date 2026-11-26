@@ -1,7 +1,8 @@
 /*
  * Телефон і планшет (MK 2026-11-26 17:39: «на сенсорных экранах, планшетах и т.д. должно отлично работать»):
  * той самий підмінений hikka.io (e2e/mock.ts), вікно телефону з дотиком. Перевіряє, що панелі поверх плеєра не налазять
- * одна на одну, цілі дотику не дрібніші за 40 px, а меню серій відкривається дотиком.
+ * одна на одну (телефон — вузький плеєр, @container hp-view), «N / M» не обрізано, цілі дотику не дрібніші за 40 px,
+ * а меню серій відкривається дотиком.
  */
 import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
@@ -41,6 +42,7 @@ for (const size of SIZES) {
       const left = watch.locator('.hp-watch__tools--left');
       const right = watch.locator('.hp-watch__tools:not(.hp-watch__tools--left)');
       await expect(left).toHaveClass(/hp-watch__tools--on/, { timeout: 20_000 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
       await left.scrollIntoViewIfNeeded();
       const view = (await watch.locator('.hp-watch__view').boundingBox())!;
       const a = (await left.boundingBox())!;
@@ -58,6 +60,9 @@ for (const size of SIZES) {
         const r = await btn.boundingBox();
         if (r) expect(Math.min(r.width, r.height), await btn.getAttribute('aria-label') ?? '').toBeGreaterThanOrEqual(39.5);
       }
+      // «N / M» не обрізано (3302d14 стискав його до 40 px на дотику).
+      const ep = watch.locator('.hp-watch__tools--left .hp-watch__tool--ep');
+      expect(await ep.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
       // Меню серій — дотиком.
       await watch.locator('.hp-watch__tools--left .hp-watch__epbtn, .hp-watch__tools--left [aria-haspopup]').first().tap();
       await expect(watch.locator('.hp-watch__eppop')).toBeVisible();

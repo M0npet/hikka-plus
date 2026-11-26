@@ -1,6 +1,7 @@
 import { browser, defineBackground } from '#imports';
 import { isAllowedUrl, XHR_HOSTS } from '@/src/core/hosts';
-import type { FetchRequest, FetchResponse } from '@/src/core/net';
+import { setDirectFetch, type FetchRequest, type FetchResponse } from '@/src/core/net';
+import { watchBadge } from '@/src/core/notify';
 import type { HikkaRequest } from '@/src/core/hikka-auth';
 import { handleHikka } from '@/src/core/hikka-api';
 import { hikkaDataOk, tokenItem } from '@/src/core/hikka-auth';
@@ -8,6 +9,8 @@ import { onLightsFrame, stopLights, watchLightsConf } from '@/src/lights/engine'
 import type { LightsMsg } from '@/src/lights/types';
 import type { DubCheckRequest } from '@/src/watch/dub-alerts';
 import { checkDubs, startDubAlerts } from '@/src/watch/dub-check';
+import type { ChapCheckRequest } from '@/src/features/chapter-alerts';
+import { checkChaps, startChapAlerts } from '@/src/features/chapter-check';
 
 const TIMEOUT_MS = 20_000;
 const MAX_FORM = 32_768;
@@ -65,12 +68,17 @@ export default defineBackground(() => {
   void dropTokenWithoutConsent();
   browser.permissions.onRemoved.addListener(() => void dropTokenWithoutConsent());
   watchLightsConf();
+  // Джерела читання з фону (нові розділи) — запити напряму через handle(), той самий allowlist.
+  setDirectFetch(handle);
+  watchBadge();
   startDubAlerts();
+  startChapAlerts();
   browser.runtime.onMessage.addListener((raw, sender, sendResponse) => {
     // «Перевірити зараз» — лише зі сторінок самого розширення (налаштування).
-    if ((raw as DubCheckRequest)?.type === 'hp-dubs') {
+    const check = (raw as DubCheckRequest | ChapCheckRequest)?.type;
+    if (check === 'hp-dubs' || check === 'hp-chaps') {
       if (sender.id !== browser.runtime.id || !sender.url?.startsWith(browser.runtime.getURL('/'))) return;
-      checkDubs(true).then(sendResponse);
+      (check === 'hp-dubs' ? checkDubs(true) : checkChaps(true)).then(sendResponse);
       return true;
     }
     const msg = raw as FetchRequest | HikkaRequest | LightsMsg;

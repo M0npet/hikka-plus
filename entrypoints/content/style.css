@@ -195,31 +195,39 @@ select {
   color: var(--hp-primary-fg);
   border-color: var(--hp-primary-border);
 }
-.hp-btn--default:hover {
-  background: var(--hp-primary-border);
+@media (hover: hover) {
+  .hp-btn--default:hover {
+    background: var(--hp-primary-border);
+  }
 }
 .hp-btn--secondary {
   background: var(--hp-secondary);
   color: var(--hp-secondary-fg);
 }
-.hp-btn--secondary:hover {
-  background: color-mix(in oklab, var(--hp-secondary) 80%, transparent);
+@media (hover: hover) {
+  .hp-btn--secondary:hover {
+    background: color-mix(in oklab, var(--hp-secondary) 80%, transparent);
+  }
 }
 .hp-btn--outline {
   border-color: var(--hp-input);
   background: var(--hp-field-bg);
   box-shadow: var(--hp-shadow-xs);
 }
-.hp-btn--outline:hover {
-  background: var(--hp-field-hover);
+@media (hover: hover) {
+  .hp-btn--outline:hover {
+    background: var(--hp-field-hover);
+  }
 }
 .hp-btn--destructive {
   color: var(--hp-destructive);
   border-color: var(--hp-destructive-border);
   background: var(--hp-destructive-bg);
 }
-.hp-btn--destructive:hover {
-  background: color-mix(in oklab, var(--hp-destructive-bg), var(--hp-destructive) 12%);
+@media (hover: hover) {
+  .hp-btn--destructive:hover {
+    background: color-mix(in oklab, var(--hp-destructive-bg), var(--hp-destructive) 12%);
+  }
 }
 /* Підтвердження («Точно? Натисни ще раз») — суцільна червона. */
 .hp-btn--destructive-solid {
@@ -227,12 +235,18 @@ select {
   border-color: var(--hp-destructive);
   background: var(--hp-destructive);
 }
-.hp-btn--destructive-solid:hover {
-  background: color-mix(in oklab, var(--hp-destructive) 85%, black);
+@media (hover: hover) {
+  .hp-btn--destructive-solid:hover {
+    background: color-mix(in oklab, var(--hp-destructive) 85%, black);
+  }
 }
-.hp-btn--ghost:hover,
 .hp-btn--ghost[aria-pressed='true'] {
   background: var(--hp-ghost-hover);
+}
+@media (hover: hover) {
+  .hp-btn--ghost:hover {
+    background: var(--hp-ghost-hover);
+  }
 }
 /* Іконка-кнопка, що відкриває панель: увімкнена — як вибраний Tab. */
 .hp-btn--ghost[aria-pressed='true'] {
@@ -245,8 +259,9 @@ select {
 
 .hp-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   min-height: 32px;
 }
 .hp-header__title {
@@ -266,10 +281,15 @@ select {
 }
 .hp-header__actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px;
   margin-left: auto;
-  flex: none;
+  /* Може стискатись і переноситись: на телефоні «Знайти вручну · Відв'язати …» розпирали сторінку до 558 px
+     (браузер віддаляв увесь hikka.io, читалка вилазила за екран — бэклог 2g). */
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 /* ---------- Block / Card (components/ui/block.tsx, variant card) ---------- */
@@ -353,8 +373,10 @@ select {
 .hp-select__trigger {
   cursor: pointer;
 }
-.hp-select__trigger:hover {
-  background: var(--hp-field-hover);
+@media (hover: hover) {
+  .hp-select__trigger:hover {
+    background: var(--hp-field-hover);
+  }
 }
 .hp-select__chev {
   opacity: 0.5;
@@ -458,8 +480,10 @@ select {
   cursor: pointer;
   transition: color 0.15s, background-color 0.15s;
 }
-.hp-tabs__item:hover {
-  color: var(--hp-fg);
+@media (hover: hover) {
+  .hp-tabs__item:hover {
+    color: var(--hp-fg);
+  }
 }
 .hp-tabs__item[aria-checked='true'] {
   border-color: var(--hp-tint-border);
@@ -546,9 +570,13 @@ select {
   border-block: 3px solid transparent;
   cursor: grab;
 }
-.hp-hscroll__thumb:hover,
 .hp-hscroll__thumb[data-drag] {
   background-color: var(--hp-muted-fg);
+}
+@media (hover: hover) {
+  .hp-hscroll__thumb:hover {
+    background-color: var(--hp-muted-fg);
+  }
 }
 .hp-hscroll__thumb[data-drag] {
   cursor: grabbing;
@@ -584,16 +612,20 @@ select {
 .hp-chips--over .hp-chip:last-child {
   margin-right: 24px;
 }
-.hp-chip:hover {
-  background: var(--hp-accent);
+@media (hover: hover) {
+  .hp-chip:hover {
+    background: var(--hp-accent);
+  }
 }
 .hp-chip[aria-selected='true'] {
   border-color: var(--hp-tint-border);
   background: var(--hp-tint-bg);
   color: var(--hp-primary-fg);
 }
-.hp-chip[aria-selected='true']:hover {
-  background: var(--hp-tint-hover);
+@media (hover: hover) {
+  .hp-chip[aria-selected='true']:hover {
+    background: var(--hp-tint-hover);
+  }
 }
 .hp-chip:focus-visible {
   outline: none;
@@ -914,8 +946,10 @@ select {
   cursor: pointer;
   outline: none;
 }
-.hp-ch:hover {
-  background: var(--hp-ghost-hover);
+@media (hover: hover) {
+  .hp-ch:hover {
+    background: var(--hp-ghost-hover);
+  }
 }
 .hp-ch:focus-visible {
   box-shadow: inset 0 0 0 2px var(--hp-ring);
@@ -927,8 +961,10 @@ select {
   border-color: var(--hp-tint-border);
   background: var(--hp-tint-bg);
 }
-.hp-ch--current:hover {
-  background: var(--hp-tint-hover);
+@media (hover: hover) {
+  .hp-ch--current:hover {
+    background: var(--hp-tint-hover);
+  }
 }
 .hp-ch__title {
   flex: 0 1 auto;
@@ -973,8 +1009,10 @@ select {
   color: var(--hp-muted-fg);
   cursor: pointer;
 }
-.hp-status:hover {
-  color: var(--hp-fg);
+@media (hover: hover) {
+  .hp-status:hover {
+    color: var(--hp-fg);
+  }
 }
 .hp-status svg {
   width: 20px;
@@ -997,8 +1035,10 @@ select {
   text-align: left;
   cursor: pointer;
 }
-.hp-result:hover {
-  background: var(--hp-ghost-hover);
+@media (hover: hover) {
+  .hp-result:hover {
+    background: var(--hp-ghost-hover);
+  }
 }
 .hp-result img,
 .hp-result__nocover {
@@ -1456,6 +1496,8 @@ select {
   justify-content: center;
   min-height: 100%;
   padding: 64px 0;
+  /* Горизонтальний свайп — наш (гортання сторінок, PagedView), вертикальна прокрутка й масштаб — браузера. */
+  touch-action: pan-y pinch-zoom;
 }
 .hp-page img {
   max-width: 100%;
@@ -1592,9 +1634,11 @@ select {
   color: var(--hp-muted-fg);
   cursor: pointer;
 }
-.hp-watch__fav:hover {
-  background: var(--hp-ghost-hover);
-  color: var(--hp-fg);
+@media (hover: hover) {
+  .hp-watch__fav:hover {
+    background: var(--hp-ghost-hover);
+    color: var(--hp-fg);
+  }
 }
 .hp-watch__fav--on {
   color: var(--hp-primary-fg);
@@ -1629,6 +1673,13 @@ select {
 .hp-watch__frame--moon {
   min-height: 420px;
 }
+/* Вузький блок (телефон вертикально, бэклог j): Moon сам у режимі «малий плеєр» за шириною ((max-width: 575px) у їхньому
+   SMALL_PLAYER_MQ) — режим не перемикається за висотою, блимати нічому, а 420 px лише робили рамку вищою за 16:9. */
+@container hp-view (max-width: 575px) {
+  .hp-watch__frame--moon {
+    min-height: 0;
+  }
+}
 .hp-watch__frame > iframe {
   position: absolute;
   inset: 0;
@@ -1651,6 +1702,8 @@ select {
 .hp-watch__view {
   position: relative;
   isolation: isolate;
+  /* Ширина блоку плеєра — для @container hp-view (вузький телефон: панелі поверх плеєра компактні). */
+  container: hp-view / inline-size;
   /* width обов'язково: у «Ширше» margin-inline:auto у flex-колонці інакше стискає блок (і плеєр) до нуля. */
   width: 100%;
 }
@@ -1667,6 +1720,15 @@ select {
   opacity: 0;
   filter: blur(40px) saturate(1.6) brightness(var(--hp-glow-b, 1));
   transition: opacity 0.6s ease;
+}
+/* Hikka в одну колонку (< 1024 px: телефон, планшет) не обрізає ширину сторінки: краї підсвітки (по 12,5 % з боків)
+   розпирали сторінку (планшет 820 → 872 px), і мобільний браузер віддаляв увесь hikka.io (бэклог 2g, перевірено на
+   живому hikka.io 768 px). Тут підсвітка лише згори/знизу — по ширині блоку. Повний екран — окремо (нижче). */
+@media (max-width: 1023px) {
+  .hp-watch__glow {
+    left: 0;
+    width: 100%;
+  }
 }
 .hp-watch__glow.is-on {
   /* Непрозорість — повзунок «Прозорість підсвітки» (WatchPrefs.ambientLevel); яскравість — --hp-glow-b («Яскравість підсвітки»). */
@@ -1912,9 +1974,11 @@ select {
   background: transparent;
   color: inherit;
 }
-.hp-watch__tools .hp-watch__tool:hover:not(:disabled) {
-  background: var(--hp-ob-hover-bg);
-  color: var(--hp-ob-hover-fg);
+@media (hover: hover) {
+  .hp-watch__tools .hp-watch__tool:hover:not(:disabled) {
+    background: var(--hp-ob-hover-bg);
+    color: var(--hp-ob-hover-fg);
+  }
 }
 .hp-watch__tools .hp-watch__tool[aria-pressed='true'],
 .hp-watch__tools .hp-watch__tool[aria-expanded='true'] {
@@ -1958,9 +2022,13 @@ select {
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
-.hp-watch__tools .hp-watch__tool--ep:hover,
 .hp-watch__tools .hp-watch__tool--ep[aria-expanded='true'] {
   background: var(--hp-ob-hover-bg);
+}
+@media (hover: hover) {
+  .hp-watch__tools .hp-watch__tool--ep:hover {
+    background: var(--hp-ob-hover-bg);
+  }
 }
 .hp-watch__toolof {
   opacity: 0.6;
@@ -2007,8 +2075,10 @@ select {
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
-.hp-watch__epcell:hover:not(:disabled) {
-  filter: brightness(1.2);
+@media (hover: hover) {
+  .hp-watch__epcell:hover:not(:disabled) {
+    filter: brightness(1.2);
+  }
 }
 .hp-watch__epcell:focus-visible {
   outline: 2px solid var(--hp-primary-fg);
@@ -2085,9 +2155,13 @@ select {
   font: var(--hp-ob-font);
   cursor: pointer;
 }
-.hp-watch__tools .hp-watch__tool--team:hover,
 .hp-watch__tools .hp-watch__tool--team[aria-expanded='true'] {
   background: var(--hp-ob-hover-bg);
+}
+@media (hover: hover) {
+  .hp-watch__tools .hp-watch__tool--team:hover {
+    background: var(--hp-ob-hover-bg);
+  }
 }
 .hp-watch__tool--team .hp-watch__ava {
   width: 22px;
@@ -2104,12 +2178,31 @@ select {
   min-width: 280px;
   max-height: min(60vh, 420px);
 }
-@media (max-width: 640px) {
+/*
+ * Вузький плеєр (телефон вертикально, бэклог 2f; рахуємо від ширини самого блоку, не вікна): дві панелі вгорі не
+ * влазили й налазили одна на одну. Лишаємо головне: ліворуч «N / M», озвучка (аватар), плеєр (назва стискається);
+ * праворуч ⚙ і повний екран. Стрілки серій — під плеєром (.hp-watch__nav), «Мітки» й «Вимкнути світло» — на ширшому.
+ */
+@container hp-view (max-width: 520px) {
   .hp-watch__tools--left {
-    max-width: calc(100% - 24px);
+    max-width: calc(100% - 124px);
   }
-  .hp-watch__tools--left .hp-watch__tool--team {
-    max-width: 120px;
+  .hp-watch__tools .hp-watch__tool--arrow,
+  .hp-watch__tools .hp-watch__tool--lights,
+  .hp-watch__tools .hp-watch__markstool,
+  .hp-watch__toolword,
+  .hp-watch__toolteam:not(.hp-watch__toolplayer) .hp-ellipsis {
+    display: none;
+  }
+  .hp-watch__tools--left .hp-watch__toolsep {
+    margin-inline: 2px;
+  }
+  .hp-watch__tools--left .hp-watch__toolplayer {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .hp-watch__tools--left .hp-watch__toolplayer .hp-watch__tool--team {
+    max-width: 100%;
   }
 }
 .hp-watch__tools .hp-watch__menu {
@@ -2150,9 +2243,11 @@ select {
   width: 14px;
   height: 14px;
 }
-.hp-watch__epmark:hover {
-  background: rgb(255 255 255 / 0.08);
-  color: var(--hp-fg, inherit);
+@media (hover: hover) {
+  .hp-watch__epmark:hover {
+    background: rgb(255 255 255 / 0.08);
+    color: var(--hp-fg, inherit);
+  }
 }
 .hp-watch__epmark[aria-pressed='true'] {
   background: var(--hp-primary);
@@ -2201,11 +2296,13 @@ select {
     transform 0.18s var(--hp-ob-ease),
     filter 0.18s ease;
 }
-.hp-ob:hover {
-  background: var(--hp-ob-hover-bg);
-  border-color: var(--hp-ob-hover-border);
-  color: var(--hp-ob-hover-fg);
-  transform: translateY(var(--hp-ob-lift));
+@media (hover: hover) {
+  .hp-ob:hover {
+    background: var(--hp-ob-hover-bg);
+    border-color: var(--hp-ob-hover-border);
+    color: var(--hp-ob-hover-fg);
+    transform: translateY(var(--hp-ob-lift));
+  }
 }
 .hp-ob:active {
   transform: scale(0.97);
@@ -2238,10 +2335,12 @@ select {
   border-color: var(--hp-ob-main-border);
   color: var(--hp-ob-main-fg);
 }
-.hp-ob--primary:hover {
-  background: var(--hp-ob-main-hover-bg);
-  border-color: var(--hp-ob-main-border);
-  color: var(--hp-ob-main-fg);
+@media (hover: hover) {
+  .hp-ob--primary:hover {
+    background: var(--hp-ob-main-hover-bg);
+    border-color: var(--hp-ob-main-border);
+    color: var(--hp-ob-main-fg);
+  }
 }
 .hp-ob--icon {
   justify-content: center;
@@ -2321,9 +2420,13 @@ select {
   line-height: 18px;
   cursor: pointer;
 }
-.hp-watch__mark:hover,
 .hp-watch__mark:focus-visible {
   background: var(--hp-ob-hover-bg, rgb(255 255 255 / 0.08));
+}
+@media (hover: hover) {
+  .hp-watch__mark:hover {
+    background: var(--hp-ob-hover-bg, rgb(255 255 255 / 0.08));
+  }
 }
 .hp-watch__markname {
   grid-area: name;
@@ -2463,9 +2566,13 @@ select {
 .hp-watch__cell:not(.hp-watch__cell--seen) .hp-watch__eye {
   opacity: 0.4;
 }
-.hp-watch__cell:not(.hp-watch__cell--seen) .hp-watch__eye:hover,
 .hp-watch__eye:focus-visible {
   opacity: 0.9;
+}
+@media (hover: hover) {
+  .hp-watch__cell:not(.hp-watch__cell--seen) .hp-watch__eye:hover {
+    opacity: 0.9;
+  }
 }
 .hp-watch__eye:disabled {
   cursor: default;
@@ -2541,8 +2648,11 @@ select {
 @media (pointer: coarse) {
   /* Панелі й кнопки поверх плеєра (MK 2026-11-26 17:39): 32 px — замало для пальця, 40 px — як у самих плеєрів на телефоні. */
   .hp-watch__tools .hp-watch__tool {
-    width: 40px;
     height: 40px;
+  }
+  /* Ширина 40 — лише іконкам: «Серія N / M», озвучка й плеєр — за текстом (інакше обрізались до 40 px). */
+  .hp-watch__tools .hp-watch__tool:not(.hp-watch__tool--ep, .hp-watch__tool--team) {
+    width: 40px;
   }
   .hp-ob {
     min-height: 44px;

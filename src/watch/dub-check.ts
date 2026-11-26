@@ -1,13 +1,12 @@
 /*
- * Фон: перевірка нових серій в озвучках (див. dub-alerts.ts), лічильник на іконці, сповіщення браузера.
+ * Фон: перевірка нових серій в озвучках (див. dub-alerts.ts), сповіщення браузера; число на іконці — src/core/notify.ts.
  * Будильник CHECK_EVERY_MIN (дозвіл alarms); між тайтлами пауза GAP_MS — Mikai дозволяє 300 запитів/хв, ми робимо ≤ MAX_TRACK раз на 3 год.
  */
 import { browser } from '#imports';
+import { hookNotes, notesApi, updateBadge } from '../core/notify';
 import {
   CHECK_EVERY_MIN,
   dubCheckItem,
-  dubNewTotal,
-  dubPrefsItem,
   dubsItem,
   getDubPrefs,
   mikaiTeamMax,
@@ -22,43 +21,11 @@ const TIMEOUT_MS = 20_000;
 const NOTE_PREFIX = 'hp-dub:';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type ActionApi = { setBadgeText(d: { text: string }): unknown; setBadgeBackgroundColor(d: { color: string }): unknown };
-/** MV3 — action, MV2 (Firefox) — browserAction. */
-const actionApi = (): ActionApi | undefined =>
-  (browser as unknown as { action?: ActionApi; browserAction?: ActionApi }).action ??
-  (browser as unknown as { browserAction?: ActionApi }).browserAction;
-
-type NotesApi = {
-  create(id: string, o: { type: 'basic'; iconUrl: string; title: string; message: string }): Promise<string>;
-  onClicked: { addListener(f: (id: string) => void): void; hasListener(f: (id: string) => void): boolean };
-};
-/** Дозвіл notifications необов'язковий — API з'являється лише після нього. */
-const notesApi = () => (browser as unknown as { notifications?: NotesApi }).notifications;
-
-async function updateDubBadge() {
-  const api = actionApi();
-  if (!api) return;
-  const p = await getDubPrefs();
-  const n = p.on && p.badge ? dubNewTotal(await dubsItem.getValue()) : 0;
-  try {
-    await api.setBadgeBackgroundColor({ color: '#d93b8c' });
-    await api.setBadgeText({ text: n ? (n > 99 ? '99+' : String(n)) : '' });
-  } catch {
-    /* немає іконки (Android) — не страшно */
-  }
-}
-
 function onNoteClick(id: string) {
   if (!id.startsWith(NOTE_PREFIX)) return;
   const slug = id.slice(NOTE_PREFIX.length);
   const url = slug ? `https://hikka.io/anime/${encodeURIComponent(slug)}` : browser.runtime.getURL('/options.html#player');
   void browser.tabs.create({ url });
-}
-
-/** Підписатися на клік по сповіщенню, коли дозвіл уже є (і після того, як його дали). */
-function hookDubNotes() {
-  const api = notesApi();
-  if (api && !api.onClicked.hasListener(onNoteClick)) api.onClicked.addListener(onNoteClick);
 }
 
 type Fresh = { slug: string; name: string; tn: string; n: number; added: number };
@@ -153,12 +120,12 @@ async function run(force: boolean): Promise<DubCheckResult> {
     }
     return pruneDubs(m, now);
   });
-  await updateDubBadge();
+  await updateBadge();
   if (prefs.notify) await notify(fresh);
   return { ok: !error, found: fresh.length, error };
 }
 
-/** Запуск у фоні: будильник, лічильник, реакція на зміну налаштувань і списку. */
+/** Запуск у фоні: будильник і клік по сповіщенню (число на іконці — src/core/notify.ts, watchBadge). */
 export function startDubAlerts() {
   void browser.alarms.get(ALARM).then((a) => {
     if (!a) void browser.alarms.create(ALARM, { delayInMinutes: 1, periodInMinutes: CHECK_EVERY_MIN });
@@ -166,9 +133,5 @@ export function startDubAlerts() {
   browser.alarms.onAlarm.addListener((a) => {
     if (a.name === ALARM) void checkDubs();
   });
-  hookDubNotes();
-  browser.permissions.onAdded?.addListener(() => hookDubNotes());
-  dubsItem.watch(() => void updateDubBadge());
-  dubPrefsItem.watch(() => void updateDubBadge());
-  void updateDubBadge();
+  hookNotes(onNoteClick);
 }

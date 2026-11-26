@@ -20,7 +20,8 @@ import { takeNearMiss } from '../sources/match';
 import { renumberByVolume, type Chapter, type ContentFormat, type ReadSource, type RemoteTitle } from '../sources/types';
 import { loadRemoteRead, lowerHikkaChapters, queueHikkaChapters, resetRemoteRead, retryHikkaChapters } from './hikka-sync';
 import { HIKKA_LIST_EVENT } from '../core/bridge';
-import { noteReleased } from '../cards/released';
+import { noteReleased, summarize } from '../cards/released';
+import { ONE_REQUEST, noteChapSeen } from './chapter-alerts';
 
 // Hikka сама змінила запис у своєму списку (напр. «+/−» у віджеті зліва; сигнал — від hikka-bridge):
 // тихо перечитуємо число з Hikka — далі hikka-bar відмітить 1–N, як при заході на сторінку.
@@ -100,6 +101,22 @@ titleStore.subscribe(() => {
   if (digest === releasedDigest) return;
   releasedDigest = digest;
   void noteReleased(s.page.kind, s.page.slug, s.activeId, st.remote.id, team, st.chapters);
+});
+
+// «Нові розділи» (chapter-alerts.ts): тайтли, які вже читали в нашій читалці, з джерела, де найновіші розділи — один запит.
+let chapsDigest = '';
+titleStore.subscribe(() => {
+  const s = titleStore.get();
+  const st = s ? activeState(s) : undefined;
+  const src = s ? activeSource(s) : undefined;
+  if (!s?.progress.last || !s.hikka || !src || st?.status !== 'ready' || !st.remote) return;
+  if (!src.getLatest && !ONE_REQUEST.has(src.id)) return;
+  const team = activeTeam(s);
+  const digest = `${s.page.kind}:${s.page.slug}|${src.id}|${st.remote.id}|${team}|${st.chapters.length}`;
+  if (digest === chapsDigest) return;
+  chapsDigest = digest;
+  const name = s.hikka.title_ua || s.hikka.title_en || s.hikka.title_original || s.page.slug;
+  void noteChapSeen(s.page.kind, s.page.slug, { name, s: src.id, sn: src.name, id: st.remote.id, t: team, n: summarize(st.chapters, team).n });
 });
 export const useReaderRequest = () => useSyncExternalStore(readerStore.subscribe, readerStore.get);
 

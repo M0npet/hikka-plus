@@ -1,5 +1,5 @@
 import DOMPurify from 'dompurify';
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type TouchEvent } from 'react';
 import type { ReaderSettings, TapScheme } from '../../core/store';
 import type { ChapterContent } from '../../sources/types';
 
@@ -211,12 +211,34 @@ export function PagedView({
     onZone(tapZone(s.tapScheme, (e.clientX - r.left) / r.width, (e.clientY - top) / h, s.rtl));
   };
 
+  // Свайп одним пальцем убік — сторінка вперед/назад (бэклог 2g: на телефоні сторінки гортали лише тапом по краю).
+  // Як у читалках: тягнемо вліво — наступна (справа наліво для RTL — навпаки). Вертикальний рух не чіпаємо.
+  const swipe = useRef<{ x: number; y: number; t: number } | null>(null);
+  const onTouchStart = (e: TouchEvent) => {
+    const t = e.touches[0];
+    swipe.current = e.touches.length === 1 && t ? { x: t.clientX, y: t.clientY, t: Date.now() } : null;
+  };
+  const onTouchEnd = (e: TouchEvent) => {
+    const st = swipe.current;
+    const t = e.changedTouches[0];
+    swipe.current = null;
+    if (!st || !t || e.touches.length) return;
+    const dx = t.clientX - st.x;
+    const dy = t.clientY - st.y;
+    if (Math.abs(dx) < 50 || Math.abs(dy) > Math.abs(dx) * 0.6 || Date.now() - st.t > 800) return;
+    const fwd = dx < 0 ? 1 : -1;
+    onZone((s.rtl ? -fwd : fwd) as -1 | 1);
+  };
+
 
   const fitCls = s.fit === 'height' ? 'hp-page--fit-height' : s.fit === 'width' ? 'hp-page--fit-width' : '';
   return (
     <div
       className={`hp-page ${fitCls}`}
       onClick={s.clickArea === 'screen' ? (e) => zone(e, e.currentTarget) : undefined}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      onTouchCancel={() => (swipe.current = null)}
       style={{ filter: s.brightness !== 100 ? `brightness(${s.brightness}%)` : undefined }}
     >
       {cur && (

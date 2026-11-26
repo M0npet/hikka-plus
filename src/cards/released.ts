@@ -10,7 +10,7 @@ import { storage } from '#imports';
 import { isRateLimit } from '../core/net';
 import type { ReadKind } from '../core/page';
 import { getSource } from '../sources/registry';
-import { renumberByVolume, type Chapter } from '../sources/types';
+import { renumberByVolume, type Chapter, type ReadSource } from '../sources/types';
 
 /** `<manga|novel>:<slug>` → що вийшло. */
 type Released = {
@@ -37,7 +37,7 @@ const lockItem = storage.defineItem<number>('local:hp:releasedLock', { fallback:
 const bookKey = (kind: ReadKind, slug: string) => `${kind}:${slug}`;
 
 /** Найбільший номер розділу й дата найновішого серед розділів команди. */
-function summarize(list: Chapter[], team: string): { n: number; d?: number } {
+export function summarize(list: Chapter[], team: string): { n: number; d?: number } {
   let n = 0;
   let d = 0;
   for (const c of list) {
@@ -48,6 +48,9 @@ function summarize(list: Chapter[], team: string): { n: number; d?: number } {
   }
   return d ? { n, d } : { n };
 }
+
+/** Найновіші розділи одним запитом, якщо джерело вміє (getLatest), інакше — весь список. */
+export const latestChapters = async (src: ReadSource, id: string) => (src.getLatest ? await src.getLatest(id) : renumberByVolume(await src.getChapters(id)));
 
 let queue: Promise<unknown> = Promise.resolve();
 function patch(fn: (m: ReleasedMap) => ReleasedMap) {
@@ -99,7 +102,7 @@ export async function refreshReleased(keys: string[]) {
         // Потрібен лише номер останнього розділу — джерела зі сторінками віддають найновіші одним запитом (getLatest):
         // у Martial Peak на UAManga 1 запит замість 39.
         if (src) {
-          const sum = summarize(src.getLatest ? await src.getLatest(r.id) : renumberByVolume(await src.getChapters(r.id)), r.t);
+          const sum = summarize(await latestChapters(src, r.id), r.t);
           if (sum.n) next = { ...next, ...sum }; // порожня відповідь (напр. лише платні нові розділи) — старе число не затираємо
         }
       } catch (e) {

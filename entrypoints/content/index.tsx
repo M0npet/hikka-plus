@@ -1,6 +1,7 @@
 import './style.css';
 import { browser, defineContentScript, injectScript } from '#imports';
 import { Mounter, mountOverlay } from '@/src/core/mount';
+import { onBodyMutations } from '@/src/core/dom-watch';
 import { parseAnimePage, parseTitlePage } from '@/src/core/page';
 import { AnimeWatch, animePageStore } from '@/src/watch/watch-root';
 import { ChaptersBlock } from '@/src/features/chapters-block';
@@ -40,9 +41,8 @@ export default defineContentScript({
     await initSourcePrefs();
     // Читалку можна вимкнути у вікні налаштувань — тоді ні кнопки, ні блоку, ні запитів до джерел.
     let readerOn = (await getSettings()).enabled;
-    // Стан тайтлу береться з поточного шляху. Перевіряємо його ідемпотентно з кількох місць:
-    // подія WXT про зміну адреси (через Navigation API) приходить ДО того, як location оновився,
-    // тож самої події мало — додатково звіряємо шлях після мутацій DOM і раз на пів секунди.
+    // Стан тайтлу береться з поточного шляху. Перевіряємо його ідемпотентно: після мутацій DOM (спільний
+    // спостерігач, src/core/dom-watch.ts) і на popstate — див. нижче.
     let lastPath: string | null = null;
     const syncPage = (): boolean => {
       if (location.pathname === lastPath) return false;
@@ -101,9 +101,7 @@ export default defineContentScript({
     // Без таймера 500 мс і без wxt:locationchange (він сам опитує адресу щосекунди) — аудит 2026-11-26 17:45: три
     // способи робили одне й те саме, вкладка hikka.io прокидалась тричі на секунду без потреби.
     ctx.addEventListener(window, 'popstate', onNav);
-    const pathObs = new MutationObserver(onNav);
-    pathObs.observe(document.body, { childList: true, subtree: true });
-    ctx.onInvalidated(() => pathObs.disconnect());
+    ctx.onInvalidated(onBodyMutations(onNav));
 
     // Джерела ввімкнули/вимкнули чи переставили у вікні налаштувань — перезавантажити блок тайтлу
     // (якщо читалка відкрита, зміни підхопляться при наступному переході).

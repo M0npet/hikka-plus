@@ -1,6 +1,7 @@
 import { createShadowRootUi, type ContentScriptContext } from '#imports';
 import { createElement, type ReactNode } from 'react';
 import { ThemeRoot } from '../ui/kit';
+import { onBodyMutations } from './dom-watch';
 import { createRoot, type Root } from 'react-dom/client';
 
 interface InlineFeature {
@@ -33,10 +34,9 @@ export class Mounter {
 
   start() {
     this.reconcile();
-    const obs = new MutationObserver(() => this.schedule());
-    obs.observe(document.body, { childList: true, subtree: true });
+    const off = onBodyMutations(() => this.schedule());
     this.ctx.onInvalidated(() => {
-      obs.disconnect();
+      off();
       for (const m of this.mounted.values()) m.remove();
       this.mounted.clear();
     });

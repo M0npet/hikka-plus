@@ -3,24 +3,21 @@
  * Команда → плеєр → iframe самого плеєра; озвучка, серія і плеєр — на панелі поверх відео (Dawn прибрано, MK 15:28).
  * «Ширше» — увесь блок на ширину сітки сторінки (wide-layout.ts); блок не переїжджає в DOM, iframe не перезавантажується.
  */
-import { browser } from '#imports';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
-import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv, IconBulb, IconClose, IconFwd, IconSkipFwd, IconMoveH, IconMoveV, IconMoveBack, IconScan, IconFlag } from '../ui/icons';
+import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv, IconBulb, IconClose, IconFwd, IconSkipFwd, IconMoveH, IconMoveV, IconMoveBack, IconScan } from '../ui/icons';
 import { useLightsOff } from './lights-off';
-import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
-import { EP_KIND_INFO, type EpKind, type EpKinds } from './fillers';
-import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
+import { EP_KIND_INFO, type EpKinds } from './fillers';
+import { AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
 import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_MENU_LEVEL, DEFAULT_WIDE_ANIM, NEXT_COUNTDOWN, type WatchPrefs, type WatchSize } from './watch-store';
 import { AmbientFields, MenuOpacityField } from './ambient-fields';
-import type { LightsMsg } from '../lights/types';
-import type { MarkSrc, Seg } from './skip-marks';
+import type { Seg } from './skip-marks';
 import type { UaLicense } from './providers';
 import type { MarksInfo } from './watch-root';
-
-/** Відрізок на смужці плеєра: вид, початок і кінець у секундах. */
-type BarSeg = ['op' | 'ed', number, number];
+import { EpisodeMenu, epHint, epType } from './episode-menu';
+import { MarksTool } from './marks-tool';
+import { PlayerFrame, type BarSeg } from './player-iframe';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 const RANGE = 50;
@@ -73,198 +70,6 @@ type WatchBlockProps = {
   /** Вміст рамки замість iframe (стенд). */
   renderFrame?: (p: WatchPlayer, ep: number) => ReactNode;
 };
-
-/* ---------- Меню серій у панелі поверх плеєра (MK 2026-11-26 13:39: окремо, посторінково) ---------- */
-
-/** Підказка клітинки серії: «Серія N: Назва — стан». */
-function epHint(n: number, title: string | undefined, state: string, kind?: EpKind) {
-  return `Серія ${n}${kind ? ` (${EP_KIND_INFO[kind][0].toLowerCase()})` : ''}${title ? `: ${title}` : ''}${state ? ` — ${state}` : ''}`;
-}
-/** Кольорова риска типу серії під номером (як у Mikai). */
-const epType = (k?: EpKind) => (k ? <span className={`hp-watch__eptype hp-watch__eptype--${k}`} aria-hidden="true" /> : null);
-
-/** Серій на сторінці меню (6 × 4). */
-const EP_PAGE = 24;
-
-function EpisodeMenu({
-  ep,
-  count,
-  episodes,
-  titles,
-  kinds,
-  teamHas,
-  onPick,
-  onOpen,
-  canUnwatch,
-  onMark,
-  onUnwatch,
-}: {
-  ep: number;
-  count: number;
-  episodes: Record<number, EpisodeState>;
-  titles?: Record<number, string>;
-  kinds?: EpKinds;
-  teamHas: (n: number) => boolean;
-  onPick: (n: number) => void;
-  onOpen?: (open: boolean) => void;
-  canUnwatch?: (n: number) => boolean;
-  onMark?: (n: number) => void;
-  onUnwatch?: (n: number) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  // Режим «Відмічати» (MK 2026-11-26 15:28): клік по серії — переглянуто / зняти відмітку, меню не закривається.
-  const [marking, setMarking] = useState(false);
-  const pages = Math.max(1, Math.ceil(count / EP_PAGE));
-  const [page, setPage] = useState(0);
-  /** Серія під курсором — її назва в рядку під сіткою (інакше — поточної). */
-  const [hover, setHover] = useState(0);
-  const wrap = useRef<HTMLDivElement>(null);
-  const onOpenRef = useRef(onOpen);
-  onOpenRef.current = onOpen;
-  useEffect(() => onOpenRef.current?.(open), [open]);
-  // Відкрили — сторінка з поточною серією.
-  useEffect(() => {
-    if (open) setPage(Math.min(pages - 1, Math.floor((ep - 1) / EP_PAGE)));
-    setHover(0);
-    setMarking(false);
-  }, [open]);
-  useEffect(() => {
-    if (!open || !wrap.current) return;
-    const root = wrap.current.getRootNode() as Document | ShadowRoot;
-    const close = () => setOpen(false);
-    const onRoot = (e: Event) => !wrap.current?.contains(e.target as Node) && close();
-    const onDoc = (e: Event) => root instanceof ShadowRoot && e.target !== root.host && close();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
-      else if (e.key === 'PageDown' || e.key === 'PageUp') {
-        e.preventDefault();
-        setPage((x) => Math.max(0, Math.min(pages - 1, x + (e.key === 'PageDown' ? 1 : -1))));
-      }
-    };
-    root.addEventListener('pointerdown', onRoot, true);
-    if (root !== document) document.addEventListener('pointerdown', onDoc, true);
-    window.addEventListener('keydown', onKey, true);
-    window.addEventListener('blur', close); // клік у сам плеєр (iframe)
-    return () => {
-      root.removeEventListener('pointerdown', onRoot, true);
-      document.removeEventListener('pointerdown', onDoc, true);
-      window.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('blur', close);
-    };
-  }, [open, pages]);
-  const from = page * EP_PAGE + 1;
-  const to = Math.min(count, from + EP_PAGE - 1);
-  return (
-    <div ref={wrap} className="hp-select hp-watch__epmenu">
-      <button
-        type="button"
-        className="hp-watch__tool hp-watch__tool--ep"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        title={titles?.[ep] ? `Серія ${ep}: ${titles[ep]}` : 'Вибрати серію'}
-        onClick={() => setOpen((o) => !o)}
-      >
-        Серія {ep}
-        <span className="hp-watch__toolof"> / {count}</span>
-      </button>
-      {open && (
-        <div className="hp-popover hp-watch__eppop" role="dialog" aria-label="Серії">
-          <div className="hp-watch__eppage">
-            {pages > 1 ? (
-              <>
-                <Button variant="ghost" size="sm" icon aria-label="Попередні серії" title="Попередні (PgUp)" disabled={page <= 0} onClick={() => setPage(page - 1)}>
-                  <IconLeft />
-                </Button>
-                <span className="hp-watch__eppagetext">
-                  {from}–{to} <span className="hp-header__count">з {count}</span>
-                </span>
-                <Button variant="ghost" size="sm" icon aria-label="Наступні серії" title="Наступні (PgDn)" disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>
-                  <IconRight />
-                </Button>
-              </>
-            ) : (
-              <span className="hp-watch__eppagetext">
-                Серії <span className="hp-header__count">{count}</span>
-              </span>
-            )}
-            {onMark && (
-              <button
-                type="button"
-                className="hp-watch__epmark"
-                aria-pressed={marking}
-                title={marking ? 'Готово — клік по серії знову відкриває її' : 'Клік по серії — позначити переглянутою або зняти відмітку'}
-                onClick={() => setMarking((x) => !x)}
-              >
-                {marking ? <IconEye /> : <IconEyeOff />}
-                {marking ? 'Готово' : 'Відмічати'}
-              </button>
-            )}
-          </div>
-          <div className="hp-watch__epgrid" role="list">
-            {Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => {
-              const n = from + i;
-              const s = episodes[n];
-              const seen = !!s?.watched;
-              const lock = seen && !canUnwatch?.(n);
-              return (
-                <button
-                  key={n}
-                  type="button"
-                  role="listitem"
-                  className={cx('hp-watch__epcell', n === ep && 'hp-watch__epcell--on', seen && 'hp-watch__epcell--seen', marking && 'hp-watch__epcell--marking')}
-                  disabled={marking ? lock || !(teamHas(n) || seen) : !teamHas(n)}
-                  aria-current={n === ep || undefined}
-                  aria-pressed={marking ? seen : undefined}
-                  title={
-                    marking
-                      ? lock
-                        ? 'Зарахована в списку Hikka. Щоб зняти — «−» у віджеті Hikka або «Відмічати в Hikka».'
-                        : seen
-                          ? `Зняти відмітку з серії ${n}`
-                          : `Позначити серію ${n} переглянутою`
-                      : epHint(n, titles?.[n], !teamHas(n) ? 'ще немає в цієї команди' : seen ? 'переглянуто' : s?.pos ? `${Math.round(s.pos * 100)}%` : '', kinds?.[n])
-                  }
-                  onPointerEnter={() => setHover(n)}
-                  onPointerLeave={() => setHover(0)}
-                  onFocus={() => setHover(n)}
-                  onClick={() => {
-                    if (marking) return void (seen ? onUnwatch?.(n) : onMark?.(n));
-                    setOpen(false);
-                    if (n !== ep) onPick(n);
-                  }}
-                >
-                  {n}
-                  {epType(kinds?.[n])}
-                  {!seen && s?.pos ? <span className="hp-watch__epbar" style={{ width: `${s.pos * 100}%` }} /> : null}
-                </button>
-              );
-            })}
-          </div>
-          {titles?.[hover || ep] ? (
-            <div className="hp-watch__epline" aria-live="polite">
-              <b>{hover || ep}.</b> {titles[hover || ep]}
-            </div>
-          ) : null}
-          {pages > 1 && pages <= 12 && (
-            <div className="hp-watch__epdots" role="tablist" aria-label="Сторінки серій">
-              {Array.from({ length: pages }, (_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  role="tab"
-                  aria-selected={i === page}
-                  className="hp-watch__epdot"
-                  title={`${i * EP_PAGE + 1}–${Math.min(count, (i + 1) * EP_PAGE)}`}
-                  onClick={() => setPage(i)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 /* ---------- Список із багатим пунктом (Команда / Плеєр) ---------- */
 
@@ -375,12 +180,7 @@ const TeamLine = ({ t, full }: { t: WatchTeam; full?: boolean }) => (
   </>
 );
 
-const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-
 /* ---------- Сам блок ---------- */
-
-/** Скільки пікселів (кадр 32×18) додаємо з кожного боку для країв підсвітки; у style.css — ті самі пропорції (.hp-watch__glow). */
-const GLOW_PAD = 4;
 
 export function WatchBlock(p: WatchBlockProps) {
   const init = p.initial;
@@ -496,15 +296,17 @@ export function WatchBlock(p: WatchBlockProps) {
   };
   // Відео ще не пустили або пауза (MK 2026-11-26 15:41: «когда я еще не нажимал на плеер, наше меню тоже должно
   // показываться») — панелі видно весь час, як і панель самого плеєра. «Стоїть» = позиція не мінялася 1,5 с.
-  const tick = useRef({ t: -1, at: 0 });
+  // Без інтервалу (бэклог 2c): кожна нова позиція перезапускає таймер, тож поки відео стоїть, ніщо не прокидається.
+  const tick = useRef({ t: -1, timer: 0 });
   const [still, setStill] = useState(true);
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      const s = Date.now() - tick.current.at > 1500;
-      setStill((x) => (x === s ? x : s));
-    }, 500);
-    return () => clearInterval(id);
-  }, []);
+  const moved = (t: number) => {
+    if (t === tick.current.t) return;
+    tick.current.t = t;
+    setStill(false);
+    clearTimeout(tick.current.timer);
+    tick.current.timer = window.setTimeout(() => setStill(true), 1500);
+  };
+  useEffect(() => () => clearTimeout(tick.current.timer), []);
   const [range, setRange] = useState('0');
   // З якої секунди почати після (пере)завантаження iframe.
   const startAt = useRef(init?.t ?? 0);
@@ -824,7 +626,7 @@ export function WatchBlock(p: WatchBlockProps) {
             // Почали дивитися — більше не перескакуємо самі на «першу непереглянуту» (інакше при заліку серії
             // на початку ендингу блок перемикав на наступну посеред ендингу).
             if (t > 3) picked.current = true;
-            if (t !== tick.current.t) tick.current = { t, at: Date.now() };
+            moved(t);
             p.onTime?.(ep, t, d);
             const tt = Math.floor(t);
             posStore.set({ ep, t: tt, d });
@@ -971,7 +773,7 @@ export function WatchBlock(p: WatchBlockProps) {
         wakeTools(true);
       }}
     >
-      <Button variant="ghost" size="sm" icon className="hp-watch__tool" aria-label="Попередня серія" title="Попередня серія" disabled={ep <= 1} onClick={() => goEp(ep - 1)}>
+      <Button variant="ghost" size="sm" icon className="hp-watch__tool hp-watch__tool--arrow" aria-label="Попередня серія" title="Попередня серія" disabled={ep <= 1} onClick={() => goEp(ep - 1)}>
         <IconLeft />
       </Button>
       <EpisodeMenu
@@ -991,7 +793,7 @@ export function WatchBlock(p: WatchBlockProps) {
         variant="ghost"
         size="sm"
         icon
-        className="hp-watch__tool"
+        className="hp-watch__tool hp-watch__tool--arrow"
         aria-label="Наступна серія"
         title="Наступна серія (клавіша N у плеєрі)"
         disabled={ep >= count || !teamHas(ep + 1)}
@@ -1082,7 +884,7 @@ export function WatchBlock(p: WatchBlockProps) {
           variant="ghost"
           size="sm"
           icon
-          className="hp-watch__tool"
+          className="hp-watch__tool hp-watch__tool--lights"
           aria-pressed={dark}
           aria-label={dark ? 'Увімкнути світло' : 'Вимкнути світло'}
           title={dark ? 'Увімкнути світло' : 'Вимкнути світло — затемнити все навколо плеєра'}
@@ -1304,10 +1106,7 @@ export function WatchBlock(p: WatchBlockProps) {
   );
 }
 
-/* ---------- Мітки OP/ED: кнопка на панелі над плеєром ---------- */
-
-const SRC_NAMES: Record<MarkSrc, string> = { player: 'з плеєра', aniskip: 'AniSkip, приблизно' };
-const KIND_NAMES = { op: 'Опенінг', ed: 'Ендинг' } as const;
+/* ---------- Позиція й «Пропустити» ---------- */
 
 type Pos = { ep: number; t: number; d: number };
 type PosStore = { get: () => Pos | null; set: (p: Pos) => void };
@@ -1332,346 +1131,3 @@ function skipAt(mk: MarksInfo | null, t: number): SkipState | null {
   return null;
 }
 
-/** Смужка міток, що сама стежить за позицією — щоб щосекунди не перемальовувати весь блок. */
-/** Кнопка «Мітки» на правій панелі поверх плеєра (MK 2026-11-26 17:18, замість смужки під плеєром): наведення або дотик —
- *  з якого по який час опенінг і ендинг і звідки мітки; клік по рядку — перейти на початок. */
-function MarksTool({ info, onSeek, onOpen }: { info: MarksInfo; onSeek: (sec: number) => void; onOpen: (on: boolean) => void }) {
-  const [open, setOpen] = useState(false);
-  const timer = useRef(0);
-  const entered = useRef(0);
-  const set = (on: boolean) => {
-    clearTimeout(timer.current);
-    setOpen(on);
-    onOpen(on);
-  };
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const m = info.m;
-  const kinds = (['op', 'ed'] as const).filter((k) => m[k]);
-  return (
-    <div
-      className="hp-select"
-      onPointerEnter={(e) => {
-        if (e.pointerType !== 'mouse') return;
-        entered.current = Date.now();
-        set(true);
-      }}
-      onPointerLeave={(e) => {
-        if (e.pointerType !== 'mouse') return;
-        clearTimeout(timer.current);
-        timer.current = window.setTimeout(() => set(false), 200);
-      }}
-    >
-      <Button
-        variant="ghost"
-        size="sm"
-        icon
-        className="hp-watch__tool"
-        aria-label="Мітки опенінгу й ендингу"
-        aria-expanded={open}
-        // Мишею відкриває наведення — клік одразу після нього не закриває; на дотик — клік відкриває/закриває.
-        onClick={() => Date.now() - entered.current > 400 && set(!open)}
-      >
-        <IconFlag />
-      </Button>
-      {open && (
-        <div className="hp-popover hp-popover--end hp-watch__markpop" role="dialog" aria-label="Мітки">
-          {kinds.map((k) => (
-            <button key={k} type="button" className="hp-watch__mark" onClick={() => onSeek(m[k]!.s)} title={`Перейти на початок: ${KIND_NAMES[k].toLowerCase()}`}>
-              <span className={`hp-watch__dot hp-watch__dot--${k}`} />
-              <span className="hp-watch__markname">{KIND_NAMES[k]}</span>
-              <span className="hp-watch__marktime">
-                {fmt(m[k]!.s)}–{fmt(m[k]!.e)}
-              </span>
-              <span className="hp-watch__marksrc">{SRC_NAMES[m[k]!.src]}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** iframe плеєра як є + адаптер позиції. Адресу беремо в провайдера (у AnimeON — запитом). */
-export function PlayerFrame(p: {
-  player: WatchPlayer;
-  ep: number;
-  startAt: { current: number };
-  onTime: (t: number, d: number) => void;
-  onSegs: (segs: { op?: Seg; ed?: Seg }) => void;
-  onEnded: () => void;
-  onEpisode: (n: number) => void;
-  /** Canvas підсвітки за рамкою; null — підсвітку вимкнено. */
-  glow?: HTMLCanvasElement | null;
-  /** Слати кадри ще й у background для пристроїв (src/lights/). */
-  devices?: boolean;
-  /** Сюди кладемо функцію перемотки (кнопки «Пропустити», смужка міток). */
-  seekRef?: { current: ((sec: number) => void) | null };
-  /** Гаряча клавіша в плеєрі: S — пропустити, N — наступна серія. */
-  onHotkey?: (key: 'skip' | 'next') => void;
-  /** Миша рухається в плеєрі (true) / вийшла з нього (false) — показати/сховати панель кнопок поверх плеєра. */
-  onActive?: (on: boolean) => void;
-  /** Секунда, з якої серія зарахується (риска на смужці самого плеєра); null — не показувати. MK 2026-11-26 17:13: завжди (і на переглянутій серії), крім випадку, коли в самого
-   *  плеєра є своя мітка ендингу (Moon, Fenix) — тоді поріг = її початок, і плеєр уже його показує. */
-  countAt?: number | null;
-  /** Відрізки OP/ED, яких немає в самого плеєра (AniSkip), — малюються на його смужці (MK 2026-11-26 17:15). */
-  barSegs?: BarSeg[];
-  /** Наші кнопки поверх плеєра видно — фрейм міряє панель плеєра й шле onUi (MK 2026-11-26 17:32: «чтобы наши кнопки
-   *  реагировали на интерфейс, выше-ниже»). Без кнопок — не міряємо. */
-  watchUi?: boolean;
-  /** Від низу кадру до верху панелі плеєра (смужка прокрутки + кнопки), px; 0 — панель схована. */
-  onUi?: (px: number) => void;
-}) {
-  const [src, setSrc] = useState<string | null | undefined>(undefined);
-  const [err, setErr] = useState(false);
-  const ref = useRef<HTMLIFrameElement>(null);
-  const cb = useRef(p);
-  cb.current = p;
-
-  useEffect(() => {
-    let off = false;
-    setSrc(undefined);
-    setErr(false);
-    p.player
-      .src(p.ep)
-      .then((s) => !off && setSrc(s))
-      .catch(() => {
-        if (off) return;
-        setErr(true);
-        setSrc(null);
-      });
-    return () => {
-      off = true;
-    };
-  }, [p.player, p.ep]);
-
-  // Підсвітка: кадр 32×18 (рядок RGB) від нашого скрипта у фреймі (entrypoints/player-frame.content.ts) → canvas за рамкою (CSS розмиває).
-  useEffect(() => {
-    const f = ref.current;
-    const c = p.glow ?? null;
-    if (!src || !f) return;
-    let origin = '';
-    try {
-      origin = new URL(src).origin;
-    } catch {
-      return;
-    }
-    const devices = !!p.devices;
-    const want = !!c || devices;
-    // Плеєр прокрутили з екрана — підсвітку не рахуємо (пристроям кадри потрібні завжди).
-    let visible = true;
-    const on = () => want && (visible || devices);
-    // Пристрої: не частіше ніж 10 кадрів/с (повільні пристрої пропускають ще й самі, src/lights/engine.ts).
-    let devAt = 0;
-    const toDevices = (m: LightsMsg) => void browser.runtime.sendMessage(m).catch(() => {});
-    // Поки у фреймі ще порожня about:blank (джерело — hikka.io), postMessage з origin плеєра лише сипле помилку в консоль.
-    // Чужу сторінку прочитати не можна — отже, плеєр уже завантажився; до того питає сам скрипт фрейму ({ready}) і подія load.
-    const loaded = () => {
-      try {
-        void f.contentWindow?.location.href;
-        return false;
-      } catch {
-        return true;
-      }
-    };
-    const ask = () => {
-      if (loaded()) f.contentWindow?.postMessage({ type: AMBIENT_REQ, on: on() }, origin);
-    };
-    const ctx = c?.getContext('2d') ?? null;
-    const tmp = document.createElement('canvas');
-    const tctx = tmp.getContext('2d');
-    // Як Ambilight у телевізорів (MK 15:39): навколо кадру — кольори його країв, витягнуті назовні (по GLOW_PAD пікселів
-    // з кожного боку). CSS ставить canvas так, що середина збігається з рамкою, і розмиває.
-    const pad = document.createElement('canvas');
-    const pctx = pad.getContext('2d');
-    let first = true;
-    let img: ImageData | null = null;
-    const onMsg = (e: MessageEvent) => {
-      if (e.source !== f.contentWindow || e.origin !== origin) return;
-      const d = e.data as { type?: unknown; ready?: unknown; off?: unknown; w?: unknown; h?: unknown; rgb?: unknown; bar?: unknown } | null;
-      if (!d || d.type !== AMBIENT_MSG || 'ui' in d) return; // {ui} — для кнопок поверх плеєра (onUi)
-      if (d.ready) return ask();
-      // Moon з панеллю «Під кадром» (його налаштування): рамка вища, див. .hp-watch__frame--below у style.css.
-      if (typeof d.bar === 'string') return void f.parentElement?.classList.toggle('hp-watch__frame--below', d.bar === 'below');
-      if (d.off) {
-        if (devices) toDevices({ type: 'hp-lights', stop: true });
-        first = true; // кадри можуть піти знову (Ashdi: після реклами) — тоді показати й почати змішування заново
-        return c?.classList.remove('is-on');
-      }
-      const w = Number(d.w);
-      const h = Number(d.h);
-      const rgb = d.rgb;
-      if (typeof rgb !== 'string' || !(w > 0 && w <= 64 && h > 0 && h <= 64) || rgb.length !== w * h * 3) return;
-      if (devices && Date.now() - devAt >= 100) {
-        devAt = Date.now();
-        toDevices({ type: 'hp-lights', frame: { w, h, rgb } });
-      }
-      if (!c || !ctx || !tctx || !pctx) return;
-      const P = GLOW_PAD;
-      if (tmp.width !== w || tmp.height !== h) {
-        tmp.width = w;
-        tmp.height = h;
-        pad.width = c.width = w + 2 * P;
-        pad.height = c.height = h + 2 * P;
-        first = true;
-      }
-      if (!img || img.width !== w || img.height !== h) img = tctx.createImageData(w, h);
-      for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
-        img.data[j] = rgb.charCodeAt(i);
-        img.data[j + 1] = rgb.charCodeAt(i + 1);
-        img.data[j + 2] = rgb.charCodeAt(i + 2);
-        img.data[j + 3] = 255;
-      }
-      tctx.putImageData(img, 0, 0);
-      // Кадр у середині, краї (по 1 px) — розтягнуті назовні, кути — кутовими пікселями.
-      pctx.drawImage(tmp, P, P);
-      pctx.drawImage(tmp, 0, 0, 1, h, 0, P, P, h);
-      pctx.drawImage(tmp, w - 1, 0, 1, h, P + w, P, P, h);
-      pctx.drawImage(tmp, 0, 0, w, 1, P, 0, w, P);
-      pctx.drawImage(tmp, 0, h - 1, w, 1, P, P + h, w, P);
-      pctx.drawImage(tmp, 0, 0, 1, 1, 0, 0, P, P);
-      pctx.drawImage(tmp, w - 1, 0, 1, 1, P + w, 0, P, P);
-      pctx.drawImage(tmp, 0, h - 1, 1, 1, 0, P + h, P, P);
-      pctx.drawImage(tmp, w - 1, h - 1, 1, 1, P + w, P + h, P, P);
-      // Плавна зміна кольорів: новий кадр поверх старого з прозорістю.
-      // Кадри йдуть 5 разів на секунду (0.6.0, було 10) — частка нового кадру більша, плавність та сама (~1 с).
-      ctx.globalAlpha = first ? 1 : 0.4;
-      ctx.drawImage(pad, 0, 0);
-      if (first) c.classList.add('is-on');
-      first = false;
-    };
-    window.addEventListener('message', onMsg);
-    f.addEventListener('load', ask);
-    const io =
-      want && typeof IntersectionObserver !== 'undefined'
-        ? new IntersectionObserver(([en]) => {
-            const v = !!en?.isIntersecting;
-            if (v === visible) return;
-            visible = v;
-            ask();
-          })
-        : null;
-    io?.observe(f);
-    ask();
-    return () => {
-      io?.disconnect();
-      window.removeEventListener('message', onMsg);
-      f.removeEventListener('load', ask);
-      f.parentElement?.classList.remove('hp-watch__frame--below');
-      c?.classList.remove('is-on');
-      if (devices) toDevices({ type: 'hp-lights', stop: true });
-      if (!want || !loaded()) return;
-      try {
-        f.contentWindow?.postMessage({ type: AMBIENT_REQ, on: false }, origin);
-      } catch {
-        /* фрейм уже прибрано */
-      }
-    };
-  }, [src, p.glow, p.devices]);
-
-  // Поріг зарахування серії — ризикою на смужці прокрутки самого плеєра (MK 2026-11-26: «нах подпись под, сделай
-  // интеграцию в плеер»). Малює скрипт фрейму (entrypoints/player-frame.content.ts, Moon, Ashdi і Fenix); тут лише кажемо секунду.
-  const countSec = p.countAt == null ? null : Math.round(p.countAt);
-  const segsKey = JSON.stringify(p.barSegs ?? []);
-  const ui = !!p.watchUi;
-  useEffect(() => {
-    const f = ref.current;
-    if (!src || !f) return;
-    let origin = '';
-    try {
-      origin = new URL(src).origin;
-    } catch {
-      return;
-    }
-    const send = () => {
-      try {
-        void f.contentWindow?.location.href;
-        return; // ще about:blank — плеєр не завантажився
-      } catch {
-        f.contentWindow?.postMessage({ type: AMBIENT_REQ, count: countSec, segs: JSON.parse(segsKey) as BarSeg[], ui }, origin);
-      }
-    };
-    const onMsg = (e: MessageEvent) => {
-      if (e.source !== f.contentWindow || e.origin !== origin) return;
-      const d = e.data as { type?: unknown; ready?: unknown; hotkey?: unknown; active?: unknown; ui?: unknown } | null;
-      if (d?.type !== AMBIENT_MSG) return;
-      if (d.ready) send();
-      if (typeof d.ui === 'number' && Number.isFinite(d.ui)) cb.current.onUi?.(d.ui);
-      if (d.active === 0 || d.active === 1) cb.current.onActive?.(d.active === 1);
-      if (d.hotkey === 'skip' || d.hotkey === 'next') cb.current.onHotkey?.(d.hotkey);
-    };
-    window.addEventListener('message', onMsg);
-    f.addEventListener('load', send);
-    send();
-    return () => {
-      window.removeEventListener('message', onMsg);
-      f.removeEventListener('load', send);
-    };
-  }, [src, countSec, segsKey, ui]);
-
-  useEffect(() => {
-    const f = ref.current;
-    if (!src || !f) return;
-    // Повернення на збережену секунду: лише коли відео справді пішло (після реклами Ashdi), до 3 спроб.
-    let tries = 0;
-    let lastTry = 0;
-    let resumed = false;
-    const ctl = attachPlayer(f, p.player.kind, {
-      onTime: (t, d) => {
-        const want = cb.current.startAt.current;
-        if (!resumed && want > 5 && want < d - 5) {
-          if (t >= want - 3) resumed = true;
-          else if (t > 0.5 && tries < 3 && Date.now() - lastTry > 1500) {
-            tries++;
-            lastTry = Date.now();
-            ctl.seek(want);
-            return;
-          } else if (tries < 3) return; // ще реклама/завантаження — позицію не рахуємо
-        }
-        resumed = true;
-        cb.current.onTime(t, d);
-      },
-      onEnded: () => cb.current.onEnded(),
-      onSegs: (m) => cb.current.onSegs(m),
-      onEpisode: (n) => cb.current.onEpisode(n),
-    });
-    // Перемотка: через наш скрипт у фреймі (video.currentTime — працює в усіх трьох плеєрах однаково),
-    // а якщо сторінка плеєра ще не завантажилась — через API самого плеєра.
-    const seekRef = cb.current.seekRef;
-    if (seekRef)
-      seekRef.current = (sec) => {
-        let origin = '';
-        try {
-          origin = new URL(src).origin;
-        } catch {
-          /* немає */
-        }
-        let foreign = false;
-        try {
-          void f.contentWindow?.location.href;
-        } catch {
-          foreign = true;
-        }
-        if (foreign && origin) f.contentWindow?.postMessage({ type: AMBIENT_REQ, seek: sec }, origin);
-        else ctl.seek(sec);
-      };
-    return () => {
-      if (seekRef?.current) seekRef.current = null;
-      ctl.detach();
-    };
-  }, [src, p.player.kind]);
-
-  if (src === undefined) return <div className="hp-watch__empty">Завантаження…</div>;
-  if (!src) return <div className="hp-watch__empty">{err ? 'Не вдалося отримати плеєр' : `У цього плеєра немає серії ${p.ep}`}</div>;
-  return (
-    <iframe
-      ref={ref}
-      src={src}
-      // За name скрипт entrypoints/player-frame.content.ts пізнає наш фрейм.
-      name="hikka-plus"
-      title={`${PLAYER_NAMES[p.player.kind]} — серія ${p.ep}`}
-      allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-      allowFullScreen
-      referrerPolicy="origin"
-    />
-  );
-}
