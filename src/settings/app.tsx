@@ -13,6 +13,7 @@ import { autoSyncItem } from '../features/hikka-sync';
 import { DEFAULT_WIDE_ANIM, NEXT_COUNTDOWN, useWatchPrefs } from '../watch/watch-store';
 import { useCardsPrefs } from '../cards/prefs';
 import { AmbientFields } from '../watch/ambient-fields';
+import { DubFields, DubPopupNews } from '../watch/dub-settings';
 import { DeviceLights } from '../lights/settings';
 import { LINK_SOURCES } from '../sources/links';
 import { SOURCES } from '../sources/registry';
@@ -69,6 +70,7 @@ export function SettingsApp({ mode }: { mode: SettingsMode }) {
           </Button>
         )}
       </div>
+      {mode === 'popup' && <DubPopupNews />}
       <Tabs value={section} options={SECTIONS} onChange={setSection} label="Розділ налаштувань" />
       <div className="hp-set__body">
         {section === 'sources' && <SourcesSection />}
@@ -393,6 +395,7 @@ function PlayerFields({ mode }: { mode: SettingsMode }) {
           onChange={(enabled) => setW({ enabled })}
         />
         <CardsFields />
+        <DubFields mode={mode} />
         <SwitchRow
           label="На всю ширину"
           hint="Режим «Ширше»: блок на всю ширину сторінки під верхніми картками; запам'ятовується між тайтлами"

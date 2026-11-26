@@ -15,6 +15,9 @@
  * Однакові плеєри однієї команди з двох сайтів дають той самий iframe — лишаємо Mikai (адреси одразу, без запиту на серію).
  */
 import { getJson } from '../core/net';
+import { teamKey } from './team-key';
+
+export { teamKey };
 import { safeFrameSrc, type PlayerKind, type WatchPlayer, type WatchTeam } from './types';
 
 export type WatchLinks = { mikai?: { id: number; slug: string }; animeon?: number; anitube?: string };
@@ -40,14 +43,6 @@ export function parseWatchLinks(external: { url: string; type: string }[]): Watc
   return out;
 }
 
-/** Ключ команди: назва без «Субтитри», регістру й розділових знаків + тип. */
-export function teamKey(name: string, sub: boolean) {
-  const n = name
-    .toLowerCase()
-    .replace(/субтитри|субтитрами|subs?\b/g, '')
-    .replace(/[^\p{L}\p{N}]+/gu, '');
-  return `${n || name}${sub ? ':sub' : ''}`;
-}
 const cleanName = (name: string) => name.replace(/^\s*субтитри\s*(\||[-—:])?\s*/i, '').trim() || name.trim();
 
 // ---------- Mikai ----------

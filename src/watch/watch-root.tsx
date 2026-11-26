@@ -10,6 +10,7 @@ import { animeonTeams, mergeTeams, mikaiTeamsFor, parseWatchLinks, type UaLicens
 import { aniskipRaw, watchedAt, type AniSkip } from './threshold';
 import { mergeMarks, segsFromAniskip, type Marks, type Seg } from './skip-marks';
 import { flushWatchPush, getWatchSaved, pullWatchSaved, updateWatchSaved, useWatchPrefs, watchSyncedWatch, type WatchSaved } from './watch-store';
+import { noteDubSeen } from './dub-alerts';
 import { HIKKA_LIST_EVENT, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '../core/bridge';
 import { loadHikkaWatch, lowerHikkaEpisodes, markHikkaEpisodes, type HikkaWatchState } from './hikka-watch';
 import { WatchBlock, type HikkaLine } from './watch-block';
@@ -17,6 +18,9 @@ import type { EpisodeState, WatchTeam } from './types';
 
 type HikkaAnime = {
   slug: string;
+  title_ua?: string | null;
+  title_en?: string | null;
+  title_ja?: string | null;
   mal_id: number | null;
   episodes_total: number | null;
   episodes_released: number | null;
@@ -68,6 +72,19 @@ export function WatchRoot({ slug }: { slug: string }) {
   const [edInfo, setEdInfo] = useState<{ ep: number; at: number; ed: boolean } | null>(null);
   const [marks, setMarks] = useState<MarksInfo | null>(null);
 
+  // Нові серії в озвучках (dub-alerts.ts): стежимо за командою Mikai, яку дивляться, і все, що вийшло, — побачене.
+  const dubRef = useRef<{ name: string; mikai: WatchTeam[] } | null>(null);
+  const noteDub = useCallback(
+    (s: WatchSaved) => {
+      const d = dubRef.current;
+      if (!d || !s.team || !Object.keys(s.eps).length) return;
+      const t = d.mikai.find((x) => x.id === s.team);
+      const n = t ? Math.max(0, ...t.players.flatMap((p) => p.episodes)) : 0;
+      void noteDubSeen(slug, { name: d.name, team: s.team, tn: t?.name ?? s.team, n });
+    },
+    [slug],
+  );
+
   // Дані тайтлу й серій.
   useEffect(() => {
     let off = false;
@@ -87,6 +104,8 @@ export function WatchRoot({ slug }: { slug: string }) {
         const s = await getWatchSaved(slug);
         if (off) return;
         setSaved(s);
+        dubRef.current = { name: (anime.title_ua || anime.title_en || anime.title_ja || slug).trim(), mikai: mk.teams };
+        noteDub(s);
         setLoad(teams.length ? { status: 'ready', teams, anime, anitube: links.anitube, license } : { status: 'not-found', anitube: links.anitube, license });
       } catch (e) {
         if (!off) setLoad({ status: 'error', message: String((e as Error)?.message ?? e) });
@@ -208,12 +227,15 @@ export function WatchRoot({ slug }: { slug: string }) {
       if (!L.marked.has(ep)) {
         L.marked.add(ep);
         void updateWatchSaved(slug, (s) => ({ ...s, eps: { ...s.eps, [ep]: { pos: 1, w: 1, at: Date.now() } } })).then(() =>
-          getWatchSaved(slug).then(setSaved),
+          getWatchSaved(slug).then((s) => {
+            setSaved(s);
+            noteDub(s);
+          }),
         );
       }
       pushHikka();
     },
-    [slug, pushHikka],
+    [slug, pushHikka, noteDub],
   );
 
 
@@ -310,9 +332,11 @@ export function WatchRoot({ slug }: { slug: string }) {
     (sel: { team: string; player: string; ep: number }) => {
       const L = live.current;
       if (sel.ep !== L.ep) L.t = 0;
-      void updateWatchSaved(slug, (s) => ({ ...s, team: sel.team, player: sel.player, ep: sel.ep, t: sel.ep === s.ep ? s.t : 0 }));
+      void updateWatchSaved(slug, (s) => ({ ...s, team: sel.team, player: sel.player, ep: sel.ep, t: sel.ep === s.ep ? s.t : 0 }))
+        .then(() => getWatchSaved(slug))
+        .then(noteDub);
     },
-    [slug],
+    [slug, noteDub],
   );
 
   if (!prefs.enabled) return null;

@@ -19,6 +19,8 @@ The Hikka OAuth client reference/secret are injected at build time from env WXT_
 
 PERMISSIONS
 - storage — settings, reading/watching progress, Hikka token (local only); sync storage for progress across the user's devices.
+- alarms — background check for new episodes in the user's dub team every 3 h (src/watch/dub-check.ts): for ≤40 anime the user watched in our player, GET api.mikai.me/public/v1/anime/hikka:<slug>/player (same public API and request as the player; credentials: 'omit'; 1.5 s between requests; stops on 429), then a count on the toolbar icon. Toggle in the "Player" tab.
+- OPTIONAL notifications — only if the user enables "Browser notifications" for new dub episodes (permissions.request on that click; removed when turned off). Clicking a notification opens the title on hikka.io.
 - https://hikka.io/* — content script that adds our blocks to title pages.
 - https://api.hikka.io/* — title data (names, external links, MAL id); with the user's OAuth consent: read/update the user's read/watch list entry for the opened title. Plus the public episode schedule (POST /schedule/anime, no auth) every 3 h for card badges.
 - Manga/novel sources (api.zenko.online, manga.in.ua, baka.in.ua, data/search.api.honey-manga.com.ua, uamanga.com, back.animesvit.com, dgmanga.app, runi.ink, api.smakolykytl.site, novel.org.ua, fan-vers.com, www.wattpad.com) — search by title name, chapter list, chapter pages/text. Requests go from the background script (CORS) with credentials: 'omit', only to an allowlist (src/core/hosts.ts, isAllowedUrl).

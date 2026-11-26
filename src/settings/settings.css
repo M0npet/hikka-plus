@@ -134,3 +134,47 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* Нові серії в озвучках (src/watch/dub-settings.tsx). */
+.hp-dub-news {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hp-dub-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hp-dub-box__top {
+  align-items: center;
+}
+.hp-dub__link {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.hp-dub__link:hover .hp-dub__name {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.hp-dub__name,
+.hp-dub__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hp-dub__new {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--hp-primary);
+  color: var(--hp-primary-fg);
+  font-size: 12px;
+  font-weight: 600;
+}
+.hp-dub[data-new] {
+  border-color: color-mix(in oklab, var(--hp-primary-fg) 50%, transparent);
+}

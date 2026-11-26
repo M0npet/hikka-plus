@@ -6,6 +6,8 @@ import { handleHikka } from '@/src/core/hikka-api';
 import { hikkaDataOk, tokenItem } from '@/src/core/hikka-auth';
 import { onLightsFrame, stopLights, watchLightsConf } from '@/src/lights/engine';
 import type { LightsMsg } from '@/src/lights/types';
+import type { DubCheckRequest } from '@/src/watch/dub-alerts';
+import { checkDubs, startDubAlerts } from '@/src/watch/dub-check';
 
 const TIMEOUT_MS = 20_000;
 const MAX_FORM = 32_768;
@@ -63,7 +65,14 @@ export default defineBackground(() => {
   void dropTokenWithoutConsent();
   browser.permissions.onRemoved.addListener(() => void dropTokenWithoutConsent());
   watchLightsConf();
+  startDubAlerts();
   browser.runtime.onMessage.addListener((raw, sender, sendResponse) => {
+    // «Перевірити зараз» — лише зі сторінок самого розширення (налаштування).
+    if ((raw as DubCheckRequest)?.type === 'hp-dubs') {
+      if (sender.id !== browser.runtime.id || !sender.url?.startsWith(browser.runtime.getURL('/'))) return;
+      checkDubs(true).then(sendResponse);
+      return true;
+    }
     const msg = raw as FetchRequest | HikkaRequest | LightsMsg;
     if (msg?.type !== 'hp-fetch' && msg?.type !== 'hp-hikka' && msg?.type !== 'hp-lights') return;
     // Приймаємо запити лише від нашого content script на hikka.io.

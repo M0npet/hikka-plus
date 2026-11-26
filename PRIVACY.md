@@ -31,6 +31,7 @@ Zenko, manga.in.ua, baka.in.ua, Honey Manga, UAManga, DGManga, Animesvit, Сма
 
 ### 3. Плеєр аніме
 - **Mikai (api.mikai.me) та AnimeON (animeon.club):** ідентифікатор тайтлу на цих сайтах (з посилань «Перегляд» на Hikka), щоб отримати список озвучок і серій.
+- **Нові серії в озвучках** (вкладка «Плеєр», можна вимкнути): для тайтлів, які ви дивились у плеєрі розширення (до 40), фон раз на 3 години надсилає Mikai їхні slug (ідентифікатори Hikka) — той самий запит, що й плеєр, — і порівнює, скільки серій у вашої команди озвучення. Що ви дивитесь і яку команду обрали, зберігається лише на вашому пристрої. Сповіщення браузера — лише якщо ви їх увімкнете (браузер спитає дозвіл).
 - **Ashdi, Moon (moonanime), Fenix:** плеєр вбудовано як iframe — так само, як на сайтах-джерелах. Плеєр завантажується з їхнього сервера, бачить вашу IP-адресу, може показувати свою рекламу й використовувати свої cookie. Сторінкою плеєра керує не розширення.
 - **AniSkip (api.aniskip.com):** MyAnimeList-ID тайтлу та номер серії, щоб дізнатися, де починається ендинг (з цього моменту серія вважається переглянутою). Жодних ваших ідентифікаторів не надсилається.
 - **Підсвітка навколо плеєра:** розширення зчитує зменшений кадр відео (32×18 пікселів) лише у своєму плеєрі й лише на вашому пристрої. Кадр нікуди не надсилається.
@@ -96,6 +97,7 @@ Zenko, manga.in.ua, baka.in.ua, Honey Manga, UAManga, DGManga, Animesvit, Smakol
 
 ### 3. Anime player
 - **Mikai (api.mikai.me) and AnimeON (animeon.club):** the title's ID on those sites (from Hikka's "watch" links), to get the list of dubs and episodes.
+- **New episodes in dubs** ("Плеєр" tab, can be turned off): for titles you have watched in the extension's player (up to 40), the background script sends Mikai their slugs (Hikka identifiers) once every 3 hours — the same request the player makes — to see whether your dub team has more episodes. What you watch and which team you chose stays on your device. Browser notifications only if you turn them on (the browser asks for permission).
 - **Ashdi, Moon (moonanime), Fenix:** the player is embedded as an iframe, as on the source sites. It is loaded from their servers, sees your IP address and may show its own ads and use its own cookies. The extension does not control the player page.
 - **AniSkip (api.aniskip.com):** the title's MyAnimeList ID and episode number, to find where the ending starts (the point at which the episode counts as watched). No identifiers of yours are sent.
 - **Glow around the player:** the extension reads a downscaled video frame (32×18 pixels) only in its own player and only on your device. The frame is never sent anywhere.

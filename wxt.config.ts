@@ -10,14 +10,16 @@ export default defineConfig({
     default_locale: 'uk',
     name: '__MSG_extName__',
     description: '__MSG_extDescription__',
-    permissions: ['storage'],
+    // alarms — фонова перевірка нових серій в озвучках (src/watch/dub-check.ts) раз на 3 год.
+    permissions: ['storage', 'alarms'],
     host_permissions: ['https://hikka.io/*', ...API_HOSTS.map((h) => `${h}/*`)],
     // Підсвітка пристроїв (src/lights/): адреса ТВ/моста/WLED у домашній мережі наперед невідома —
     // дозвіл на конкретний хост просимо кнопкою у вкладці «Плеєр»; Razer — localhost.
     // MV2 (Firefox) не знає optional_host_permissions — там хости йдуть в optional_permissions.
+    // notifications — сповіщення про нові серії в озвучках, лише якщо користувач увімкне їх у вкладці «Плеєр».
     ...(manifestVersion === 2
-      ? { optional_permissions: ['http://*/*', 'https://*/*'] }
-      : { optional_host_permissions: ['http://*/*', 'https://*/*'] }),
+      ? { optional_permissions: ['http://*/*', 'https://*/*', 'notifications'] }
+      : { optional_permissions: ['notifications'], optional_host_permissions: ['http://*/*', 'https://*/*'] }),
     // Скрипт-міст у контексті сторінки (entrypoints/hikka-bridge.ts) — лише для hikka.io.
     web_accessible_resources: [{ resources: ['hikka-bridge.js'], matches: ['https://hikka.io/*'] }],
     ...(browser === 'firefox' && {
