@@ -47,7 +47,6 @@ export const IconExpand = base([
 export const IconSort = base(['m3 16 4 4 4-4', 'M7 20V4', 'm21 8-4-4-4 4', 'M17 4v16']);
 export const IconSearch = base(['m21 21-4.34-4.34', 'M17 11a6 6 0 1 1-12 0 6 6 0 0 1 12 0']);
 export const IconExternal = base(['M15 3h6v6', 'M10 14 21 3', 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6']);
-export const IconCheck = base(['M20 6 9 17l-5-5']);
 export const IconLink = base([
   'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71',
   'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71',

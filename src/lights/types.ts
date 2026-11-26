@@ -21,7 +21,7 @@ export type PhilipsConf = {
 };
 export type WledConf = { host: string; on: boolean };
 export type HueConf = { host: string; user: string; on: boolean };
-export type RazerConf = { on: boolean };
+type RazerConf = { on: boolean };
 
 export type LightsConf = {
   philips?: PhilipsConf;

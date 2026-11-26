@@ -3,7 +3,7 @@ import { rethrowRateLimit } from '../core/net';
 import type { RemoteTitle } from './types';
 import { kovalenko } from './kovalenko';
 /** Нормалізація назви для порівняння: нижній регістр, лише літери й цифри. */
-export function normalize(s: string): string {
+function normalize(s: string): string {
   return s
     .normalize('NFKC')
     .toLocaleLowerCase('uk-UA')
@@ -17,7 +17,7 @@ function words(s: string): Set<string> {
 }
 
 /** Схожість двох назв 0..1 (1 — збіг після нормалізації). */
-export function similarity(a: string, b: string): number {
+function similarity(a: string, b: string): number {
   const na = normalize(a);
   const nb = normalize(b);
   if (!na || !nb) return 0;
@@ -39,8 +39,8 @@ export function bestSimilarity(a: string[], b: string[]): number {
 }
 
 /** Поріг автопідбору й нижня межа для підказки «Схоже». */
-export const MATCH_MIN = 0.8;
-export const NEAR_MIN = 0.45;
+const MATCH_MIN = 0.8;
+const NEAR_MIN = 0.45;
 /** Збіг «точно»: для постера з джерела (src/cards/covers.ts) — назва майже така сама. */
 export const EXACT_MIN = 0.95;
 

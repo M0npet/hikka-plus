@@ -35,7 +35,7 @@ type NotesApi = {
 /** Дозвіл notifications необов'язковий — API з'являється лише після нього. */
 const notesApi = () => (browser as unknown as { notifications?: NotesApi }).notifications;
 
-export async function updateDubBadge() {
+async function updateDubBadge() {
   const api = actionApi();
   if (!api) return;
   const p = await getDubPrefs();
@@ -56,7 +56,7 @@ function onNoteClick(id: string) {
 }
 
 /** Підписатися на клік по сповіщенню, коли дозвіл уже є (і після того, як його дали). */
-export function hookDubNotes() {
+function hookDubNotes() {
   const api = notesApi();
   if (api && !api.onClicked.hasListener(onNoteClick)) api.onClicked.addListener(onNoteClick);
 }

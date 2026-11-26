@@ -7,8 +7,8 @@
  */
 import { getJson } from '../core/net';
 
-export const FALLBACK_MAX_SEC = 150;
-export const FALLBACK_SHARE = 0.1;
+const FALLBACK_MAX_SEC = 150;
+const FALLBACK_SHARE = 0.1;
 
 /** Скільки секунд до кінця зараховувати серію без міток ED. */
 export function fallbackSec(duration: number): number {

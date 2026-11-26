@@ -83,7 +83,7 @@ function node(n: TNode): string {
   }
 }
 
-export function tiptapToHtml(raw: unknown): string {
+function tiptapToHtml(raw: unknown): string {
   let doc: unknown = raw;
   if (typeof raw === 'string') {
     try {

@@ -3,7 +3,7 @@ import { createElement, type ReactNode } from 'react';
 import { ThemeRoot } from '../ui/kit';
 import { createRoot, type Root } from 'react-dom/client';
 
-export interface InlineFeature {
+interface InlineFeature {
   /** Ім'я тегу хоста Shadow DOM — завжди з префіксом hikka-plus-, щоб не зіткнутися з іншими розширеннями. */
   name: `hikka-plus-${string}`;
   shouldMount: () => boolean;

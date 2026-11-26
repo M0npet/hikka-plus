@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { decodeRead, encodeRead } from '../core/progress-sync';
 import { syncOn } from '../core/sync-flag';
 
-export type SavedEpisode = { pos: number; w?: 1; at: number };
+type SavedEpisode = { pos: number; w?: 1; at: number };
 
 export type WatchSaved = {
   eps: Record<string, SavedEpisode>;
@@ -59,9 +59,9 @@ export type WatchSize = 'grid' | 'window' | 'screen';
 export const DEFAULT_AMBIENT_LEVEL = 20;
 export const DEFAULT_AMBIENT_BRIGHT = 100;
 export const DEFAULT_WIDE_ANIM = 320;
-export const DEFAULT_WATCH_PREFS: WatchPrefs = { enabled: true, autoNext: true, hikkaSync: true };
+const DEFAULT_WATCH_PREFS: WatchPrefs = { enabled: true, autoNext: true, hikkaSync: true };
 
-export const watchPrefsItem = storage.defineItem<WatchPrefs>('local:hp:watchPrefs', { fallback: DEFAULT_WATCH_PREFS });
+const watchPrefsItem = storage.defineItem<WatchPrefs>('local:hp:watchPrefs', { fallback: DEFAULT_WATCH_PREFS });
 
 const key = (slug: string) => `local:hp:watch:${slug}` as const;
 

@@ -1,6 +1,6 @@
 /*
  * Блок «Перегляд» на сторінці аніме (між «Опис» і «Головні персонажі»).
- * Команда → плеєр → iframe самого плеєра; кнопка Dawn веде на Mikai (вбудовування немає);
+ * Команда → плеєр → iframe самого плеєра; озвучка, серія і плеєр — на панелі поверх відео (Dawn прибрано, MK 15:28).
  * «Ширше» — увесь блок на ширину сітки сторінки (wide-layout.ts); блок не переїжджає в DOM, iframe не перезавантажується.
  */
 import { browser } from '#imports';
@@ -25,7 +25,7 @@ const TOOLS_IDLE = 2500;
 
 export type HikkaLine = { kind: 'count'; n: number } | { kind: 'connect'; onClick: () => void } | { kind: 'error'; message: string } | null;
 
-export type WatchBlockProps = {
+type WatchBlockProps = {
   status: 'loading' | 'ready' | 'not-found';
   error?: string;
   teams: WatchTeam[];
@@ -1299,7 +1299,7 @@ function LiveMarksBar(p: { store: PosStore; ep: number; info: MarksInfo; onSeek:
 }
 
 /** Де OP і ED у цій серії: смужка на всю тривалість, клік — перемотка; під нею — час і звідки мітка. Показуємо, лише коли мітки є. */
-export function MarksBar({ info, t, d, onSeek }: { info: MarksInfo | null; t: number; d: number; onSeek: (sec: number) => void }) {
+function MarksBar({ info, t, d, onSeek }: { info: MarksInfo | null; t: number; d: number; onSeek: (sec: number) => void }) {
   const m = info?.m ?? {};
   const pct = (x: number) => `${Math.max(0, Math.min(100, (x / d) * 100))}%`;
   const segs = (['op', 'ed'] as const).filter((k) => m[k]);

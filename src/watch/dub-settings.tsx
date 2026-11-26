@@ -22,7 +22,7 @@ import {
   type DubMap,
 } from './dub-alerts';
 
-export function useDubs(): DubMap {
+function useDubs(): DubMap {
   const [v, setV] = useState<DubMap>({});
   useEffect(() => {
     void dubsItem.getValue().then(setV);
@@ -31,7 +31,7 @@ export function useDubs(): DubMap {
   return v;
 }
 
-export function useDubPrefs(): [DubPrefs, (p: Partial<DubPrefs>) => void] {
+function useDubPrefs(): [DubPrefs, (p: Partial<DubPrefs>) => void] {
   const [v, setV] = useState<DubPrefs>(DEFAULT_DUB_PREFS);
   useEffect(() => {
     void getDubPrefs().then(setV);
@@ -72,7 +72,7 @@ function ago(ms: number) {
 }
 
 /** Список тайтлів: спершу з новими серіями. onlyNew — лише вони (верх вікна по іконці). */
-export function DubList({ dubs, onlyNew }: { dubs: DubMap; onlyNew?: boolean }) {
+function DubList({ dubs, onlyNew }: { dubs: DubMap; onlyNew?: boolean }) {
   const rows = Object.entries(dubs)
     .filter(([, t]) => !onlyNew || dubNew(t) > 0)
     .sort(([, a], [, b]) => dubNew(b) - dubNew(a) || b.nu - a.nu);

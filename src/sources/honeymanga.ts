@@ -107,7 +107,7 @@ function blocks(list: BBlock[] = []): string {
     .join('');
 }
 
-export function blockNoteToHtml(raw: unknown): string {
+function blockNoteToHtml(raw: unknown): string {
   return Array.isArray(raw) ? blocks(raw as BBlock[]) : '';
 }
 

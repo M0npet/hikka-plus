@@ -7,7 +7,7 @@
 export type PlayerKind = 'ashdi' | 'moon' | 'fenix' | 'custom';
 
 /** Сайт, звідки взяли команду й посилання на плеєр. */
-export type WatchSite = 'mikai' | 'animeon';
+type WatchSite = 'mikai' | 'animeon';
 
 export type WatchPlayer = {
   /** Унікальний у межах команди: `${site}:${kind}`. */
@@ -29,8 +29,6 @@ export type WatchTeam = {
   avatar?: string;
   sub: boolean;
   players: WatchPlayer[];
-  /** Глибоке посилання на Dawn у Mikai (вбудовування в Dawn немає). */
-  dawn?: (ep: number) => string;
 };
 
 /** Стан серії: pos — частка переглянутого (0..1), watched — зараховано (дійшли до ендингу). */
@@ -49,7 +47,7 @@ export const SITE_NAMES: Record<WatchSite, string> = { mikai: 'Mikai', animeon: 
 export const teamEpisodes = (t: WatchTeam) => Math.max(0, ...t.players.map((p) => p.episodes.length));
 
 /** Хости iframe, які вбудовуємо (лише https). Решту — не показуємо. */
-export const FRAME_HOSTS: Record<string, Exclude<PlayerKind, 'custom'>> = {
+const FRAME_HOSTS: Record<string, Exclude<PlayerKind, 'custom'>> = {
   'ashdi.vip': 'ashdi',
   'moonanime.art': 'moon',
   'moonanime.net': 'moon',

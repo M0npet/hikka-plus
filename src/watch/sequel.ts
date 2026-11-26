@@ -30,7 +30,7 @@ type Franchise = {
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 
 /** Продовження тайтлу з відповіді franchise (лише аніме → аніме). */
-export function sequelOf(slug: string, f: Franchise): Sequel | null {
+function sequelOf(slug: string, f: Franchise): Sequel | null {
   const rel = (f.relations ?? []).find(
     (r) => r.relation_type === 'sequel' && r.slug === slug && r.content_type === 'anime' && r.related_content_type === 'anime',
   );

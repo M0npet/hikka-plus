@@ -13,7 +13,7 @@ import { getSource } from '../sources/registry';
 import { renumberByVolume, type Chapter } from '../sources/types';
 
 /** `<manga|novel>:<slug>` → що вийшло. */
-export type Released = {
+type Released = {
   /** Джерело, id тайтлу на ньому, команда ('' — усі). */
   s: string;
   id: string;
@@ -34,10 +34,10 @@ export const releasedItem = storage.defineItem<ReleasedMap>('local:hp:released',
 /** Щоб кілька вкладок hikka.io не перевіряли одне й те саме одночасно. */
 const lockItem = storage.defineItem<number>('local:hp:releasedLock', { fallback: 0 });
 
-export const bookKey = (kind: ReadKind, slug: string) => `${kind}:${slug}`;
+const bookKey = (kind: ReadKind, slug: string) => `${kind}:${slug}`;
 
 /** Найбільший номер розділу й дата найновішого серед розділів команди. */
-export function summarize(list: Chapter[], team: string): { n: number; d?: number } {
+function summarize(list: Chapter[], team: string): { n: number; d?: number } {
   let n = 0;
   let d = 0;
   for (const c of list) {

@@ -13,7 +13,7 @@ let pending: ReaderRequest | null = null; // запит з адреси, що ч
 const base = () => location.pathname + location.search;
 const hashOf = (r: ReaderRequest) => PREFIX + encodeURIComponent(`${r.sourceId}:${r.chapterId}`);
 
-export function parseHash(hash = location.hash): ReaderRequest | null {
+function parseHash(hash = location.hash): ReaderRequest | null {
   if (!hash.startsWith(PREFIX)) return null;
   const v = decodeURIComponent(hash.slice(PREFIX.length));
   const i = v.indexOf(':');

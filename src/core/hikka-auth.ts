@@ -19,12 +19,12 @@ export const HIKKA_CLIENT = {
 };
 
 export const AUTH_PATH = '/hikka-plus-auth';
-export const SCOPES = ['read:readlist', 'update:readlist'];
+const SCOPES = ['read:readlist', 'update:readlist'];
 /**
  * Дозволи для відміток серій. Просимо окремо (кнопкою в блоці «Перегляд»), а не при звичайному вході:
  * якщо в клієнті Hikka їх ще не ввімкнули, звичайний вхід не має зламатися.
  */
-export const WATCH_SCOPES = ['read:watchlist', 'update:watchlist'];
+const WATCH_SCOPES = ['read:watchlist', 'update:watchlist'];
 
 export const hikkaConfigured = () => !!HIKKA_CLIENT.reference;
 
@@ -53,7 +53,7 @@ export const authErrorItem = storage.defineItem<string | null>('local:hp:hikkaEr
 
 // ---------- Повідомлення content → background ----------
 
-export type ReadStatus = 'completed' | 'reading' | 'on_hold' | 'dropped' | 'planned';
+type ReadStatus = 'completed' | 'reading' | 'on_hold' | 'dropped' | 'planned';
 
 export interface HikkaRead {
   status: ReadStatus;
@@ -66,7 +66,7 @@ export interface HikkaRead {
   end_date: number | null;
 }
 
-export type WatchStatus = 'completed' | 'watching' | 'on_hold' | 'dropped' | 'planned';
+type WatchStatus = 'completed' | 'watching' | 'on_hold' | 'dropped' | 'planned';
 
 export interface HikkaWatch {
   status: WatchStatus;
@@ -106,9 +106,9 @@ async function call<T>(msg: HikkaRequest): Promise<HikkaResponse<T>> {
  * — НЕобов'язкова згода в data_collection_permissions. Просимо при «Увійти» (лише зі сторінки розширення — у content script
  * permissions API немає); без згоди не входимо й нічого в Hikka не шлемо. У Chrome такої згоди немає — завжди так.
  */
-export const HIKKA_DATA = ['authenticationInfo', 'websiteActivity'];
+const HIKKA_DATA = ['authenticationInfo', 'websiteActivity'];
 type Perms = Parameters<typeof browser.permissions.request>[0];
-export const hikkaPerms = () => ({ data_collection: HIKKA_DATA }) as Perms;
+const hikkaPerms = () => ({ data_collection: HIKKA_DATA }) as Perms;
 
 export async function hikkaDataOk(): Promise<boolean> {
   if (!import.meta.env.FIREFOX) return true;

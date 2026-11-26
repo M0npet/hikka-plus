@@ -20,7 +20,7 @@ export interface LinkResult {
   search?: boolean;
 }
 
-export interface LinkSource {
+interface LinkSource {
   id: string;
   name: string;
   kinds: ReadKind[];

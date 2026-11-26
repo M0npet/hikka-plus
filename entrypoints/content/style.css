@@ -958,9 +958,6 @@ select {
   color: var(--hp-primary-fg);
   font-variant-numeric: tabular-nums;
 }
-.hp-ch__done {
-  color: var(--hp-primary-fg);
-}
 /* Кружечок стану розділу. */
 .hp-status {
   display: inline-flex;
@@ -1521,19 +1518,6 @@ select {
     transform: rotate(360deg);
   }
 }
-.hp-toast {
-  position: absolute;
-  left: 50%;
-  top: 72px;
-  transform: translateX(-50%);
-  z-index: 20;
-  padding: 8px 12px;
-  border: 1px solid var(--hp-border);
-  border-radius: var(--hp-r-lg);
-  background: var(--hp-popover);
-  font-size: 14px;
-}
-
 /* Прогрес поточного розділу — тонка смужка зверху. */
 .hp-chbar {
   position: absolute;
@@ -1954,12 +1938,6 @@ select {
 }
 .hp-watch__view:fullscreen > .hp-watch__tools--left {
   left: 24px;
-}
-.hp-watch__tooltext {
-  padding-inline: 2px;
-  font: var(--hp-ob-font);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
 }
 /* «Серія N / 64» — кнопка меню серій (MK 2026-11-26 13:39: окреме меню в плеєрі, посторінково). */
 .hp-watch__tools .hp-watch__tool--ep {

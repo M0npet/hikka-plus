@@ -69,7 +69,7 @@ const SAVE_EVERY_MS = 5000;
 export type MarksInfo = { ep: number; d: number; m: Marks };
 type SegPair = { op?: Seg; ed?: Seg };
 
-export function WatchRoot({ slug }: { slug: string }) {
+function WatchRoot({ slug }: { slug: string }) {
   const [prefs, setPrefs] = useWatchPrefs();
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [saved, setSaved] = useState<WatchSaved | null>(null);

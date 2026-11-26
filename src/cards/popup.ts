@@ -26,7 +26,7 @@ import type { Schedule } from './schedule';
 export const POP_TAG = 'hikka-plus-pop';
 
 /** Те, що знає cards.ts про тайтл зі знімка Hikka (див. CardRow): released/total, watched — переглянуто/прочитано в списку (-1 — невідомо). */
-export type PopInfo = { released: number; total: number; status: string; watched: number; ws: string };
+type PopInfo = { released: number; total: number; status: string; watched: number; ws: string };
 
 export type PopState = {
   prefs: CardsPrefs;
@@ -107,7 +107,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 }
 
 /** «12:34» / «1:02:03». */
-export function clock(sec: number): string {
+function clock(sec: number): string {
   const s = Math.max(0, Math.floor(sec));
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
@@ -150,7 +150,7 @@ function findTarget(): Target | null {
   return null;
 }
 
-export type Line = {
+type Line = {
   progress?: { done: number; out: number; total: number; verb: string };
   chips: { cls: string; text: string; icon?: string[]; title?: string }[];
   go?: { verb: string; text: string; sub?: string; path: string; scroll?: boolean };

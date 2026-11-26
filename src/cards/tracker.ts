@@ -16,7 +16,7 @@ import { createSpot, type PopState, type Spot } from './popup';
 export const TRACKER_TAG = 'hikka-plus-tracker';
 
 /** Вибраний у трекері тайтл і flex-col, куди ставити наш блок. */
-export function findTracker(root: ParentNode = document): Spot | null {
+function findTracker(root: ParentNode = document): Spot | null {
   const box = root.querySelector<HTMLElement>('#tracker');
   if (!box) return null;
   for (const a of box.querySelectorAll<HTMLAnchorElement>('a[href]')) {

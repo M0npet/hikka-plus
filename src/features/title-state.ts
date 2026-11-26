@@ -39,7 +39,7 @@ if (typeof document !== 'undefined')
  * Спільний стан поточного тайтлу: його читають кнопка «Читати»,
  * блок «Розділи» і читалка (усі живуть в одному content script).
  */
-export interface SourceState {
+interface SourceState {
   status: 'searching' | 'loading' | 'ready' | 'not-found' | 'error';
   remote?: RemoteTitle;
   manual?: boolean;
@@ -150,10 +150,6 @@ export function contentFormat(s: TitleState): ContentFormat {
   if (/manhwa|manhua/.test(t)) return 'webtoon';
   if (t) return 'manga';
   return activeState(s)?.remote?.format ?? 'manga';
-}
-
-export function chapterProgress(p: Progress, c: Chapter) {
-  return p.chapters[chapterKey(c.number)];
 }
 
 /** Прогрес тайтлу: скільки унікальних номерів розділів прочитано. */

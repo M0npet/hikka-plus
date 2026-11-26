@@ -256,7 +256,7 @@ const numOf = (c: Chapter) => Number.parseFloat(c.number.replace(',', '.'));
  * прочитаного є на іншому джерелі — підказка «Розділ N є на …» з переходом (рішення MK 2026-11-23).
  */
 type Elsewhere = { src: ReadSource; left: number };
-export function continueElsewhere(s: TitleState): { no: number; first: Elsewhere; items: Elsewhere[] } | null {
+function continueElsewhere(s: TitleState): { no: number; first: Elsewhere; items: Elsewhere[] } | null {
   let max = 0;
   for (const [k, c] of Object.entries(s.progress.chapters)) {
     const n = Number.parseFloat(k);

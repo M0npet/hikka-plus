@@ -136,7 +136,7 @@ const CSS = `
 type Info = { released: number; total: number; status: string; watched: number; ws: string };
 
 /** «1 нова», «2 нові», «5 нових». */
-export function newText(n: number): string {
+function newText(n: number): string {
   const d = n % 10;
   const dd = n % 100;
   if (d === 1 && dd !== 11) return `${n} нова`;
@@ -145,7 +145,7 @@ export function newText(n: number): string {
 }
 
 /** «1 новий розділ», «2 нові розділи», «5 нових розділів». */
-export function newChaptersText(n: number): string {
+function newChaptersText(n: number): string {
   const d = n % 10;
   const dd = n % 100;
   if (d === 1 && dd !== 11) return `${n} новий розділ`;
@@ -160,7 +160,7 @@ export function inText(sec: number): string {
   return `через ${Math.max(1, Math.round(sec / 60))} хв`;
 }
 
-export function badgesFor(info: Info | undefined, next: [number, number] | undefined, prefs: CardsPrefs, now = Date.now() / 1000): { cls: string; text: string }[] {
+function badgesFor(info: Info | undefined, next: [number, number] | undefined, prefs: CardsPrefs, now = Date.now() / 1000): { cls: string; text: string }[] {
   const out: { cls: string; text: string }[] = [];
   if (info && info.ws === 'watching' && info.watched >= 0 && info.released > info.watched)
     out.push({ cls: 'new', text: `▶ ${newText(info.released - info.watched)}` });
@@ -170,7 +170,7 @@ export function badgesFor(info: Info | undefined, next: [number, number] | undef
 }
 
 /** Плашка манґи/ранобе: Hikka знає прочитане й статус, розширення — скільки вийшло на джерелі. */
-export function bookBadgesFor(info: Info | undefined, released: number | undefined): { cls: string; text: string }[] {
+function bookBadgesFor(info: Info | undefined, released: number | undefined): { cls: string; text: string }[] {
   if (!info || info.ws !== 'reading' || info.watched < 0 || !released || released <= info.watched) return [];
   return [{ cls: 'new', text: `▶ ${newChaptersText(released - info.watched)}` }];
 }

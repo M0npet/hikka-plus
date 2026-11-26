@@ -61,7 +61,7 @@ export async function retryHikkaChapters(kind: ReadKind, slug: string) {
 
 // ---------- Вхід ----------
 
-export interface HikkaAuthState {
+interface HikkaAuthState {
   configured: boolean;
   connected: boolean;
   autoSync: boolean;
@@ -114,7 +114,7 @@ export async function finishHikkaLogin() {
 
 // ---------- Стан у списку Hikka для поточного тайтлу ----------
 
-export interface RemoteReadState {
+interface RemoteReadState {
   kind: ReadKind;
   slug: string;
   status: 'loading' | 'none' | 'ok' | 'error';

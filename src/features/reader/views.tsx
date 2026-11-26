@@ -57,7 +57,7 @@ export function tapZone(scheme: TapScheme, x: number, y: number, rtl = false): -
  * Спільні спостерігачі для картинок стрічки: «близько» (вантажимо заздалегідь, ~3 екрани вниз)
  * і «далеко» (вивантажуємо, щоб довга стрічка не їла пам'ять; висота лишається — без стрибків).
  */
-export type Nearness = { observe: (el: Element, cb: (near: boolean, far: boolean) => void) => () => void };
+type Nearness = { observe: (el: Element, cb: (near: boolean, far: boolean) => void) => () => void };
 
 export function useNearness(root: HTMLElement | null): Nearness | null {
   return useMemo(() => {

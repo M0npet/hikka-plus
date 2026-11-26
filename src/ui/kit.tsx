@@ -50,8 +50,8 @@ export function ThemeRoot({ children }: { children: ReactNode }) {
 
 /* ---------- Button ---------- */
 
-export type BtnVariant = 'default' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'destructive-solid';
-export type BtnSize = 'lg' | 'md' | 'sm' | 'xs';
+type BtnVariant = 'default' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'destructive-solid';
+type BtnSize = 'lg' | 'md' | 'sm' | 'xs';
 
 export const btn = (variant: BtnVariant = 'secondary', size: BtnSize = 'md', icon = false, extra?: string) =>
   cx('hp-btn', `hp-btn--${variant}`, `hp-btn--${size}`, icon && 'hp-btn--icon', extra);
@@ -128,7 +128,7 @@ export function Tabs<T extends string | boolean>({
 
 /* ---------- ChipTabs: плашки-фільтри з числом ---------- */
 
-export type Chip = { value: string; label: string; count?: ReactNode; off?: boolean; title?: string };
+type Chip = { value: string; label: string; count?: ReactNode; off?: boolean; title?: string };
 
 export function ChipTabs({
   options,
@@ -347,7 +347,7 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 
 /* ---------- Select (свій popover замість системного списку) ---------- */
 
-export type Option<T extends string> = { value: T; label: string; hint?: string };
+type Option<T extends string> = { value: T; label: string; hint?: string };
 
 export function Select<T extends string>({
   value,
@@ -490,7 +490,7 @@ export function Select<T extends string>({
 
 /* ---------- ChipMenu (плашка зі списком, напр. «Ще 6») ---------- */
 
-export type MenuItem = { value: string; label: string; hint?: string; title?: string };
+type MenuItem = { value: string; label: string; hint?: string; title?: string };
 
 export function ChipMenu({
   label,

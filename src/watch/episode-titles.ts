@@ -9,7 +9,7 @@ import { getJson } from '../core/net';
 import { pickTitle, type TitleLang } from '../core/title-lang';
 
 /** [укр, англ, яп] — порожні рядки, якщо назви немає. */
-export type EpTitle = [string, string, string];
+type EpTitle = [string, string, string];
 export type EpTitles = Record<number, EpTitle>;
 type Saved = Record<string, { at: number; t: EpTitles }>;
 

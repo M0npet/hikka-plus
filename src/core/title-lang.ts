@@ -14,7 +14,7 @@ const LANGS: TitleLang[] = ['title_ua', 'title_en', 'title_ja', 'title_original'
 export const titleLangItem = storage.defineItem<TitleLang>('local:hp:titleLang', { fallback: 'title_ua' });
 
 /** Назви тайтлу/серії. Для аніме «оригінальна» — це title_ja (як getOriginalTitle у Hikka). */
-export type Titles = { ua?: string | null; en?: string | null; ja?: string | null };
+type Titles = { ua?: string | null; en?: string | null; ja?: string | null };
 
 /** Назва мовою користувача; немає — у порядку Hikka: укр → англ → оригінальна (яп). */
 export function pickTitle(t: Titles, lang: TitleLang): string {

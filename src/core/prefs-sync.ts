@@ -21,7 +21,7 @@ const BIND_PREFIX = 'hp:b:';
 const MAX_BINDINGS = 80; // разом із прогресом (400) — у межах 512 ключів
 const DEBOUNCE_MS = 3_000;
 
-export const bindSyncKey = (kind: ReadKind, slug: string) =>
+const bindSyncKey = (kind: ReadKind, slug: string) =>
   `sync:${BIND_PREFIX}${kind === 'manga' ? 'm' : 'n'}:${slug}` as const;
 
 export async function pullBind(kind: ReadKind, slug: string): Promise<BindRecord | null> {
@@ -78,7 +78,7 @@ async function pruneBindings() {
 
 const SETTINGS_KEY = 'sync:hp:settings' as const;
 
-export interface SettingsRecord<T> {
+interface SettingsRecord<T> {
   s: T;
   u: number;
 }

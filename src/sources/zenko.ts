@@ -44,7 +44,7 @@ interface ZChapterFull extends ZChapter {
   pages?: { id: number; content: string; order?: number }[];
 }
 
-export function imageUrl(uuid: string, q: ImageQualityHint, width?: number): string {
+function imageUrl(uuid: string, q: ImageQualityHint, width?: number): string {
   if (q === 'original') return `${STORAGE}/${uuid}`;
   const presets = { high: [1600, 90], medium: [1200, 75], low: [800, 60] } as const;
   const [w, quality] = presets[q];
@@ -77,7 +77,7 @@ function toRemote(t: ZTitle): RemoteTitle {
   };
 }
 
-export function parseChapterName(raw: string): Pick<Chapter, 'volume' | 'number' | 'name'> {
+function parseChapterName(raw: string): Pick<Chapter, 'volume' | 'number' | 'name'> {
   const [vol, number, ...rest] = raw.split(NAME_SEP);
   if (number !== undefined) {
     const name = rest.join(' ').trim();

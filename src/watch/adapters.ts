@@ -15,7 +15,7 @@
 import { AMBIENT_MSG, type PlayerKind } from './types';
 import { segsFromPlayer, type Seg } from './skip-marks';
 
-export type PlayerEvents = {
+type PlayerEvents = {
   onTime: (time: number, duration: number) => void;
   onEnded: () => void;
   /** Мітки OP/ED самого плеєра (сек), якщо плеєр їх дає. */
@@ -24,7 +24,7 @@ export type PlayerEvents = {
   onEpisode?: (n: number) => void;
 };
 
-export type PlayerControl = { seek: (sec: number) => void; detach: () => void };
+type PlayerControl = { seek: (sec: number) => void; detach: () => void };
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() && Number.isFinite(+v) ? +v : NaN);
 

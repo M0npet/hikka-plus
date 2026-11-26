@@ -29,7 +29,7 @@
  */
 import { AMBIENT_MSG, AMBIENT_REQ } from '@/src/watch/types';
 
-export const FRAME_NAME = 'hikka-plus';
+const FRAME_NAME = 'hikka-plus';
 const PARENT = 'https://hikka.io';
 const W = 32;
 const H = 18;

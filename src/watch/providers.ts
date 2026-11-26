@@ -20,7 +20,7 @@ import { teamKey } from './team-key';
 export { teamKey };
 import { safeFrameSrc, type PlayerKind, type WatchPlayer, type WatchTeam } from './types';
 
-export type WatchLinks = { mikai?: { id: number; slug: string }; animeon?: number; anitube?: string };
+type WatchLinks = { mikai?: { id: number; slug: string }; animeon?: number; anitube?: string };
 
 /** id тайтлів на сайтах із посилань Hikka. */
 export function parseWatchLinks(external: { url: string; type: string }[]): WatchLinks {
@@ -92,7 +92,7 @@ function parseLicense(l: MikaiPlayer['license']): UaLicense | undefined {
   };
 }
 
-export type MikaiResult = { teams: WatchTeam[]; license?: UaLicense };
+type MikaiResult = { teams: WatchTeam[]; license?: UaLicense };
 
 const PUB_KIND: Record<string, Exclude<PlayerKind, 'custom'>> = { moon: 'moon', ashdi: 'ashdi', fenix: 'fenix' };
 
@@ -109,8 +109,6 @@ async function mikaiPublic(ref: string): Promise<MikaiResult | null> {
   const license = parseLicense(r?.license);
   // Ліцензований тайтл: плеєра немає — показуємо лише блок license (де дивитися легально), як просить Mikai.
   if (!r || r.licensed) return { teams: [], license };
-  const mid = r.anime?.ids?.mikai;
-  const mslug = r.anime?.ids?.slug;
   const out: WatchTeam[] = [];
   for (const rel of r.releases ?? []) {
     const teams = (rel.teams ?? []).filter((t) => t?.name);
@@ -145,15 +143,12 @@ async function mikaiPublic(ref: string): Promise<MikaiResult | null> {
     if (!players.length) continue;
     const name = teams.map((t) => t.name.trim()).join(' & ');
     const avatar = teams.find((t) => t.avatar?.small?.webp)?.avatar?.small?.webp;
-    const teamId = /^t_(\d+)/.exec(rel.id ?? '')?.[1] ?? String(teams[0]!.id);
-    const v = sub ? 'sub' : 'dub';
     out.push({
       id: teamKey(name, sub),
       name,
       sub,
       avatar: avatar && /^https:\/\/images\.mikai\.me\//.test(avatar) ? avatar : undefined,
       players,
-      dawn: mid && mslug ? (ep) => `https://mikai.me/anime/${mid}-${mslug}?ep=${ep}&team=${teamId}&v=${v}&p=dawn` : undefined,
     });
   }
   return { teams: out, license };
@@ -173,10 +168,10 @@ export async function mikaiTeamsFor(hikkaSlug: string, link?: { id: number; slug
   } catch {
     /* публічний API не відповів — пробуємо старий */
   }
-  return { teams: link ? await mikaiTeams(link.id, link.slug) : [] };
+  return { teams: link ? await mikaiTeams(link.id) : [] };
 }
 
-export async function mikaiTeams(id: number, slug: string): Promise<WatchTeam[]> {
+async function mikaiTeams(id: number): Promise<WatchTeam[]> {
   const res = await getJson<{ ok: boolean; result: MikaiAnime }>(`https://api.mikai.me/v1/anime/${id}`);
   const a = res.result;
   const out: WatchTeam[] = [];
@@ -204,15 +199,12 @@ export async function mikaiTeams(id: number, slug: string): Promise<WatchTeam[]>
     }
     if (!players.length) continue;
     const uid = p.team.teams?.find((t) => t.avatarUid)?.avatarUid;
-    const teamId = p.team.id;
-    const v = p.isSubs ? 'sub' : 'dub';
     out.push({
       id: teamKey(p.team.name, p.isSubs),
       name: p.team.name.trim(),
       sub: p.isSubs,
       avatar: uid && /^[\w-]+$/.test(uid) ? `https://images.mikai.me/avatar/small/${uid}.webp` : undefined,
       players,
-      dawn: (ep) => `https://mikai.me/anime/${id}-${a.slug || slug}?ep=${ep}&team=${teamId}&v=${v}&p=dawn`,
     });
   }
   return out;

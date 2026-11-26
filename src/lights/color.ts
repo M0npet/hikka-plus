@@ -5,7 +5,7 @@ import type { Frame, RGB } from './types';
 const DEPTH = 3;
 
 /** Середній колір прямокутника [x0,x1)×[y0,y1). */
-export function avg(f: Frame, x0: number, y0: number, x1: number, y1: number): RGB {
+function avg(f: Frame, x0: number, y0: number, x1: number, y1: number): RGB {
   let r = 0,
     g = 0,
     b = 0,

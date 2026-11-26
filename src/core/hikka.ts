@@ -1,7 +1,7 @@
 import { getJson } from './net';
 import type { ReadKind } from './page';
 
-export interface HikkaExternal {
+interface HikkaExternal {
   text: string;
   type: string; // 'general' | 'read' | ...
   url: string;

@@ -53,7 +53,7 @@ export type CoverMap = Record<string, Cover>;
 
 export const coversItem = storage.defineItem<CoverMap>('local:hp:covers', { fallback: {} });
 /** Порядок = пріоритет. */
-export const COVER_SOURCES: Record<ReadKind, readonly string[]> = {
+const COVER_SOURCES: Record<ReadKind, readonly string[]> = {
   manga: ['zenko', 'honeymanga', 'dgmanga', 'mangainua'],
   // Ранобе (2026-11-25): на Баці частина обкладинок українські (решта — оригінал), у Honey/DGManga — переважно українські.
   novel: ['baka', 'honeymanga', 'dgmanga'],
@@ -64,7 +64,7 @@ const TTL_MS = 14 * 86400_000;
 const MAX = 1000;
 
 export type CoverKind = ReadKind | 'anime';
-export const coverKey = (kind: CoverKind, slug: string) => `${kind}:${slug}`;
+const coverKey = (kind: CoverKind, slug: string) => `${kind}:${slug}`;
 
 let queue: Promise<unknown> = Promise.resolve();
 function patch(fn: (m: CoverMap) => CoverMap) {
@@ -229,7 +229,7 @@ async function flushAnime() {
 }
 
 /** Оригінальний постер Hikka чи український (кнопка «UA» на постері, src/cards/cards.ts). */
-export function setCoverOriginal(kind: CoverKind, slug: string, original: boolean) {
+function setCoverOriginal(kind: CoverKind, slug: string, original: boolean) {
   const key = coverKey(kind, slug);
   return patch((m) => {
     const c = m[key];
@@ -239,7 +239,7 @@ export function setCoverOriginal(kind: CoverKind, slug: string, original: boolea
   });
 }
 
-export const COVER_SOURCE_NAMES: Record<string, string> = {
+const COVER_SOURCE_NAMES: Record<string, string> = {
   mikai: 'Mikai',
   baka: 'Бака',
   zenko: 'Zenko',

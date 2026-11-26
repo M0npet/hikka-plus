@@ -11,7 +11,7 @@
 import { storage } from '#imports';
 import { teamKey } from './team-key';
 
-export type DubTrack = {
+type DubTrack = {
   /** Назва тайтлу (українська, інакше англійська/японська з Hikka). */
   name: string;
   /** Ключ команди — як у плеєрі (`teamKey`). */
@@ -43,7 +43,7 @@ export const DEFAULT_DUB_PREFS: DubPrefs = { on: true, badge: true, notify: fals
 export const MAX_TRACK = 40;
 export const CHECK_EVERY_MIN = 180;
 /** Тайтл без нових серій і без заходів так довго — перестаємо стежити (закінчився чи кинули). */
-export const STALE_MS = 60 * 86_400_000;
+const STALE_MS = 60 * 86_400_000;
 
 export const dubsItem = storage.defineItem<DubMap>('local:hp:dubs', { fallback: {} });
 export const dubPrefsItem = storage.defineItem<DubPrefs>('local:hp:dubPrefs', { fallback: DEFAULT_DUB_PREFS });

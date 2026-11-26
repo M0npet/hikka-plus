@@ -26,7 +26,7 @@ const STATUS: Record<string, string> = {
  * Яке число Hikka вже звіряли з прогресом тут (`kind:slug` → N). Зберігається, а не лише в пам'яті:
  * інакше після F5 знята галочка повернулася б, якщо Hikka не зменшилась (вимкнене «Авто»).
  */
-export const hikkaSeenItem = storage.defineItem<Record<string, number>>('local:hp:hikkaSeen', { fallback: {} });
+const hikkaSeenItem = storage.defineItem<Record<string, number>>('local:hp:hikkaSeen', { fallback: {} });
 const SEEN_MAX = 500;
 
 /** Перший раз бачимо це число Hikka для тайтлу? Одразу запам'ятовує. */

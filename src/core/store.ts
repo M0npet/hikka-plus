@@ -6,13 +6,13 @@ import { pullBind, pullSettings, pushBind, pushSettings, type BindRecord } from 
 
 // ---------- Налаштування читалки ----------
 
-export type NovelTheme = 'site' | 'sepia' | 'light' | 'dark';
-export type NovelFont = 'site' | 'serif' | 'sans' | 'mono';
-export type MangaMode = 'vertical' | 'paged';
-export type MangaFit = 'width' | 'height' | 'original';
+type NovelTheme = 'site' | 'sepia' | 'light' | 'dark';
+type NovelFont = 'site' | 'serif' | 'sans' | 'mono';
+type MangaMode = 'vertical' | 'paged';
+type MangaFit = 'width' | 'height' | 'original';
 /** Зони кліку/тапу: L — як у Senkuro/Mihon (верх і ліво — назад, низ і право — далі), ліво/право, верх/низ, вимкнено. */
 export type TapScheme = 'l' | 'lr' | 'tb' | 'off';
-export type ImageQuality = 'original' | 'high' | 'medium' | 'low';
+type ImageQuality = 'original' | 'high' | 'medium' | 'low';
 
 export interface ReaderSettings {
   /** Показувати читалку: кнопку «Читати» і блок «Розділи» на сторінках манґи й ранобе. */
@@ -171,7 +171,7 @@ export interface SourceLink {
   exact?: boolean;
 }
 
-export interface Binding {
+interface Binding {
   /** Обране джерело (null — ще не обирали, беремо перше знайдене). */
   active: string | null;
   /** Знайдені/прив'язані тайтли на кожному джерелі; null — шукали й не знайшли. */
