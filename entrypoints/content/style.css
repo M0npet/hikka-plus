@@ -1810,18 +1810,451 @@ select {
   filter: blur(80px) saturate(1.6) brightness(var(--hp-glow-b, 1));
 }
 
-/* Мітки OP/ED (src/watch/skip-marks.ts): кнопка «Пропустити» поверх плеєра — над панеллю керування плеєра, справа. */
-.hp-watch__skip {
+/*
+ * Кнопки поверх плеєра: «Пропустити …», «Наступна серія» (+ відлік і «×»). Над панеллю керування плеєра, справа.
+ * Вигляд — як у самого плеєра (MK 2026-11-26 13:03; зняли з живих плеєрів):
+ *   Moon — темне скло, радіус 10, Segoe UI, бірюза #2ec4b6 (як його «Пропустити»);
+ *   Fenix (AniHub) — скло, радіус 9, Inter, головна кнопка — помаранчевий градієнт #ff6b35 → #ff8f5e;
+ *   Ashdi (PlayerJS) — плашки майже без заокруглень, червоний #f00;
+ *   інші — стиль Hikka (--primary).
+ * Усе напівпрозоре з розмиттям під кнопкою (MK 13:19 «полупрозрачный стиль»), колір плеєра — у відтінку й рамці.
+ */
+.hp-watch__over,
+.hp-watch__tools {
   position: absolute;
   right: 16px;
   bottom: 72px;
   z-index: 2;
-  gap: 6px;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.4);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  /* Hikka за замовчуванням. Усі стилі — напівпрозоре «скло» з розмиттям (MK 13:19), при наведенні щільніше. */
+  --hp-ob-bg: rgb(0 0 0 / 0.38);
+  --hp-ob-fg: #fff;
+  --hp-ob-border: rgb(255 255 255 / 0.16);
+  --hp-ob-radius: var(--radius, 8px);
+  --hp-ob-font: 600 13px/1 var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  --hp-ob-pad: 9px 14px;
+  --hp-ob-blur: 14px;
+  --hp-ob-shadow: 0 6px 24px rgb(0 0 0 / 0.3);
+  --hp-ob-hover-bg: rgb(0 0 0 / 0.58);
+  --hp-ob-hover-border: rgb(255 255 255 / 0.3);
+  --hp-ob-hover-fg: #fff;
+  --hp-ob-main-bg: color-mix(in srgb, var(--primary, oklch(30% 0.05 343)) 62%, transparent);
+  --hp-ob-main-fg: var(--primary-foreground, oklch(72% 0.18 343));
+  --hp-ob-main-border: color-mix(in srgb, var(--primary-foreground, oklch(72% 0.18 343)) 35%, transparent);
+  --hp-ob-main-hover-bg: color-mix(in srgb, var(--primary, oklch(30% 0.05 343)) 85%, transparent);
+  --hp-ob-accent: var(--primary-foreground, oklch(72% 0.18 343));
+  --hp-ob-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --hp-ob-lift: 0px;
 }
-.hp-watch__view:fullscreen > .hp-watch__skip {
+.hp-watch__over--moon,
+.hp-watch__tools--moon {
+  --hp-ob-bg: rgb(11 13 19 / 0.5);
+  --hp-ob-fg: #e0dff4;
+  --hp-ob-border: rgb(255 255 255 / 0.14);
+  --hp-ob-radius: 10px;
+  --hp-ob-font: 600 14px/1 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --hp-ob-pad: 10px 16px;
+  --hp-ob-blur: 16px;
+  --hp-ob-hover-bg: rgb(30 127 118 / 0.72);
+  --hp-ob-hover-border: #2ec4b6;
+  --hp-ob-main-bg: rgb(46 196 182 / 0.22);
+  --hp-ob-main-fg: #fff;
+  --hp-ob-main-border: rgb(46 196 182 / 0.75);
+  --hp-ob-main-hover-bg: rgb(30 127 118 / 0.75);
+  --hp-ob-accent: #2ec4b6;
+}
+.hp-watch__over--fenix,
+.hp-watch__tools--fenix {
+  --hp-ob-bg: rgb(0 0 0 / 0.32);
+  --hp-ob-border: rgb(255 255 255 / 0.14);
+  --hp-ob-radius: 9px;
+  --hp-ob-font: 500 13px/1 Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --hp-ob-pad: 10px 20px;
+  --hp-ob-blur: 14px;
+  --hp-ob-hover-bg: rgb(0 0 0 / 0.5);
+  --hp-ob-hover-border: rgb(255 255 255 / 0.25);
+  --hp-ob-main-bg: linear-gradient(90deg, rgb(255 107 53 / 0.62) 0%, rgb(255 143 94 / 0.62) 100%);
+  --hp-ob-main-fg: #fff;
+  --hp-ob-main-border: rgb(255 143 94 / 0.55);
+  --hp-ob-main-hover-bg: linear-gradient(90deg, rgb(255 107 53 / 0.85) 0%, rgb(255 143 94 / 0.85) 100%);
+  --hp-ob-accent: #ff6b35;
+  --hp-ob-ease: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --hp-ob-lift: -2px;
+}
+.hp-watch__over--ashdi,
+.hp-watch__tools--ashdi {
+  --hp-ob-bg: rgb(0 0 0 / 0.42);
+  --hp-ob-border: rgb(255 255 255 / 0.1);
+  --hp-ob-radius: 2px;
+  --hp-ob-font: 400 14px/1 sans-serif;
+  --hp-ob-pad: 8px 12px;
+  --hp-ob-blur: 10px;
+  --hp-ob-shadow: none;
+  --hp-ob-hover-bg: rgb(255 0 0 / 0.72);
+  --hp-ob-hover-border: transparent;
+  --hp-ob-main-bg: rgb(255 0 0 / 0.55);
+  --hp-ob-main-fg: #fff;
+  --hp-ob-main-border: rgb(255 80 80 / 0.6);
+  --hp-ob-main-hover-bg: rgb(255 0 0 / 0.8);
+  --hp-ob-accent: #fff;
+}
+.hp-watch__view:fullscreen > .hp-watch__over {
   right: 32px;
   bottom: 96px;
+}
+/*
+ * Панель кнопок блоку поверх плеєра, справа вгорі (MK 2026-11-26 13:22: у шапці «Перегляд» стояли незручно).
+ * Одне «скло» з іконками, як кнопки .hp-ob; видно, поки миша рухається в плеєрі (+2,5 с), на панелі або відкрите меню.
+ */
+.hp-watch__tools {
+  top: 12px;
+  bottom: auto;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--hp-ob-border);
+  border-radius: calc(var(--hp-ob-radius) + 3px);
+  background: var(--hp-ob-bg);
+  box-shadow: var(--hp-ob-shadow);
+  backdrop-filter: blur(var(--hp-ob-blur)) saturate(1.4);
+  color: var(--hp-ob-fg);
+  z-index: 3;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s var(--hp-ob-ease);
+}
+.hp-watch__tools--on,
+.hp-watch__tools:focus-within {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.hp-watch__view:fullscreen > .hp-watch__tools {
+  top: 24px;
+  bottom: auto;
+}
+.hp-watch__tools .hp-watch__tool {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--hp-ob-radius);
+  background: transparent;
+  color: inherit;
+}
+.hp-watch__tools .hp-watch__tool:hover:not(:disabled) {
+  background: var(--hp-ob-hover-bg);
+  color: var(--hp-ob-hover-fg);
+}
+.hp-watch__tools .hp-watch__tool[aria-pressed='true'],
+.hp-watch__tools .hp-watch__tool[aria-expanded='true'] {
+  color: var(--hp-ob-accent);
+}
+.hp-watch__tools .hp-watch__tool:disabled {
+  opacity: 0.45;
+}
+/*
+ * Fenix має свої елементи там само (зняли 2026-11-26): верхня смуга 40 px — назва зліва, «Озвучка»/«Серія» справа;
+ * свої «Пропустити OP/ED» і «Наступна серія» — right 20px, bottom 80px. Наші панелі — під його смугою, кнопки — вище його.
+ */
+.hp-watch__tools--fenix,
+.hp-watch__view:fullscreen > .hp-watch__tools--fenix {
+  top: 52px;
+}
+.hp-watch__over--fenix,
+.hp-watch__view:fullscreen > .hp-watch__over--fenix {
+  bottom: 132px;
+}
+/* Ліва панель: «◀ Серія N ▶» і озвучка (MK 2026-11-26 13:33). */
+.hp-watch__tools--left {
+  left: 12px;
+  right: auto;
+  max-width: calc(100% - 300px);
+}
+.hp-watch__view:fullscreen > .hp-watch__tools--left {
+  left: 24px;
+}
+.hp-watch__tooltext {
+  padding-inline: 2px;
+  font: var(--hp-ob-font);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* «Серія N / 64» — кнопка меню серій (MK 2026-11-26 13:39: окреме меню в плеєрі, посторінково). */
+.hp-watch__tools .hp-watch__tool--ep {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--hp-ob-radius);
+  font: var(--hp-ob-font);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.hp-watch__tools .hp-watch__tool--ep:hover,
+.hp-watch__tools .hp-watch__tool--ep[aria-expanded='true'] {
+  background: var(--hp-ob-hover-bg);
+}
+.hp-watch__toolof {
+  opacity: 0.6;
+  font-weight: 400;
+}
+.hp-watch__tools .hp-watch__eppop {
+  left: 0;
+  right: auto;
+  width: max-content;
+  padding: 8px;
+  max-height: min(70vh, 460px);
+  overflow-y: auto;
+}
+.hp-watch__eppage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.hp-watch__eppagetext {
+  font-weight: 600;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.hp-watch__epgrid {
+  display: grid;
+  grid-template-columns: repeat(6, 40px);
+  gap: 4px;
+}
+.hp-watch__epcell {
+  all: unset;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius, 8px);
+  background: var(--hp-secondary);
+  color: var(--hp-fg, inherit);
+  font-weight: 600;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.hp-watch__epcell:hover:not(:disabled) {
+  filter: brightness(1.2);
+}
+.hp-watch__epcell:focus-visible {
+  outline: 2px solid var(--hp-primary-fg);
+  outline-offset: 1px;
+}
+.hp-watch__epcell--seen {
+  background: color-mix(in oklab, var(--hp-secondary) 40%, transparent);
+  color: var(--hp-muted-fg);
+}
+.hp-watch__epcell--on {
+  background: var(--hp-primary);
+  color: var(--hp-primary-fg);
+}
+.hp-watch__epcell:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.hp-watch__epdots {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+.hp-watch__epdot {
+  all: unset;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hp-muted-fg);
+  opacity: 0.4;
+  cursor: pointer;
+}
+.hp-watch__epdot[aria-selected='true'] {
+  opacity: 1;
+  background: var(--hp-primary-fg);
+  width: 16px;
+  border-radius: 3px;
+}
+.hp-watch__toolsep {
+  width: 1px;
+  height: 18px;
+  margin-inline: 4px;
+  background: var(--hp-ob-border);
+}
+.hp-watch__toolteam {
+  min-width: 0;
+}
+.hp-watch__tools .hp-watch__tool--team {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  height: 32px;
+  padding: 0 6px 0 4px;
+  border-radius: var(--hp-ob-radius);
+  font: var(--hp-ob-font);
+  cursor: pointer;
+}
+.hp-watch__tools .hp-watch__tool--team:hover,
+.hp-watch__tools .hp-watch__tool--team[aria-expanded='true'] {
+  background: var(--hp-ob-hover-bg);
+}
+.hp-watch__tool--team .hp-watch__ava {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+.hp-watch__tool--team .hp-select__chev {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  opacity: 0.7;
+}
+.hp-watch__tools .hp-watch__pop {
+  min-width: 280px;
+  max-height: min(60vh, 420px);
+}
+@media (max-width: 640px) {
+  .hp-watch__tools--left {
+    max-width: calc(100% - 24px);
+  }
+  .hp-watch__tools--left .hp-watch__toolsep,
+  .hp-watch__tools--left .hp-watch__toolteam {
+    display: none;
+  }
+}
+.hp-watch__tools .hp-watch__menu {
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hp-watch__tools {
+    transition: none;
+  }
+}
+.hp-ob {
+  all: unset;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: var(--hp-ob-pad);
+  border: 1px solid var(--hp-ob-border);
+  border-radius: var(--hp-ob-radius);
+  background: var(--hp-ob-bg);
+  color: var(--hp-ob-fg);
+  font: var(--hp-ob-font);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--hp-ob-shadow);
+  backdrop-filter: blur(var(--hp-ob-blur)) saturate(1.4);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+  animation: hp-ob-in 0.22s var(--hp-ob-ease) both;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s var(--hp-ob-ease),
+    filter 0.18s ease;
+}
+.hp-ob:hover {
+  background: var(--hp-ob-hover-bg);
+  border-color: var(--hp-ob-hover-border);
+  color: var(--hp-ob-hover-fg);
+  transform: translateY(var(--hp-ob-lift));
+}
+.hp-ob:active {
+  transform: scale(0.97);
+}
+.hp-ob:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+.hp-ob > .hp-icon {
+  width: 1.15em;
+  height: 1.15em;
+  flex: none;
+}
+.hp-ob--primary {
+  background: var(--hp-ob-main-bg);
+  border-color: var(--hp-ob-main-border);
+  color: var(--hp-ob-main-fg);
+}
+.hp-ob--primary:hover {
+  background: var(--hp-ob-main-hover-bg);
+  border-color: var(--hp-ob-main-border);
+  color: var(--hp-ob-main-fg);
+}
+.hp-ob--icon {
+  justify-content: center;
+  min-width: 2.6em;
+  padding-inline: 0;
+}
+.hp-ob__group {
+  display: inline-flex;
+  gap: 4px;
+}
+/* Підказка клавіші — як у Moon (обведена буква, приглушена). */
+.hp-ob__key {
+  min-width: 1.5em;
+  padding: 0.15em 0.35em;
+  border: 1px solid currentColor;
+  border-radius: 0.35em;
+  font: inherit;
+  font-size: 0.78em;
+  text-align: center;
+  opacity: 0.55;
+}
+.hp-ob__count {
+  min-width: 1.2em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--hp-ob-accent);
+}
+.hp-watch__over--fenix .hp-ob--primary .hp-ob__count,
+.hp-watch__over--ashdi .hp-ob--primary .hp-ob__count {
+  color: inherit;
+  opacity: 0.85;
+}
+/* Відлік до наступної серії — смужка внизу кнопки (як прогрес «Пропустити» в Moon). */
+.hp-ob__bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: var(--hp-ob-p, 0%);
+  background: var(--hp-ob-accent);
+  transition: width 1s linear;
+}
+.hp-watch__over--fenix .hp-ob__bar,
+.hp-watch__over--ashdi .hp-ob__bar {
+  background: rgb(255 255 255 / 0.85);
+}
+@keyframes hp-ob-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hp-ob {
+    animation: none;
+  }
 }
 /* Смужка під плеєром: де насправді OP і ED у серії (тривалість = ширина), біла риска — де зараз. */
 .hp-watch__marks {

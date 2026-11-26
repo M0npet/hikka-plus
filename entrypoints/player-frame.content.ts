@@ -46,6 +46,8 @@ export default defineContentScript({
     idleCursor();
     if (location.hostname === 'fenixplay.xyz') fenixMarks();
     countMark();
+    hotkeys();
+    activity();
     // Плеєр міг уже стартувати з 16× зі сховища (слід сканера 0.5.22) — перші 15 с повертаємо 1×.
     const t0 = Date.now();
     const fix = window.setInterval(() => {
@@ -297,6 +299,47 @@ function ashdiBar(): HTMLElement | null {
     return e;
   }
   return null;
+}
+
+/**
+ * Гарячі клавіші (MK 2026-11-26): лише коли фокус у НАШОМУ плеєрі (на hikka.io клавіш не чіпаємо).
+ * S — пропустити опенінг/ендинг, N — наступна серія. За фізичною клавішею (e.code) — працює й в українській розкладці.
+ * Самі нічого не робимо — кажемо hikka.io ({hotkey}), там вирішують, чи є що пропускати і чи є наступна серія.
+ */
+function hotkeys() {
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      const key = e.code === 'KeyS' ? 'skip' : e.code === 'KeyN' ? 'next' : null;
+      if (!key) return;
+      e.preventDefault();
+      e.stopPropagation();
+      window.parent.postMessage({ type: AMBIENT_MSG, hotkey: key }, PARENT);
+    },
+    true,
+  );
+}
+
+/**
+ * Рух миші / дотик у плеєрі → hikka.io ({active: 1}; вийшли за межі — {active: 0}). Там показують свою панель кнопок
+ * поверх плеєра (MK 2026-11-26) і ховають її, коли миша стоїть, — як панель самого плеєра. Не частіше ніж раз на 300 мс.
+ */
+function activity() {
+  let last = 0;
+  const ping = () => {
+    const now = Date.now();
+    if (now - last < 300) return;
+    last = now;
+    window.parent.postMessage({ type: AMBIENT_MSG, active: 1 }, PARENT);
+  };
+  for (const ev of ['pointermove', 'pointerdown', 'wheel'] as const) document.addEventListener(ev, ping, { passive: true, capture: true });
+  document.documentElement.addEventListener('mouseleave', () => {
+    last = 0;
+    window.parent.postMessage({ type: AMBIENT_MSG, active: 0 }, PARENT);
+  });
 }
 
 /** Риска порогу зарахування серії на смужці прокрутки плеєра (Moon, Ashdi, Fenix). */

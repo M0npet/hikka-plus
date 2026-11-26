@@ -4,7 +4,8 @@
  *  - «▶ N нових» = episodes_released − переглянуті, лише для тайтлів зі статусом «Дивлюсь». Дані — з кешу самої Hikka
  *    (міст entrypoints/hikka-bridge.ts → CARDS_EVENT): каталог і календар віддають запис того, хто зайшов, «Мої списки» —
  *    лише власний список. Жодного запиту до API.
- *  - «N серія через X дн.» — розклад Hikka (src/cards/schedule.ts, раз на 3 год).
+ *  - «N серія через X дн.» — розклад Hikka (src/cards/schedule.ts, раз на 3 год). З 2026-11-26 (MK) на постері її немає —
+ *    переїхала у віконце картки (src/cards/popup.ts); лишилась у рядку таблиці «Мої списки».
  *
  * DOM Hikka не змінюємо: у картку додаємо лише свій елемент <hikka-plus-badges> зі своїм Shadow DOM
  * (без Preact — на сторінці бувають сотні карток), pointer-events: none — клік іде в картку.
@@ -24,6 +25,7 @@ import { coverChoices, coverSourceName, coversItem, setCoverSource, wantAnimeCov
 import { cardsItem, DEFAULT_CARDS, type CardsPrefs } from './prefs';
 import { refreshReleased, releasedItem, type ReleasedMap } from './released';
 import { getSchedule, type Schedule } from './schedule';
+import { createPopup, POP_TAG } from './popup';
 
 const TAG = 'hikka-plus-badges';
 const COVER_TAG = 'hikka-plus-cover';
@@ -261,6 +263,8 @@ export function initCards(ctx: ContentScriptContext) {
   /** Адреси, що не завантажились (мертве посилання джерела), — до перезавантаження сторінки не пробуємо. */
   const badCovers = new Set<string>();
   let scheduled = false;
+  const popup = createPopup(() => ({ prefs, info, schedule, released }));
+  ctx.onInvalidated(popup.dispose);
 
   const renderCovers = () => {
     const seen = new Set<Element>();
@@ -379,7 +383,8 @@ export function initCards(ctx: ContentScriptContext) {
         if (kind === 'poster' && (box as HTMLElement).clientWidth < MIN_POSTER) continue;
         const inf = info.get(k.key);
         if (k.book && inf?.ws === 'reading') reading.push(k.key);
-        const list = k.book ? bookBadgesFor(inf, released[k.key]?.n) : badgesFor(inf, schedule[k.key], prefs);
+        // «через X дн.» — лише в рядку таблиці; на постері — у віконці картки (popup.ts).
+        const list = k.book ? bookBadgesFor(inf, released[k.key]?.n) : badgesFor(inf, kind === 'inline' ? schedule[k.key] : undefined, prefs);
         if (list.length) jobs.push({ a, box, kind, list }); // зайвий host приберемо нижче
       }
     }
@@ -414,6 +419,7 @@ export function initCards(ctx: ContentScriptContext) {
       }
     }
     for (const h of document.querySelectorAll(TAG)) if (!seen.has(h)) h.remove();
+    popup.schedule();
     // Видимі тайтли «Читаю» з прив'язкою — перевірити, чи не вийшло нового (не частіше ніж раз на 3 год на тайтл).
     if (reading.length) void refreshReleased([...new Set(reading)]);
   };
@@ -421,7 +427,7 @@ export function initCards(ctx: ContentScriptContext) {
   // (0.6.0, було на кожному кадрі зі змінами). Плашки вимкнені й на сторінці їх немає — нічого не робимо.
   const schedule_ = () => {
     if (scheduled) return;
-    if (!prefs.on && !prefs.read && !prefs.ua && !document.querySelector(`${TAG}, ${COVER_TAG}`)) return;
+    if (!prefs.on && !prefs.read && !prefs.ua && !prefs.pop && !document.querySelector(`${TAG}, ${COVER_TAG}, ${POP_TAG}`)) return;
     scheduled = true;
     window.setTimeout(render, 250);
   };
@@ -459,13 +465,13 @@ export function initCards(ctx: ContentScriptContext) {
 
   void cardsItem.getValue().then((p) => {
     prefs = { ...DEFAULT_CARDS, ...p };
-    if (prefs.on) refreshSchedule();
+    if (prefs.on || prefs.pop) refreshSchedule();
     schedule_();
   });
   ctx.onInvalidated(
     cardsItem.watch((p) => {
       prefs = { ...DEFAULT_CARDS, ...p };
-      if (prefs.on) refreshSchedule();
+      if (prefs.on || prefs.pop) refreshSchedule();
       schedule_();
     }),
   );
@@ -494,8 +500,11 @@ export function initCards(ctx: ContentScriptContext) {
 
   // Свої вставки (<hikka-plus-badges>/<hikka-plus-cover>) не будять перебір знову — інакше кожна вставка постера
   // запускала ще один прохід по всіх картках (MK 2026-11-25 03:34: «обнова с постерами грузит проц»).
-  const ours = (n: Node) => n.nodeType === 1 && ((n as Element).tagName === TAG.toUpperCase() || (n as Element).tagName === COVER_TAG.toUpperCase());
+  const ours = (n: Node) =>
+    n.nodeType === 1 && [TAG, COVER_TAG, POP_TAG].some((t) => (n as Element).tagName === t.toUpperCase());
   const obs = new MutationObserver((recs) => {
+    // Віконце картки з'являється/зникає — свій блок одразу (за 16 мс), не чекаючи 250 мс перебору карток.
+    if (prefs.pop) popup.schedule();
     for (const r of recs) {
       if (![...r.addedNodes, ...r.removedNodes].every(ours)) return schedule_();
     }
@@ -509,7 +518,7 @@ export function initCards(ctx: ContentScriptContext) {
   ask();
   ctx.setTimeout(ask, 1500);
   ctx.setInterval(() => {
-    if (!prefs.on) return;
+    if (!prefs.on && !prefs.pop) return;
     refreshSchedule();
     schedule_();
   }, 60_000);

@@ -40,7 +40,7 @@ Zenko, manga.in.ua, baka.in.ua, Honey Manga, UAManga, DGManga, Animesvit, Сма
 Якщо ви ввімкнете «Підсвітка пристроїв» і підключите телевізор Philips, WLED, Philips Hue чи Razer Chroma, розширення надсилатиме **кольори країв кадру** (до 5 разів на секунду) **лише на ті пристрої, адреси яких ви самі вказали** — у вашій локальній мережі (Razer — на ваш комп'ютер). Для цього розширення просить дозвіл браузера на конкретну адресу, а у Firefox — ще й окрему згоду на передачу цих даних (її можна відкликати в `about:addons` → Hikka Plus → «Дозволи»). Логін і ключ, які видає пристрій під час підключення (PIN телевізора, ключ моста Hue), зберігаються лише локально.
 
 ### 5. Синхронізація між пристроями
-Якщо ввімкнено «Синхронізація» в розділі «Між пристроями» (за замовчуванням), прогрес читання, вибір джерел і команд та налаштування читалки зберігаються в `storage.sync` вашого браузера. Їх переносить і зберігає сервіс синхронізації вашого браузера (Firefox Account або обліковий запис Google) за його правилами; розробник Hikka Plus до них доступу не має. Токен Hikka **не** синхронізується.
+Якщо ввімкнено «Синхронізація» в розділі «Між пристроями» (за замовчуванням), прогрес читання, переглянуті серії й місце в серії (останні 25 аніме), вибір джерел і команд та налаштування читалки зберігаються в `storage.sync` вашого браузера. Їх переносить і зберігає сервіс синхронізації вашого браузера (Firefox Account або обліковий запис Google) за його правилами; розробник Hikka Plus до них доступу не має. Токен Hikka **не** синхронізується.
 
 ## Що зберігається локально
 Налаштування, прогрес читання й перегляду, прив'язки тайтлів до джерел, увімкнені джерела, тема й кольори Hikka (щоб вікно налаштувань виглядало так само), токен Hikka, налаштування пристроїв підсвітки.
@@ -105,7 +105,7 @@ Zenko, manga.in.ua, baka.in.ua, Honey Manga, UAManga, DGManga, Animesvit, Smakol
 If you enable "Підсвітка пристроїв" and connect a Philips TV, WLED, Philips Hue or Razer Chroma, the extension sends **the colors of the frame edges** (up to 5 times per second) **only to the devices whose addresses you entered** — on your local network (Razer: on your own computer). The browser asks your permission for each address; Firefox additionally asks for consent to transmit this data (revocable in `about:addons` → Hikka Plus → Permissions). Pairing credentials issued by the device (TV PIN pairing, Hue bridge key) are stored locally only.
 
 ### 5. Sync between devices
-If "Синхронізація" under "Між пристроями" is on (default), reading progress, source/team choices and reader settings are stored in your browser's `storage.sync`. They are transferred and stored by your browser's sync service (Firefox Account or Google account) under its terms; the developer has no access. The Hikka token is **not** synced.
+If "Синхронізація" under "Між пристроями" is on (default), reading progress, watched episodes and the position in the episode (last 25 anime), source/team choices and reader settings are stored in your browser's `storage.sync`. They are transferred and stored by your browser's sync service (Firefox Account or Google account) under its terms; the developer has no access. The Hikka token is **not** synced.
 
 ## Stored locally
 Settings, reading and watching progress, title-to-source bindings, enabled sources, Hikka theme colors (so the settings window matches the site), the Hikka token, lighting device settings.

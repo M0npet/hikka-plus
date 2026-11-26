@@ -9,7 +9,7 @@ import { startHikkaLogin } from '../features/hikka-sync';
 import { animeonTeams, mergeTeams, mikaiTeamsFor, parseWatchLinks, type UaLicense } from './providers';
 import { aniskipRaw, watchedAt, type AniSkip } from './threshold';
 import { mergeMarks, segsFromAniskip, type Marks, type Seg } from './skip-marks';
-import { getWatchSaved, updateWatchSaved, useWatchPrefs, type WatchSaved } from './watch-store';
+import { flushWatchPush, getWatchSaved, pullWatchSaved, updateWatchSaved, useWatchPrefs, watchSyncedWatch, type WatchSaved } from './watch-store';
 import { HIKKA_LIST_EVENT, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '../core/bridge';
 import { loadHikkaWatch, lowerHikkaEpisodes, markHikkaEpisodes, type HikkaWatchState } from './hikka-watch';
 import { WatchBlock, type HikkaLine } from './watch-block';
@@ -83,6 +83,7 @@ export function WatchRoot({ slug }: { slug: string }) {
         ]);
         const teams = mergeTeams(mk.teams, ao);
         const license = mk.license;
+        await pullWatchSaved(slug); // позиція з інших пристроїв (якщо там новіша)
         const s = await getWatchSaved(slug);
         if (off) return;
         setSaved(s);
@@ -93,6 +94,18 @@ export function WatchRoot({ slug }: { slug: string }) {
     })();
     return () => {
       off = true;
+    };
+  }, [slug]);
+
+  // Інший пристрій оновив позицію, поки сторінка відкрита — перечитати; йдемо з тайтлу — дослати своє в sync.
+  useEffect(() => {
+    const unwatch = watchSyncedWatch(slug, () => void getWatchSaved(slug).then(setSaved));
+    const flush = () => flushWatchPush(slug);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      unwatch();
+      window.removeEventListener('pagehide', flush);
+      flush();
     };
   }, [slug]);
 

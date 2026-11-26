@@ -46,3 +46,6 @@ export const CARDS_EVENT = 'hikka-plus:cards';
 /** Content script → сторінка: «надішли знімок карток». */
 export const CARDS_REQ = 'hikka-plus:cards-req';
 export type CardRow = [slug: string, released: number, total: number, status: string, watched: number, watchStatus: string];
+
+/** content script → сторінка: SPA-перехід Hikka на шлях (може бути з #read=…) — «Продовжити» у віконці картки (src/cards/popup.ts). */
+export const NAV_EVENT = 'hikka-plus:nav';

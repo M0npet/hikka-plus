@@ -1,5 +1,5 @@
 import { defineUnlistedScript } from '#imports';
-import { CARDS_EVENT, CARDS_REQ, HIKKA_LIST_EVENT, READ_CHANGED_EVENT, READ_COUNT_EVENT, READ_COUNT_REQ, WATCH_COUNT_EVENT, WATCH_COUNT_REQ, type CardRow } from '@/src/core/bridge';
+import { CARDS_EVENT, CARDS_REQ, HIKKA_LIST_EVENT, NAV_EVENT, READ_CHANGED_EVENT, READ_COUNT_EVENT, READ_COUNT_REQ, WATCH_COUNT_EVENT, WATCH_COUNT_REQ, type CardRow } from '@/src/core/bridge';
 
 /**
  * Виконується в контексті сторінки hikka.io (не в ізольованому світі content script).
@@ -254,5 +254,20 @@ export default defineUnlistedScript(() => {
       .catch(() => {
         client = null; // застосунок міг перемонтуватися — наступного разу знайдемо заново
       });
+  });
+
+  // «Продовжити» у віконці картки (src/cards/popup.ts): перехід роутером самої Hikka (TanStack Router), без перезавантаження.
+  // Шлях лише свій: /anime|manga|novel/<slug>[#read=…]. Читалка слухає hashchange — після переходу кажемо їй про #read.
+  document.addEventListener(NAV_EVENT, (e) => {
+    const path = (e as CustomEvent<unknown>).detail;
+    if (typeof path !== 'string' || !/^\/(anime|manga|novel)\/[^/?#]+(#read=[^\s]*)?$/.test(path)) return;
+    const [to, hash] = path.split('#') as [string, string | undefined];
+    const router = (window as unknown as { __TSR_ROUTER__?: { navigate?: (o: { to: string; hash?: string }) => Promise<unknown> } }).__TSR_ROUTER__;
+    if (typeof router?.navigate !== 'function') return void location.assign(path);
+    void Promise.resolve(router.navigate({ to, hash }))
+      .then(() => {
+        if (hash) setTimeout(() => window.dispatchEvent(new HashChangeEvent('hashchange')), 400);
+      })
+      .catch(() => location.assign(path));
   });
 });

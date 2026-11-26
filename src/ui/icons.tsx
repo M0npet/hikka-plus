@@ -29,6 +29,10 @@ export const IconBook = base([
 export const IconClose = base(['M18 6 6 18', 'm6 6 12 12']);
 export const IconLeft = base(['m15 18-6-6 6-6']);
 export const IconRight = base(['m9 18 6-6-6-6']);
+/** «Наступна серія» (Lucide skip-forward). */
+export const IconSkipFwd = base(['M5 4l10 8-10 8z', 'M19 5v14']);
+/** «Пропустити опенінг/ендинг» (Lucide chevrons-right). */
+export const IconFwd = base(['m6 17 5-5-5-5', 'm13 17 5-5-5-5']);
 export const IconList = base(['M3 6h18', 'M3 12h18', 'M3 18h18']);
 export const IconSettings = base([
   'M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z',

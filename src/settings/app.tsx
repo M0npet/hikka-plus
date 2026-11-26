@@ -10,7 +10,7 @@ import { DEFAULT_SETTINGS, updateSettings, useSettings } from '../core/store';
 import { syncOnItem } from '../core/sync-flag';
 import { MangaFields, NovelFields } from '../features/reader/settings-panel';
 import { autoSyncItem } from '../features/hikka-sync';
-import { DEFAULT_WIDE_ANIM, useWatchPrefs } from '../watch/watch-store';
+import { DEFAULT_WIDE_ANIM, NEXT_COUNTDOWN, useWatchPrefs } from '../watch/watch-store';
 import { useCardsPrefs } from '../cards/prefs';
 import { AmbientFields } from '../watch/ambient-fields';
 import { DeviceLights } from '../lights/settings';
@@ -257,7 +257,7 @@ function HikkaSection({ mode }: { mode: SettingsMode }) {
       <Header title="Між пристроями" />
       <SwitchRow
         label="Синхронізація"
-        hint="Прогрес, обрані джерела й налаштування — через акаунт браузера (Firefox Sync / Google). Без нашого сервера."
+        hint="Прогрес читання й перегляду (серія та місце в ній), обрані джерела й налаштування — через акаунт браузера (Firefox Sync / Google). Без нашого сервера."
         checked={syncOn}
         onChange={(v) => void syncOnItem.setValue(v)}
       />
@@ -357,7 +357,7 @@ function ReaderSection() {
   );
 }
 
-/** Плашки на картках аніме (src/cards/): «▶ N нових», «N серія через X дн.». */
+/** Плашки на картках аніме (src/cards/): «▶ N нових»; блок у віконці картки (src/cards/popup.ts); «Серія N через X дн.». */
 function CardsFields() {
   const [c, setC] = useCardsPrefs();
   return (
@@ -368,9 +368,13 @@ function CardsFields() {
         checked={c.on}
         onChange={(on) => setC({ on })}
       />
-      {c.on && (
-        <SwitchRow label="Коли наступна серія" hint="«N серія через X дн.» за розкладом Hikka" checked={c.next} onChange={(next) => setC({ next })} />
-      )}
+      <SwitchRow
+        label="Блок у віконці картки"
+        hint="При наведенні на картку: переглянуто/прочитано, скільки нових, коли наступна серія, «Продовжити» — аніме, манґа й ранобе"
+        checked={c.pop}
+        onChange={(pop) => setC({ pop })}
+      />
+      <SwitchRow label="Коли наступна серія" hint="«Серія N · через X дн.» за розкладом Hikka — у віконці картки й у таблиці списків" checked={c.next} onChange={(next) => setC({ next })} />
     </>
   );
 }
@@ -404,7 +408,8 @@ function PlayerFields({ mode }: { mode: SettingsMode }) {
           format={(v) => (v ? `${v} мс` : 'вимк.')}
           onChange={(wideAnim) => setW({ wideAnim })}
         />
-        <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної" checked={w.autoNext} onChange={(autoNext) => setW({ autoNext })} />
+        <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної; вручну — клавіша N у плеєрі" checked={w.autoNext} onChange={(autoNext) => setW({ autoNext })} />
+        <SwitchRow label="Відлік на ендингу" hint={`Кнопка «Наступна серія» — і через ${NEXT_COUNTDOWN} с перехід сам`} checked={!!w.nextCountdown} onChange={(nextCountdown) => setW({ nextCountdown })} />
         <SwitchRow
           label="Мітки опенінгу й ендингу"
           hint="Смужка під плеєром і кнопка «Пропустити» — мітки з плеєра, інакше приблизні з AniSkip"
@@ -413,7 +418,7 @@ function PlayerFields({ mode }: { mode: SettingsMode }) {
         />
         {w.marks !== false && (
           <>
-            <SwitchRow label="Пропускати опенінг сам" checked={!!w.skipOp} onChange={(skipOp) => setW({ skipOp })} />
+            <SwitchRow label="Пропускати опенінг сам" hint="Вручну — кнопка над плеєром або клавіша S у плеєрі" checked={!!w.skipOp} onChange={(skipOp) => setW({ skipOp })} />
             <SwitchRow label="Пропускати ендинг сам" hint="Серія все одно зараховується" checked={!!w.skipEd} onChange={(skipEd) => setW({ skipEd })} />
           </>
         )}

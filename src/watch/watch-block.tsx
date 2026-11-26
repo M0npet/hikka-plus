@@ -6,12 +6,12 @@
 import { browser } from '#imports';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
-import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv, IconBulb, IconMoveH, IconMoveV, IconMoveBack, IconScan } from '../ui/icons';
+import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv, IconBulb, IconClose, IconFwd, IconSkipFwd, IconMoveH, IconMoveV, IconMoveBack, IconScan } from '../ui/icons';
 import { useLightsOff } from './lights-off';
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
 import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
-import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_WIDE_ANIM, type WatchPrefs, type WatchSize } from './watch-store';
+import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_WIDE_ANIM, NEXT_COUNTDOWN, type WatchPrefs, type WatchSize } from './watch-store';
 import { AmbientFields } from './ambient-fields';
 import type { LightsMsg } from '../lights/types';
 import type { MarkSrc, Seg } from './skip-marks';
@@ -20,6 +20,8 @@ import type { MarksInfo } from './watch-root';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 const RANGE = 50;
+/** Через скільки мс без руху миші ховається панель кнопок поверх плеєра (як курсор, player-frame idleCursor). */
+const TOOLS_IDLE = 2500;
 
 export type HikkaLine = { kind: 'count'; n: number } | { kind: 'connect'; onClick: () => void } | { kind: 'error'; message: string } | null;
 
@@ -62,6 +64,137 @@ export type WatchBlockProps = {
   renderFrame?: (p: WatchPlayer, ep: number) => ReactNode;
 };
 
+/* ---------- Меню серій у панелі поверх плеєра (MK 2026-11-26 13:39: окремо, посторінково) ---------- */
+
+/** Серій на сторінці меню (6 × 4). */
+const EP_PAGE = 24;
+
+function EpisodeMenu({
+  ep,
+  count,
+  episodes,
+  teamHas,
+  onPick,
+  onOpen,
+}: {
+  ep: number;
+  count: number;
+  episodes: Record<number, EpisodeState>;
+  teamHas: (n: number) => boolean;
+  onPick: (n: number) => void;
+  onOpen?: (open: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const pages = Math.max(1, Math.ceil(count / EP_PAGE));
+  const [page, setPage] = useState(0);
+  const wrap = useRef<HTMLDivElement>(null);
+  const onOpenRef = useRef(onOpen);
+  onOpenRef.current = onOpen;
+  useEffect(() => onOpenRef.current?.(open), [open]);
+  // Відкрили — сторінка з поточною серією.
+  useEffect(() => {
+    if (open) setPage(Math.min(pages - 1, Math.floor((ep - 1) / EP_PAGE)));
+  }, [open]);
+  useEffect(() => {
+    if (!open || !wrap.current) return;
+    const root = wrap.current.getRootNode() as Document | ShadowRoot;
+    const close = () => setOpen(false);
+    const onRoot = (e: Event) => !wrap.current?.contains(e.target as Node) && close();
+    const onDoc = (e: Event) => root instanceof ShadowRoot && e.target !== root.host && close();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+      else if (e.key === 'PageDown' || e.key === 'PageUp') {
+        e.preventDefault();
+        setPage((x) => Math.max(0, Math.min(pages - 1, x + (e.key === 'PageDown' ? 1 : -1))));
+      }
+    };
+    root.addEventListener('pointerdown', onRoot, true);
+    if (root !== document) document.addEventListener('pointerdown', onDoc, true);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('blur', close); // клік у сам плеєр (iframe)
+    return () => {
+      root.removeEventListener('pointerdown', onRoot, true);
+      document.removeEventListener('pointerdown', onDoc, true);
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('blur', close);
+    };
+  }, [open, pages]);
+  const from = page * EP_PAGE + 1;
+  const to = Math.min(count, from + EP_PAGE - 1);
+  return (
+    <div ref={wrap} className="hp-select hp-watch__epmenu">
+      <button
+        type="button"
+        className="hp-watch__tool hp-watch__tool--ep"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title="Вибрати серію"
+        onClick={() => setOpen((o) => !o)}
+      >
+        Серія {ep}
+        <span className="hp-watch__toolof"> / {count}</span>
+      </button>
+      {open && (
+        <div className="hp-popover hp-watch__eppop" role="dialog" aria-label="Серії">
+          {pages > 1 && (
+            <div className="hp-watch__eppage">
+              <Button variant="ghost" size="sm" icon aria-label="Попередні серії" title="Попередні (PgUp)" disabled={page <= 0} onClick={() => setPage(page - 1)}>
+                <IconLeft />
+              </Button>
+              <span className="hp-watch__eppagetext">
+                {from}–{to} <span className="hp-header__count">з {count}</span>
+              </span>
+              <Button variant="ghost" size="sm" icon aria-label="Наступні серії" title="Наступні (PgDn)" disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>
+                <IconRight />
+              </Button>
+            </div>
+          )}
+          <div className="hp-watch__epgrid" role="list">
+            {Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => {
+              const n = from + i;
+              const s = episodes[n];
+              const seen = !!s?.watched;
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  role="listitem"
+                  className={cx('hp-watch__epcell', n === ep && 'hp-watch__epcell--on', seen && 'hp-watch__epcell--seen')}
+                  disabled={!teamHas(n)}
+                  aria-current={n === ep || undefined}
+                  title={!teamHas(n) ? `Серії ${n} ще немає в цієї команди` : seen ? `Серія ${n} — переглянуто` : s?.pos ? `Серія ${n} — ${Math.round(s.pos * 100)}%` : `Серія ${n}`}
+                  onClick={() => {
+                    setOpen(false);
+                    if (n !== ep) onPick(n);
+                  }}
+                >
+                  {n}
+                  {!seen && s?.pos ? <span className="hp-watch__epbar" style={{ width: `${s.pos * 100}%` }} /> : null}
+                </button>
+              );
+            })}
+          </div>
+          {pages > 1 && pages <= 12 && (
+            <div className="hp-watch__epdots" role="tablist" aria-label="Сторінки серій">
+              {Array.from({ length: pages }, (_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  role="tab"
+                  aria-selected={i === page}
+                  className="hp-watch__epdot"
+                  title={`${i * EP_PAGE + 1}–${Math.min(count, (i + 1) * EP_PAGE)}`}
+                  onClick={() => setPage(i)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Список із багатим пунктом (Команда / Плеєр) ---------- */
 
 function Picker<T>({
@@ -73,6 +206,8 @@ function Picker<T>({
   onPick,
   label,
   className,
+  triggerClass,
+  onOpen,
 }: {
   items: T[];
   value: T | undefined;
@@ -82,9 +217,16 @@ function Picker<T>({
   onPick: (t: T) => void;
   label: string;
   className?: string;
+  /** Свій вигляд кнопки замість поля Hikka (панель поверх плеєра). */
+  triggerClass?: string;
+  /** Список відкрився/закрився (панель поверх плеєра не ховається, поки він відкритий). */
+  onOpen?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
+  const onOpenRef = useRef(onOpen);
+  onOpenRef.current = onOpen;
+  useEffect(() => onOpenRef.current?.(open), [open]);
   useEffect(() => {
     if (!open || !wrap.current) return;
     const root = wrap.current.getRootNode() as Document | ShadowRoot;
@@ -104,13 +246,13 @@ function Picker<T>({
     <div ref={wrap} className={cx('hp-select', className)}>
       <button
         type="button"
-        className="hp-input hp-input--lg hp-select__trigger"
+        className={triggerClass ?? 'hp-input hp-input--lg hp-select__trigger'}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={label}
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="hp-grow hp-watch__trig">{trigger}</span>
+        {triggerClass ? trigger : <span className="hp-grow hp-watch__trig">{trigger}</span>}
         <svg className="hp-icon hp-select__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="m7 15 5 5 5-5" />
           <path d="m7 9 5-5 5 5" />
@@ -202,6 +344,20 @@ export function WatchBlock(p: WatchBlockProps) {
       window.removeEventListener('blur', close);
     };
   }, [menu]);
+  // Панель кнопок поверх плеєра (MK 2026-11-26 13:22, «перенести в плеєри»): видно, поки миша рухається в плеєрі
+  // (фрейм шле {active}), і ще TOOLS_IDLE мс; поки миша на самій панелі або відкрите меню — не ховаємо.
+  const [tools, setTools] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(false);
+  const [epOpen, setEpOpen] = useState(false);
+  const toolsT = useRef(0);
+  const toolsHover = useRef(false);
+  const wakeTools = (on: boolean) => {
+    clearTimeout(toolsT.current);
+    if (!on) return void (toolsHover.current || setTools(false));
+    setTools(true);
+    toolsT.current = window.setTimeout(() => !toolsHover.current && setTools(false), TOOLS_IDLE);
+  };
+  useEffect(() => () => clearTimeout(toolsT.current), []);
   const [range, setRange] = useState('0');
   // З якої секунди почати після (пере)завантаження iframe.
   const startAt = useRef(init?.t ?? 0);
@@ -209,6 +365,14 @@ export function WatchBlock(p: WatchBlockProps) {
   // а весь блок (сітка серій, меню) — лише коли кнопка «Пропустити» з'являється/зникає.
   const posStore = useMemo(createPosStore, []);
   const [skip, setSkip] = useState<(SkipState & { ep: number }) | null>(null);
+  // «Наступна серія» поверх плеєра (MK 2026-11-26): з порогу зарахування (початок ендингу) до кінця серії.
+  // left — секунд до самостійного переходу (лише з WatchPrefs.nextCountdown; рахуємо за позицією відео — пауза зупиняє відлік).
+  const [next, setNext] = useState<{ ep: number; left: number | null } | null>(null);
+  const nextT0 = useRef(new Map<number, number>());
+  const nextOff = useRef(new Set<number>());
+  const nextFired = useRef(new Set<number>());
+  const edRef = useRef<{ ep: number; at: number } | null>(null);
+  edRef.current = p.edInfo ?? null;
   const mkRef = useRef<MarksInfo | null>(null);
   const seekRef = useRef<((sec: number) => void) | null>(null);
   const skipped = useRef(new Set<string>());
@@ -285,6 +449,8 @@ export function WatchBlock(p: WatchBlockProps) {
   }, [p.nextEp, player?.id]);
   const goEpRef = useRef(goEp);
   goEpRef.current = goEp;
+  const canNextRef = useRef<(n: number) => boolean>(() => false);
+  canNextRef.current = (n: number) => n < count && teamHas(n + 1);
   const toggleWide = (v: boolean) => {
     // iframe не перезавантажується (блок не переїжджає в DOM, wide-layout.ts) — позицію не чіпаємо.
     setWide(v);
@@ -349,6 +515,21 @@ export function WatchBlock(p: WatchBlockProps) {
   const mk = marksOn && p.marks && p.marks.ep === ep ? p.marks : null;
   mkRef.current = mk;
   const skipNow = mk && skip && skip.ep === ep ? skip : null;
+  const nextNow = next && next.ep === ep ? next : null;
+  // Fenix з власними мітками сам показує «Пропустити OP/ED» і «Наступна серія» (там же, де наші) — дублів не малюємо;
+  // клавіші S/N і автопропуск працюють як і раніше (MK 2026-11-26 13:44: «у феникса свои кнопки»).
+  const fenixOwn = player?.kind === 'fenix' && (mk?.m.op?.src === 'player' || mk?.m.ed?.src === 'player');
+  // S / N у плеєрі (entrypoints/player-frame.content.ts → {hotkey}).
+  const hotkeyRef = useRef<(key: 'skip' | 'next') => void>(() => {});
+  hotkeyRef.current = (key) => {
+    if (key === 'skip' && skipNow) doSkip(skipNow.kind, skipNow.seg.e);
+    if (key === 'next' && ep < count && teamHas(ep + 1)) goEp(ep + 1);
+  };
+  /** Після ендингу ще є що дивитися (сцена після титрів / анонс) — тоді «Пропустити ендинг» веде туди. */
+  const afterEd = (edEnd: number) => {
+    const d = posStore.get()?.d ?? 0;
+    return d > 0 && d - edEnd > 20;
+  };
   const doSkip = (kind: 'op' | 'ed', to: number) => {
     skipped.current.add(`${ep}:${kind}`);
     seekRef.current?.(to);
@@ -452,9 +633,31 @@ export function WatchBlock(p: WatchBlockProps) {
             setSkip((x) =>
               x?.ep === ep && x.kind === next?.kind && x.seg.s === next.seg.s && x.seg.e === next.seg.e ? x : next ? { ...next, ep } : null,
             );
+            // «Наступна серія»: від порогу зарахування; перемотали назад нижче порогу — відлік спочатку.
+            const thr = edRef.current;
+            let nx: { ep: number; left: number | null } | null = null;
+            if (thr && thr.ep === ep && tt >= thr.at && canNextRef.current(ep) && !nextOff.current.has(ep)) {
+              let left: number | null = null;
+              if (p.prefs.nextCountdown) {
+                const t0 = nextT0.current.get(ep) ?? tt;
+                nextT0.current.set(ep, t0);
+                left = Math.max(0, NEXT_COUNTDOWN - (tt - t0));
+                if (left === 0 && !nextFired.current.has(ep)) {
+                  nextFired.current.add(ep);
+                  setTimeout(() => goEpRef.current(ep + 1));
+                }
+              }
+              nx = { ep, left };
+            } else if (thr && thr.ep === ep && tt < thr.at) {
+              nextT0.current.delete(ep);
+              nextFired.current.delete(ep);
+            }
+            setNext((x) => (x?.ep === nx?.ep && x?.left === nx?.left ? x : nx));
           }}
           onSegs={(m) => p.onSegs?.(ep, m)}
           seekRef={seekRef}
+          onHotkey={(key) => hotkeyRef.current(key)}
+          onActive={wakeTools}
           countAt={frameEp === ep && ed && !st?.watched ? ed.at : null}
           countEd={!!ed?.ed}
           onEnded={() => {
@@ -474,11 +677,201 @@ export function WatchBlock(p: WatchBlockProps) {
         />
       )}
     </div>
-    {skipNow && (
-      <button type="button" className={cx(btn('secondary', 'sm'), 'hp-watch__skip')} onClick={() => doSkip(skipNow.kind, skipNow.seg.e)}>
-        {skipNow.kind === 'op' ? 'Пропустити опенінг' : 'Пропустити ендинг'} <IconRight />
-      </button>
+    {(skipNow || nextNow) && !fenixOwn && (
+      // Кнопки поверх плеєра — у стилі самого плеєра (MK 2026-11-26 13:03): Moon / Fenix / Ashdi, інакше — Hikka (style.css, .hp-ob).
+      <div className={`hp-watch__over hp-watch__over--${player.kind}`}>
+        {skipNow && (
+          <button type="button" className="hp-ob" title="Клавіша S у плеєрі" onClick={() => doSkip(skipNow.kind, skipNow.seg.e)}>
+            <IconFwd />
+            <span>{skipNow.kind === 'op' ? 'Пропустити опенінг' : afterEd(skipNow.seg.e) ? 'Сцена після титрів' : 'Пропустити ендинг'}</span>
+            <kbd className="hp-ob__key">S</kbd>
+          </button>
+        )}
+        {nextNow && (
+          <span className="hp-ob__group">
+            <button
+              type="button"
+              className="hp-ob hp-ob--primary"
+              title="Клавіша N у плеєрі"
+              style={nextNow.left !== null ? ({ '--hp-ob-p': `${(1 - nextNow.left / NEXT_COUNTDOWN) * 100}%` } as CSSProperties) : undefined}
+              onClick={() => goEp(ep + 1)}
+            >
+              <IconSkipFwd />
+              <span>Наступна серія</span>
+              {nextNow.left !== null ? <span className="hp-ob__count">{Math.ceil(nextNow.left)}</span> : <kbd className="hp-ob__key">N</kbd>}
+              {nextNow.left !== null && <span className="hp-ob__bar" aria-hidden="true" />}
+            </button>
+            {nextNow.left !== null && (
+              <button
+                type="button"
+                className="hp-ob hp-ob--icon"
+                aria-label="Не перемикати"
+                title="Не перемикати — дивитися до кінця"
+                onClick={() => {
+                  nextOff.current.add(ep);
+                  setNext(null);
+                }}
+              >
+                <IconClose />
+              </button>
+            )}
+          </span>
+        )}
+      </div>
     )}
+    {/*
+      Ліворуч угорі поверх плеєра (MK 2026-11-26 13:33): «◀ Серія N ▶» і озвучка зі списком команд — щоб у повному екрані
+      можна було гортати серії й міняти озвучку. Повний вибір (команда, плеєр, Dawn) і сітка серій — на своїх місцях.
+    */}
+    <div
+      className={cx('hp-watch__tools', 'hp-watch__tools--left', `hp-watch__tools--${player.kind}`, (tools || teamOpen || epOpen) && 'hp-watch__tools--on')}
+      onPointerEnter={() => {
+        toolsHover.current = true;
+        wakeTools(true);
+      }}
+      onPointerLeave={() => {
+        toolsHover.current = false;
+        wakeTools(true);
+      }}
+    >
+      <Button variant="ghost" size="sm" icon className="hp-watch__tool" aria-label="Попередня серія" title="Попередня серія" disabled={ep <= 1} onClick={() => goEp(ep - 1)}>
+        <IconLeft />
+      </Button>
+      <EpisodeMenu ep={ep} count={count} episodes={p.episodes} teamHas={teamHas} onPick={goEp} onOpen={setEpOpen} />
+      <Button
+        variant="ghost"
+        size="sm"
+        icon
+        className="hp-watch__tool"
+        aria-label="Наступна серія"
+        title="Наступна серія (клавіша N у плеєрі)"
+        disabled={ep >= count || !teamHas(ep + 1)}
+        onClick={() => goEp(ep + 1)}
+      >
+        <IconRight />
+      </Button>
+      {p.teams.length > 0 && (
+        <>
+          <span className="hp-watch__toolsep" aria-hidden="true" />
+          <Picker
+            className="hp-watch__toolteam"
+            triggerClass="hp-watch__tool hp-watch__tool--team"
+            label="Озвучка"
+            items={p.teams}
+            value={team}
+            keyOf={(t) => t.id}
+            trigger={
+              <>
+                <Avatar t={team} />
+                <span className="hp-ellipsis">{team.name}</span>
+              </>
+            }
+            item={(t) => <TeamLine t={t} full />}
+            onOpen={setTeamOpen}
+            onPick={(t) => {
+              startAt.current = 0;
+              setTeamId(t.id);
+              setPlayerId(undefined);
+            }}
+          />
+        </>
+      )}
+    </div>
+    {/* Кнопки блоку — панеллю поверх плеєра, справа вгорі (MK 2026-11-26 13:22); стиль — як у кнопок «Пропустити» (.hp-ob). */}
+    <div
+      className={cx('hp-watch__tools', `hp-watch__tools--${player.kind}`, (tools || menu) && 'hp-watch__tools--on')}
+      onPointerEnter={() => {
+        toolsHover.current = true;
+        wakeTools(true);
+      }}
+      onPointerLeave={() => {
+        toolsHover.current = false;
+        wakeTools(true);
+      }}
+    >
+        <div className="hp-select" ref={menuWrap}>
+          <Button variant="ghost" size="sm" icon className="hp-watch__tool" aria-label="Налаштування плеєра" title="Налаштування плеєра" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
+            <IconSettings />
+          </Button>
+          {menu && (
+            <div className="hp-popover hp-popover--end hp-watch__menu">
+              <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної; вручну — клавіша N у плеєрі" checked={p.prefs.autoNext} onChange={(v) => p.onPrefs({ autoNext: v })} />
+              <SwitchRow label="Відлік на ендингу" hint={`Кнопка «Наступна серія» — і через ${NEXT_COUNTDOWN} с перехід сам`} checked={!!p.prefs.nextCountdown} onChange={(v) => p.onPrefs({ nextCountdown: v })} />
+              <SwitchRow label="Відмічати в Hikka" hint="Серія зараховується, коли дійшли до ендингу" checked={p.prefs.hikkaSync} onChange={(v) => p.onPrefs({ hikkaSync: v })} />
+              <SwitchRow label="Мітки опенінгу й ендингу" hint="З плеєра, інакше приблизні з AniSkip" checked={marksOn} onChange={(v) => p.onPrefs({ marks: v })} />
+              {marksOn && (
+                <>
+                  <SwitchRow label="Пропускати опенінг сам" hint="Вручну — кнопка над плеєром або клавіша S у плеєрі" checked={!!p.prefs.skipOp} onChange={(v) => p.onPrefs({ skipOp: v })} />
+                  <SwitchRow label="Пропускати ендинг сам" checked={!!p.prefs.skipEd} onChange={(v) => p.onPrefs({ skipEd: v })} />
+                </>
+              )}
+              <SwitchRow label="Підсвітка" hint="Кольори з відео навколо плеєра" checked={ambient} onChange={(v) => p.onPrefs({ ambient: v })} />
+              {ambient && (
+                <AmbientFields prefs={p.prefs} onPrefs={p.onPrefs} />
+              )}
+            </div>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon
+          className="hp-watch__tool"
+          aria-pressed={dark}
+          aria-label={dark ? 'Увімкнути світло' : 'Вимкнути світло'}
+          title={dark ? 'Увімкнути світло' : 'Вимкнути світло — затемнити все навколо плеєра'}
+          onClick={() => setDark((x) => !x)}
+        >
+          <IconBulb />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon
+          className="hp-watch__tool hp-watch__wide"
+          aria-pressed={effWide}
+          aria-label={wide ? 'Звичайний розмір' : 'Ширше'}
+          title={moonWide ? 'Moon завжди ширше: у вузькому блоці його панель блимає' : wide ? 'Звичайний розмір' : 'Ширше'}
+          disabled={player.kind === 'moon' && !noWide}
+          onClick={() => toggleWide(!wide)}
+        >
+          <IconTv />
+        </Button>
+        {effWide && effSize === 'screen' && (
+          <Button variant="ghost" size="sm" icon className="hp-watch__tool" aria-label="Вирівняти плеєр по екрану" title="Вирівняти плеєр по екрану" onClick={fitScreen}>
+            <IconScan />
+          </Button>
+        )}
+        {effWide && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon
+            className="hp-watch__tool hp-watch__wide"
+            aria-label={`Розмір плеєра: ${SIZE_LABEL[nextSize].toLowerCase()}`}
+            title={`Розмір плеєра: ${SIZE_LABEL[nextSize].toLowerCase()}`}
+            onClick={() => {
+              setSize(nextSize);
+              p.onPrefs({ size: nextSize });
+            }}
+          >
+            {nextSize === 'window' ? <IconMoveH /> : nextSize === 'screen' ? <IconMoveV /> : <IconMoveBack />}
+          </Button>
+        )}
+        {canFull && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon
+            className="hp-watch__tool"
+            aria-label={full ? 'Вийти з повного екрана' : 'На весь екран'}
+            title={full ? 'Вийти з повного екрана' : 'На весь екран'}
+            onClick={toggleFull}
+          >
+            {full ? <IconShrink /> : <IconExpand />}
+          </Button>
+        )}
+    </div>
     </div>
   );
   const stageCb = (el: HTMLElement | null) => {
@@ -666,85 +1059,6 @@ export function WatchBlock(p: WatchBlockProps) {
       <Header title="Перегляд">
         {license}
         {anitube}
-        <div className="hp-select" ref={menuWrap}>
-          <Button variant="ghost" size="sm" icon aria-label="Налаштування плеєра" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
-            <IconSettings />
-          </Button>
-          {menu && (
-            <div className="hp-popover hp-popover--end hp-watch__menu">
-              <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної" checked={p.prefs.autoNext} onChange={(v) => p.onPrefs({ autoNext: v })} />
-              <SwitchRow label="Відмічати в Hikka" hint="Серія зараховується, коли дійшли до ендингу" checked={p.prefs.hikkaSync} onChange={(v) => p.onPrefs({ hikkaSync: v })} />
-              <SwitchRow label="Мітки опенінгу й ендингу" hint="З плеєра, інакше приблизні з AniSkip" checked={marksOn} onChange={(v) => p.onPrefs({ marks: v })} />
-              {marksOn && (
-                <>
-                  <SwitchRow label="Пропускати опенінг сам" checked={!!p.prefs.skipOp} onChange={(v) => p.onPrefs({ skipOp: v })} />
-                  <SwitchRow label="Пропускати ендинг сам" checked={!!p.prefs.skipEd} onChange={(v) => p.onPrefs({ skipEd: v })} />
-                </>
-              )}
-              <SwitchRow label="Підсвітка" hint="Кольори з відео навколо плеєра" checked={ambient} onChange={(v) => p.onPrefs({ ambient: v })} />
-              {ambient && (
-                <AmbientFields prefs={p.prefs} onPrefs={p.onPrefs} />
-              )}
-            </div>
-          )}
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          icon
-          aria-pressed={dark}
-          aria-label={dark ? 'Увімкнути світло' : 'Вимкнути світло'}
-          title={dark ? 'Увімкнути світло' : 'Вимкнути світло — затемнити все навколо плеєра'}
-          onClick={() => setDark((x) => !x)}
-        >
-          <IconBulb />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          icon
-          className="hp-watch__wide"
-          aria-pressed={effWide}
-          aria-label={wide ? 'Звичайний розмір' : 'Ширше'}
-          title={moonWide ? 'Moon завжди ширше: у вузькому блоці його панель блимає' : wide ? 'Звичайний розмір' : 'Ширше'}
-          disabled={player.kind === 'moon' && !noWide}
-          onClick={() => toggleWide(!wide)}
-        >
-          <IconTv />
-        </Button>
-        {effWide && effSize === 'screen' && (
-          <Button variant="ghost" size="sm" icon aria-label="Вирівняти плеєр по екрану" title="Вирівняти плеєр по екрану" onClick={fitScreen}>
-            <IconScan />
-          </Button>
-        )}
-        {effWide && (
-          <Button
-            variant="ghost"
-            size="sm"
-            icon
-            className="hp-watch__wide"
-            aria-label={`Розмір плеєра: ${SIZE_LABEL[nextSize].toLowerCase()}`}
-            title={`Розмір плеєра: ${SIZE_LABEL[nextSize].toLowerCase()}`}
-            onClick={() => {
-              setSize(nextSize);
-              p.onPrefs({ size: nextSize });
-            }}
-          >
-            {nextSize === 'window' ? <IconMoveH /> : nextSize === 'screen' ? <IconMoveV /> : <IconMoveBack />}
-          </Button>
-        )}
-        {canFull && (
-          <Button
-            variant="ghost"
-            size="sm"
-            icon
-            aria-label={full ? 'Вийти з повного екрана' : 'На весь екран'}
-            title={full ? 'Вийти з повного екрана' : 'На весь екран'}
-            onClick={toggleFull}
-          >
-            {full ? <IconShrink /> : <IconExpand />}
-          </Button>
-        )}
       </Header>
       <div className="hp-card">
         {bar}
@@ -860,6 +1174,10 @@ export function PlayerFrame(p: {
   devices?: boolean;
   /** Сюди кладемо функцію перемотки (кнопки «Пропустити», смужка міток). */
   seekRef?: { current: ((sec: number) => void) | null };
+  /** Гаряча клавіша в плеєрі: S — пропустити, N — наступна серія. */
+  onHotkey?: (key: 'skip' | 'next') => void;
+  /** Миша рухається в плеєрі (true) / вийшла з нього (false) — показати/сховати панель кнопок поверх плеєра. */
+  onActive?: (on: boolean) => void;
   /** Секунда, з якої серія зарахується (риска на смужці самого плеєра); null — не показувати (уже переглянуто). */
   countAt?: number | null;
   /** countAt — це початок ендингу з міток (Fenix тоді риску не малюємо — у нього своя мітка ендингу). */
@@ -1035,8 +1353,11 @@ export function PlayerFrame(p: {
     };
     const onMsg = (e: MessageEvent) => {
       if (e.source !== f.contentWindow || e.origin !== origin) return;
-      const d = e.data as { type?: unknown; ready?: unknown } | null;
-      if (d?.type === AMBIENT_MSG && d.ready) send();
+      const d = e.data as { type?: unknown; ready?: unknown; hotkey?: unknown; active?: unknown } | null;
+      if (d?.type !== AMBIENT_MSG) return;
+      if (d.ready) send();
+      if (d.active === 0 || d.active === 1) cb.current.onActive?.(d.active === 1);
+      if (d.hotkey === 'skip' || d.hotkey === 'next') cb.current.onHotkey?.(d.hotkey);
     };
     window.addEventListener('message', onMsg);
     f.addEventListener('load', send);
