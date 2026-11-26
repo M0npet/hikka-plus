@@ -57,29 +57,33 @@ const CSS = `
 .bar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--primary-foreground, oklch(72% 0.18 343)); }
 .bar s { position: absolute; top: 0; bottom: 0; border-radius: inherit; background: color-mix(in srgb, var(--primary-foreground, oklch(72% 0.18 343)) 35%, transparent); text-decoration: none; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Плашки — як Badge Hikka (h22, rounded-sm, text-xs 500). */
 .chip {
-  display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 7px; border: 1px solid transparent;
-  font-size: 12px; font-weight: 600; line-height: 18px; white-space: nowrap;
+  box-sizing: border-box; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px;
+  border-radius: max(0px, calc(var(--radius, 8px) - 4px)); border: 1px solid var(--border, rgb(255 255 255 / 0.1));
+  font-size: 12px; font-weight: 500; line-height: 16px; white-space: nowrap; font-variant-numeric: tabular-nums;
   background: var(--secondary, #222); color: var(--secondary-foreground, #ddd);
 }
 .chip.new { background: var(--primary, oklch(30% 0.05 343)); color: var(--primary-foreground, oklch(72% 0.18 343)); border-color: var(--primary-border, transparent); }
-svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+svg { width: 12px; height: 12px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* Кнопка — як Button Hikka (default, size md): h40, px12, rounded-md, text-sm 500, gap 8, svg 16; hover — bg primary-border. */
 .go {
   all: unset; box-sizing: border-box; cursor: pointer;
-  display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px; border-radius: var(--radius, 8px);
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 40px; padding: 0 12px;
+  border-radius: max(0px, calc(var(--radius, 8px) - 2px));
   border: 1px solid var(--primary-border, transparent);
   background: var(--primary, oklch(30% 0.05 343)); color: var(--primary-foreground, oklch(72% 0.18 343));
-  font-weight: 600; font-size: 14px; line-height: 20px;
-  transition: filter 0.15s, transform 0.15s;
+  font-weight: 500; font-size: 14px; line-height: 20px;
+  transition: background-color 0.15s, transform 0.15s;
 }
-.go:hover { filter: brightness(1.15); }
+.go:hover { background: var(--primary-border, oklch(40% 0.08 343)); }
 .go:active { transform: scale(0.98); }
-.go:focus-visible { outline: 2px solid var(--ring, #fff); outline-offset: 2px; }
-.go .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.go .t > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.go small { font-size: 11px; line-height: 14px; font-weight: 500; opacity: 0.75; }
+.go:focus-visible { outline: 3px solid color-mix(in srgb, var(--ring, #fff) 50%, transparent); outline-offset: 0; }
+.go .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.go .t b { font-weight: 600; }
 .go svg { width: 16px; height: 16px; }
-.go .s { flex: none; font-weight: 500; font-size: 12px; opacity: 0.75; font-variant-numeric: tabular-nums; }
+.go svg.fill { fill: currentColor; stroke: none; }
+.go .s { flex: none; font-size: 12px; opacity: 0.7; font-variant-numeric: tabular-nums; }
 `;
 
 const ICON = {
@@ -271,9 +275,11 @@ function draw(root: ShadowRoot, line: Line, book: boolean) {
     const go = line.go;
     const b = el('button', 'go');
     b.type = 'button';
-    const txt = el('span', 't');
-    txt.append(el('small', undefined, go.verb), el('span', undefined, go.text));
-    b.append(icon(book ? ICON.book : ICON.play), txt);
+    const txt = el('span', 't', `${go.verb} · `);
+    txt.append(el('b', undefined, go.text));
+    const ic = icon(book ? ICON.book : ICON.play);
+    if (!book) ic.classList.add('fill');
+    b.append(ic, txt);
     if (go.sub) b.append(el('span', 's', go.sub));
     b.title = `${go.verb}: ${go.text}${go.sub ? `, ${go.sub}` : ''}`;
     const stop = (e: Event) => {
