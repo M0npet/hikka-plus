@@ -363,25 +363,37 @@ function holdControls() {
     el.dispatchEvent(new PointerEvent('pointermove', init));
     el.dispatchEvent(new MouseEvent('mousemove', init));
   };
-  // Коли востаннє hikka.io просив {hold} (миша на нашому шарі); 0 — миша справді рухалась у плеєрі.
-  let heldAt = 0;
+  // Fenix ховає ВЕСЬ інтерфейс разом із затемненням одразу на pointerleave свого .fenix-root (hideUiNow у player.js,
+  // перевірено 2026-11-26) — коли миша йде з кадру на наш шар, наш {hold} повертав його вже після цього → мигало
+  // затемнення (MK 16:31–16:48). Тому вихід з кадру Fenix не відпускаємо одразу: чекаємо 300 мс — прийшов {hold}
+  // (миша на нашій панелі) → Fenix про вихід так і не дізнається; ні → передаємо йому pointerleave самі (ховає як завжди).
+  const fenixRoot = () => (location.hostname === 'fenixplay.xyz' ? document.querySelector<HTMLElement>('.fenix-root') : null);
+  let leaveT = 0;
+  const release = () => {
+    leaveT = 0;
+    fenixRoot()?.dispatchEvent(new PointerEvent('pointerleave', { pointerType: 'mouse' }));
+  };
+  document.addEventListener(
+    'pointerleave',
+    (e) => {
+      // Лише справжній вихід миші за межі кадру (relatedTarget у сусідньому документі = null), не наш власний release.
+      if (!e.isTrusted || e.relatedTarget || (e.pointerType && e.pointerType !== 'mouse') || e.target !== fenixRoot()) return;
+      e.stopImmediatePropagation();
+      clearTimeout(leaveT);
+      leaveT = window.setTimeout(release, 300);
+    },
+    true,
+  );
   window.addEventListener('message', (e) => {
     if (e.source !== window.parent || e.origin !== PARENT) return;
     const d = e.data as { type?: unknown; hold?: unknown } | null;
     if (d?.type !== AMBIENT_REQ || !d.hold) return;
-    heldAt = Date.now();
+    clearTimeout(leaveT); // миша на нашому шарі — для плеєра вона «не виходила»
+    leaveT = 0;
     fire();
   });
-  for (const ev of ['pointermove', 'pointerdown'] as const)
-    document.addEventListener(ev, (e) => e.isTrusted && (heldAt = 0), { passive: true, capture: true });
-  // Firefox шле mouseleave у кадр запізно (MK 2026-11-26 16:31–16:34, «с рамки на среднюю часть»): миша вже на нашій
-  // панелі, {hold} уже прийшов, а потім плеєр ловить mouseleave і ховає панель — до наступного {hold} через 1 с.
-  // Нещодавно тримали → після обробників плеєра (setTimeout) одразу показуємо знову, і ще раз — якщо плеєр ховає з затримкою.
-  document.documentElement.addEventListener('mouseleave', () => {
-    if (!heldAt || Date.now() - heldAt > 1500) return;
-    setTimeout(fire, 0);
-    setTimeout(fire, 150);
-  });
+  // Миша повернулася в плеєр — відкладений вихід більше не потрібен.
+  document.addEventListener('pointermove', (e) => e.isTrusted && leaveT && (clearTimeout(leaveT), (leaveT = 0)), { passive: true, capture: true });
 }
 
 /** Риска порогу зарахування серії на смужці прокрутки плеєра (Moon, Ashdi, Fenix). */
