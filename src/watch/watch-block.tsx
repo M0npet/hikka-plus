@@ -4,9 +4,9 @@
  * «Ширше» — увесь блок на ширину сітки сторінки (wide-layout.ts); блок не переїжджає в DOM, iframe не перезавантажується.
  */
 import { browser } from '#imports';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
-import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv, IconBulb, IconClose, IconFwd, IconSkipFwd, IconMoveH, IconMoveV, IconMoveBack, IconScan } from '../ui/icons';
+import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv, IconBulb, IconClose, IconFwd, IconSkipFwd, IconMoveH, IconMoveV, IconMoveBack, IconScan, IconFlag } from '../ui/icons';
 import { useLightsOff } from './lights-off';
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
@@ -17,6 +17,9 @@ import type { LightsMsg } from '../lights/types';
 import type { MarkSrc, Seg } from './skip-marks';
 import type { UaLicense } from './providers';
 import type { MarksInfo } from './watch-root';
+
+/** Відрізок на смужці плеєра: вид, початок і кінець у секундах. */
+type BarSeg = ['op' | 'ed', number, number];
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 const RANGE = 50;
@@ -39,12 +42,10 @@ type WatchBlockProps = {
   /** Серій за Hikka (сітка показує й ще не додані на сайти). */
   total?: number;
   hikka?: HikkaLine;
-  /** Посилання «Anitube» (лише посиланням — Cloudflare). */
-  anitube?: string;
   /** Українська ліцензія з Mikai: де дивитися легально (кнопка в шапці; без серій — замість «не знайшли»). */
   license?: UaLicense;
   /** Поріг зарахування поточної серії: at — секунда, ed — це початок ендингу (а не приблизний поріг без міток). */
-  edInfo?: { ep: number; at: number; ed: boolean } | null;
+  edInfo?: { ep: number; at: number; own: boolean } | null;
   prefs: WatchPrefs;
   onPrefs: (p: Partial<WatchPrefs>) => void;
   /** Куди переносити плеєр у режимі «Ширше» (host над колонками сторінки). */
@@ -385,6 +386,7 @@ export function WatchBlock(p: WatchBlockProps) {
 
   const [wide, setWide] = useState(!!p.prefs.wide);
   const [menu, setMenu] = useState(false);
+  const [marksOpen, setMarksOpen] = useState(false);
   const menuWrap = useRef<HTMLDivElement>(null);
   // Меню налаштувань закривається кліком поза ним, Esc і кліком у плеєр (iframe забирає фокус — у вікна blur).
   useEffect(() => {
@@ -494,8 +496,8 @@ export function WatchBlock(p: WatchBlockProps) {
   const [range, setRange] = useState('0');
   // З якої секунди почати після (пере)завантаження iframe.
   const startAt = useRef(init?.t ?? 0);
-  // Поточна позиція (крок 1 с) — у маленькому сховищі: щосекунди перемальовується лише смужка міток (LiveMarksBar),
-  // а весь блок (сітка серій, меню) — лише коли кнопка «Пропустити» з'являється/зникає.
+  // Поточна позиція (крок 1 с) — у маленькому сховищі, без перемальовування блоку: блок (сітка серій, меню) —
+  // лише коли кнопка «Пропустити» з'являється/зникає.
   const posStore = useMemo(createPosStore, []);
   const [skip, setSkip] = useState<(SkipState & { ep: number }) | null>(null);
   // «Наступна серія» поверх плеєра (MK 2026-11-26): з порогу зарахування (початок ендингу) до кінця серії.
@@ -506,7 +508,7 @@ export function WatchBlock(p: WatchBlockProps) {
   const nextT0 = useRef(new Map<number, number>());
   const nextOff = useRef(new Set<number>());
   const nextFired = useRef(new Set<number>());
-  const edRef = useRef<{ ep: number; at: number } | null>(null);
+  const edRef = useRef<{ ep: number; at: number; own: boolean } | null>(null);
   edRef.current = p.edInfo ?? null;
   const mkRef = useRef<MarksInfo | null>(null);
   const seekRef = useRef<((sec: number) => void) | null>(null);
@@ -698,13 +700,6 @@ export function WatchBlock(p: WatchBlockProps) {
       </section>
     );
 
-  const anitube = p.anitube && (
-    <a className={btn('ghost', 'sm')} href={p.anitube} target="_blank" rel="noreferrer noopener">
-      Anitube
-      <IconExternal />
-    </a>
-  );
-
   // Ліцензія (блок license з Mikai): кнопка «Легально: Netflix» у шапці; підказка — чи є українська озвучка/субтитри.
   const lic = p.license;
   const licWhat = lic ? [lic.dub && 'українська озвучка', lic.subs && 'українські субтитри'].filter(Boolean).join(', ') : '';
@@ -726,7 +721,6 @@ export function WatchBlock(p: WatchBlockProps) {
       <section className="hp-section">
         <Header title="Перегляд">
           {license}
-          {anitube}
         </Header>
         <div className="hp-card">
           <p className="hp-p hp-state">
@@ -841,8 +835,8 @@ export function WatchBlock(p: WatchBlockProps) {
             else holdIfOurs();
             wakeTools(on);
           }}
-          countAt={frameEp === ep && ed && !st?.watched ? ed.at : null}
-          countEd={!!ed?.ed}
+          countAt={frameEp === ep && ed && !ed.own ? ed.at : null}
+          barSegs={frameEp === ep && mk ? (['op', 'ed'] as const).flatMap((k) => (mk.m[k] && mk.m[k]!.src !== 'player' ? [[k, Math.round(mk.m[k]!.s), Math.round(mk.m[k]!.e)] as BarSeg] : [])) : []}
           onEnded={() => {
             const cur = ep;
             p.onEnded?.(cur);
@@ -1006,7 +1000,7 @@ export function WatchBlock(p: WatchBlockProps) {
     </div>
     {/* Кнопки блоку — панеллю поверх плеєра, справа вгорі (MK 2026-11-26 13:22); стиль — як у кнопок «Пропустити» (.hp-ob). */}
     <div
-      className={cx('hp-watch__tools', `hp-watch__tools--${player.kind}`, (tools || still || menu) && 'hp-watch__tools--on')}
+      className={cx('hp-watch__tools', `hp-watch__tools--${player.kind}`, (tools || still || menu || marksOpen) && 'hp-watch__tools--on')}
       onPointerEnter={() => {
         toolsHover.current = true;
         wakeTools(true);
@@ -1016,6 +1010,7 @@ export function WatchBlock(p: WatchBlockProps) {
         wakeTools(true);
       }}
     >
+        {mk && (mk.m.op || mk.m.ed) && <MarksTool key={ep} info={mk} onSeek={(sec) => seekRef.current?.(sec)} onOpen={setMarksOpen} />}
         <div className="hp-select" ref={menuWrap}>
           <Button variant="ghost" size="sm" icon className="hp-watch__tool" aria-label="Налаштування плеєра" title="Налаштування плеєра" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
             <IconSettings />
@@ -1234,13 +1229,9 @@ export function WatchBlock(p: WatchBlockProps) {
     <>
       <Header title="Перегляд">
         {license}
-        {anitube}
       </Header>
       <div className="hp-card">
         {frame}
-        {mk && (mk.m.op || mk.m.ed) && (
-          <LiveMarksBar key={ep} store={posStore} ep={ep} info={mk} onSeek={(sec) => seekRef.current?.(sec)} />
-        )}
         {rest}
       </div>
     </>
@@ -1258,28 +1249,21 @@ export function WatchBlock(p: WatchBlockProps) {
   );
 }
 
-/* ---------- Смужка міток OP/ED під плеєром ---------- */
+/* ---------- Мітки OP/ED: кнопка на панелі над плеєром ---------- */
 
 const SRC_NAMES: Record<MarkSrc, string> = { player: 'з плеєра', aniskip: 'AniSkip, приблизно' };
 const KIND_NAMES = { op: 'Опенінг', ed: 'Ендинг' } as const;
 
 type Pos = { ep: number; t: number; d: number };
-type PosStore = { get: () => Pos | null; set: (p: Pos) => void; sub: (f: () => void) => () => void };
+type PosStore = { get: () => Pos | null; set: (p: Pos) => void };
 type SkipState = { kind: 'op' | 'ed'; seg: Seg };
 
 function createPosStore(): PosStore {
   let cur: Pos | null = null;
-  const subs = new Set<() => void>();
   return {
     get: () => cur,
     set(p) {
-      if (cur && cur.ep === p.ep && cur.t === p.t && cur.d === p.d) return;
       cur = p;
-      subs.forEach((f) => f());
-    },
-    sub(f) {
-      subs.add(f);
-      return () => void subs.delete(f);
     },
   };
 }
@@ -1294,42 +1278,60 @@ function skipAt(mk: MarksInfo | null, t: number): SkipState | null {
 }
 
 /** Смужка міток, що сама стежить за позицією — щоб щосекунди не перемальовувати весь блок. */
-function LiveMarksBar(p: { store: PosStore; ep: number; info: MarksInfo; onSeek: (sec: number) => void }) {
-  const now = useSyncExternalStore(p.store.sub, p.store.get);
-  if (!now || now.ep !== p.ep || !(now.d > 0)) return null;
-  return <MarksBar info={p.info} t={now.t} d={now.d} onSeek={p.onSeek} />;
-}
-
-/** Де OP і ED у цій серії: смужка на всю тривалість, клік — перемотка; під нею — час і звідки мітка. Показуємо, лише коли мітки є. */
-function MarksBar({ info, t, d, onSeek }: { info: MarksInfo | null; t: number; d: number; onSeek: (sec: number) => void }) {
-  const m = info?.m ?? {};
-  const pct = (x: number) => `${Math.max(0, Math.min(100, (x / d) * 100))}%`;
-  const segs = (['op', 'ed'] as const).filter((k) => m[k]);
-  const onBar = (e: { currentTarget: HTMLElement; clientX: number }) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    if (r.width > 0) onSeek(((e.clientX - r.left) / r.width) * d);
+/** Кнопка «Мітки» на правій панелі поверх плеєра (MK 2026-11-26 17:18, замість смужки під плеєром): наведення або дотик —
+ *  з якого по який час опенінг і ендинг і звідки мітки; клік по рядку — перейти на початок. */
+function MarksTool({ info, onSeek, onOpen }: { info: MarksInfo; onSeek: (sec: number) => void; onOpen: (on: boolean) => void }) {
+  const [open, setOpen] = useState(false);
+  const timer = useRef(0);
+  const entered = useRef(0);
+  const set = (on: boolean) => {
+    clearTimeout(timer.current);
+    setOpen(on);
+    onOpen(on);
   };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const m = info.m;
+  const kinds = (['op', 'ed'] as const).filter((k) => m[k]);
   return (
-    <div className="hp-watch__marks">
-      <div className="hp-watch__track" role="presentation" onClick={onBar} title="Перемотати">
-        {segs.map((k) => (
-          <span
-            key={k}
-            className={`hp-watch__seg hp-watch__seg--${k}${m[k]!.src === 'aniskip' ? ' hp-watch__seg--rough' : ''}`}
-            style={{ left: pct(m[k]!.s), width: `calc(${pct(m[k]!.e)} - ${pct(m[k]!.s)})` }}
-          />
-        ))}
-        <span className="hp-watch__now" style={{ left: pct(t) }} />
-      </div>
-      <div className="hp-watch__legend">
-        {segs.map((k) => (
-          <button key={k} type="button" className="hp-watch__mark" onClick={() => onSeek(m[k]!.s)} title={`Перейти на початок: ${KIND_NAMES[k].toLowerCase()}`}>
-            <span className={`hp-watch__dot hp-watch__dot--${k}`} />
-            {KIND_NAMES[k]} {fmt(m[k]!.s)}–{fmt(m[k]!.e)}
-            <span className="hp-muted"> · {SRC_NAMES[m[k]!.src]}</span>
-          </button>
-        ))}
-      </div>
+    <div
+      className="hp-select"
+      onPointerEnter={(e) => {
+        if (e.pointerType !== 'mouse') return;
+        entered.current = Date.now();
+        set(true);
+      }}
+      onPointerLeave={(e) => {
+        if (e.pointerType !== 'mouse') return;
+        clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => set(false), 200);
+      }}
+    >
+      <Button
+        variant="ghost"
+        size="sm"
+        icon
+        className="hp-watch__tool"
+        aria-label="Мітки опенінгу й ендингу"
+        aria-expanded={open}
+        // Мишею відкриває наведення — клік одразу після нього не закриває; на дотик — клік відкриває/закриває.
+        onClick={() => Date.now() - entered.current > 400 && set(!open)}
+      >
+        <IconFlag />
+      </Button>
+      {open && (
+        <div className="hp-popover hp-popover--end hp-watch__markpop" role="dialog" aria-label="Мітки">
+          {kinds.map((k) => (
+            <button key={k} type="button" className="hp-watch__mark" onClick={() => onSeek(m[k]!.s)} title={`Перейти на початок: ${KIND_NAMES[k].toLowerCase()}`}>
+              <span className={`hp-watch__dot hp-watch__dot--${k}`} />
+              <span className="hp-watch__markname">{KIND_NAMES[k]}</span>
+              <span className="hp-watch__marktime">
+                {fmt(m[k]!.s)}–{fmt(m[k]!.e)}
+              </span>
+              <span className="hp-watch__marksrc">{SRC_NAMES[m[k]!.src]}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1353,10 +1355,11 @@ export function PlayerFrame(p: {
   onHotkey?: (key: 'skip' | 'next') => void;
   /** Миша рухається в плеєрі (true) / вийшла з нього (false) — показати/сховати панель кнопок поверх плеєра. */
   onActive?: (on: boolean) => void;
-  /** Секунда, з якої серія зарахується (риска на смужці самого плеєра); null — не показувати (уже переглянуто). */
+  /** Секунда, з якої серія зарахується (риска на смужці самого плеєра); null — не показувати. MK 2026-11-26 17:13: завжди (і на переглянутій серії), крім випадку, коли в самого
+   *  плеєра є своя мітка ендингу (Moon, Fenix) — тоді поріг = її початок, і плеєр уже його показує. */
   countAt?: number | null;
-  /** countAt — це початок ендингу з міток (Fenix тоді риску не малюємо — у нього своя мітка ендингу). */
-  countEd?: boolean;
+  /** Відрізки OP/ED, яких немає в самого плеєра (AniSkip), — малюються на його смужці (MK 2026-11-26 17:15). */
+  barSegs?: BarSeg[];
 }) {
   const [src, setSrc] = useState<string | null | undefined>(undefined);
   const [err, setErr] = useState(false);
@@ -1506,9 +1509,9 @@ export function PlayerFrame(p: {
   }, [src, p.glow, p.devices]);
 
   // Поріг зарахування серії — ризикою на смужці прокрутки самого плеєра (MK 2026-11-26: «нах подпись под, сделай
-  // интеграцию в плеер»). Малює скрипт фрейму (entrypoints/player-frame.content.ts, Moon і Fenix); тут лише кажемо секунду.
+  // интеграцию в плеер»). Малює скрипт фрейму (entrypoints/player-frame.content.ts, Moon, Ashdi і Fenix); тут лише кажемо секунду.
   const countSec = p.countAt == null ? null : Math.round(p.countAt);
-  const countEd = !!p.countEd;
+  const segsKey = JSON.stringify(p.barSegs ?? []);
   useEffect(() => {
     const f = ref.current;
     if (!src || !f) return;
@@ -1523,7 +1526,7 @@ export function PlayerFrame(p: {
         void f.contentWindow?.location.href;
         return; // ще about:blank — плеєр не завантажився
       } catch {
-        f.contentWindow?.postMessage({ type: AMBIENT_REQ, count: countSec, ed: countEd }, origin);
+        f.contentWindow?.postMessage({ type: AMBIENT_REQ, count: countSec, segs: JSON.parse(segsKey) as BarSeg[] }, origin);
       }
     };
     const onMsg = (e: MessageEvent) => {
@@ -1541,7 +1544,7 @@ export function PlayerFrame(p: {
       window.removeEventListener('message', onMsg);
       f.removeEventListener('load', send);
     };
-  }, [src, countSec, countEd]);
+  }, [src, countSec, segsKey]);
 
   useEffect(() => {
     const f = ref.current;

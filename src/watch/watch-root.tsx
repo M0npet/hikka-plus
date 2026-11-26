@@ -59,8 +59,8 @@ export function AnimeWatch() {
 
 type Load =
   | { status: 'loading' }
-  | { status: 'ready'; teams: WatchTeam[]; anime: HikkaAnime; anitube?: string; license?: UaLicense }
-  | { status: 'not-found'; anitube?: string; license?: UaLicense }
+  | { status: 'ready'; teams: WatchTeam[]; anime: HikkaAnime; license?: UaLicense }
+  | { status: 'not-found'; license?: UaLicense }
   | { status: 'error'; message: string };
 
 const SAVE_EVERY_MS = 5000;
@@ -74,7 +74,7 @@ function WatchRoot({ slug }: { slug: string }) {
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [saved, setSaved] = useState<WatchSaved | null>(null);
   const [hikka, setHikka] = useState<HikkaWatchState>({ status: 'loading' });
-  const [edInfo, setEdInfo] = useState<{ ep: number; at: number; ed: boolean } | null>(null);
+  const [edInfo, setEdInfo] = useState<{ ep: number; at: number; own: boolean } | null>(null);
   const [marks, setMarks] = useState<MarksInfo | null>(null);
   // Мова назв — як у користувача Hikka (src/core/title-lang.ts).
   const lang = useTitleLang();
@@ -145,7 +145,7 @@ function WatchRoot({ slug }: { slug: string }) {
         const name = pickTitle({ ua: anime.title_ua, en: anime.title_en, ja: anime.title_ja }, lang) || slug;
         dubRef.current = { name, mikai: mk.teams };
         noteDub(s);
-        setLoad(teams.length ? { status: 'ready', teams, anime, anitube: links.anitube, license } : { status: 'not-found', anitube: links.anitube, license });
+        setLoad(teams.length ? { status: 'ready', teams, anime, license } : { status: 'not-found', license });
       } catch (e) {
         if (!off) setLoad({ status: 'error', message: String((e as Error)?.message ?? e) });
       }
@@ -306,8 +306,9 @@ function WatchRoot({ slug }: { slug: string }) {
       const m = refreshMarks(ep, d);
       const edAt = m.ed?.s ?? null;
       const at = watchedAt(d, edAt, null);
-      const isEd = edAt !== null && at === edAt;
-      setEdInfo((x) => (x && x.ep === ep && Math.abs(x.at - at) < 1 && x.ed === isEd ? x : { ep, at, ed: isEd }));
+      // own — поріг = початок ендингу з міток самого плеєра (Moon, Fenix): він уже показує його на своїй смужці.
+      const own = m.ed?.src === 'player' && at === edAt;
+      setEdInfo((x) => (x && x.ep === ep && Math.abs(x.at - at) < 1 && x.own === own ? x : { ep, at, own }));
       // Після «Скасувати» серію не відмічаємо знову, доки позиція не повернеться нижче порогу.
       if (t < at) L.blocked.delete(ep);
       else markWatched(ep);
@@ -414,7 +415,6 @@ function WatchRoot({ slug }: { slug: string }) {
       onSequel={onSequel}
       total={total ?? undefined}
       hikka={hikkaLine}
-      anitube={load.status === 'ready' || load.status === 'not-found' ? load.anitube : undefined}
       license={load.status === 'ready' || load.status === 'not-found' ? load.license : undefined}
       edInfo={edInfo}
       prefs={prefs}

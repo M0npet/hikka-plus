@@ -20,7 +20,7 @@ import { teamKey } from './team-key';
 export { teamKey };
 import { safeFrameSrc, type PlayerKind, type WatchPlayer, type WatchTeam } from './types';
 
-type WatchLinks = { mikai?: { id: number; slug: string }; animeon?: number; anitube?: string };
+type WatchLinks = { mikai?: { id: number; slug: string }; animeon?: number };
 
 /** id тайтлів на сайтах із посилань Hikka. */
 export function parseWatchLinks(external: { url: string; type: string }[]): WatchLinks {
@@ -38,7 +38,6 @@ export function parseWatchLinks(external: { url: string; type: string }[]): Watc
     if (mk && !out.mikai) out.mikai = { id: Number(mk[1]), slug: mk[2]! };
     const ao = host === 'animeon.club' && u.pathname.match(/^\/anime\/(\d+)/);
     if (ao && !out.animeon) out.animeon = Number(ao[1]);
-    if (host === 'anitube.in.ua' && u.protocol === 'https:' && !out.anitube) out.anitube = u.toString();
   }
   return out;
 }

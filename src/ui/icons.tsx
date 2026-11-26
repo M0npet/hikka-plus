@@ -79,6 +79,7 @@ export const IconMoveH = base(['m18 8 4 4-4 4', 'M2 12h20', 'm6 8-4 4 4 4']);
 export const IconMoveV = base(['m8 18 4 4 4-4', 'M12 2v20', 'm8 6 4-4 4 4']);
 export const IconMoveBack = base(['M9 14 4 9l5-5', 'M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11']);
 export const IconScan = base(['M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2', 'M8 12a4 4 0 1 0 8 0 4 4 0 1 0-8 0']);
+export const IconFlag = base(['M4 22V4', 'M4 4h13l-2.5 4L17 12H4']);
 export const IconTv = base(['M7 21h10', 'M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z']);
 export const IconImage = base([
   'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z',

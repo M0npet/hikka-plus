@@ -15,9 +15,9 @@
  * left/width у % від тривалості; вже з урахуванням вибраної озвучки). Читаємо їх звідти й шлемо {marks} — без запитів,
  * лише MutationObserver на смужці (MK 2026-11-25: «у Fenix правильные таймкоды»).
  *
- * Поріг зарахування серії (MK 2026-11-26): hikka.io шле {count: сек, ed} — малюємо свою риску на смужці прокрутки
- * Moon (Plyr, .plyr__progress), Ashdi і Fenix (.fenix-progress-bar; якщо поріг — початок ендингу з міток, не малюємо: у Fenix
- * своя мітка ендингу). Лише додаємо свій елемент hp-count (pointer-events: none), решту плеєра не чіпаємо.
+ * Поріг зарахування серії (MK 2026-11-26): hikka.io шле {count: сек} — малюємо свою риску на смужці прокрутки
+ * Moon (Plyr, .plyr__progress), Ashdi і Fenix (.fenix-progress-bar) — і на переглянутій серії; не шле, коли поріг = мітка ендингу самого плеєра (MK 17:13).
+ * Там же — відрізки OP/ED з AniSkip, коли в плеєра своїх міток немає ({segs}, MK 17:15). Лише додаємо свій елемент hp-count (pointer-events: none), решту плеєра не чіпаємо.
  * Ashdi (PlayerJS): класів немає, смужку шукаємо за будовою (`ashdiBar`, перевірено 2026-11-26 на ashdi.vip/vod/104218).
  *
  * Навантаження (0.6.0, MK 22:37): кадр — 5 разів на секунду (було 10) і без willReadFrequently — інакше браузер
@@ -396,15 +396,19 @@ function holdControls() {
   document.addEventListener('pointermove', (e) => e.isTrusted && leaveT && (clearTimeout(leaveT), (leaveT = 0)), { passive: true, capture: true });
 }
 
-/** Риска порогу зарахування серії на смужці прокрутки плеєра (Moon, Ashdi, Fenix). */
+/**
+ * На смужці прокрутки самого плеєра (Moon, Ashdi, Fenix): риска порогу зарахування серії і відрізки опенінгу/ендингу,
+ * яких плеєр сам не показує (AniSkip) — MK 2026-11-26 17:13–17:15. Свої мітки плеєра hikka.io сюди не шле.
+ */
 function countMark() {
   const moon = location.hostname.startsWith('moonanime.');
   const fenix = location.hostname === 'fenixplay.xyz';
   const ashdi = location.hostname === 'ashdi.vip';
   if (!moon && !fenix && !ashdi) return;
   let at: number | null = null;
-  let ed = false;
-  let el: HTMLElement | null = null;
+  let segs: [string, number, number][] = [];
+  let els: HTMLElement[] = [];
+  let bar: HTMLElement | null = null;
   let timer = 0;
   const duration = () => {
     let d = 0;
@@ -412,44 +416,64 @@ function countMark() {
     return d;
   };
   const remove = () => {
-    el?.remove();
-    el = null;
+    for (const e of els) e.remove();
+    els = [];
+  };
+  // Висота й положення доріжки: Ashdi — 4 px біля низу блоку нульової висоти; Moon — 5 px по центру; Fenix — уся смужка.
+  const track = ashdi ? 'bottom:-4px;height:4px' : moon ? 'top:50%;height:5px;transform:translateY(-50%)' : 'top:0;bottom:0';
+  const make = (css: string, title: string) => {
+    const e = document.createElement('span');
+    e.className = 'hp-count';
+    e.title = title;
+    e.style.cssText = 'position:absolute;pointer-events:none;border-radius:2px;' + css;
+    return e;
   };
   const place = () => {
     const d = duration();
-    if (at == null || !(d > 0) || at >= d || (fenix && ed)) return remove();
-    const bar = ashdi
-      ? el?.isConnected && el.parentElement
-        ? el.parentElement // уже знайшли — не перебираємо <pjsdiv> щосекунди
-        : ashdiBar()
-      : document.querySelector<HTMLElement>(moon ? '.plyr__progress' : '.fenix-progress-bar');
-    if (!bar) return remove();
-    if (!el) {
-      el = document.createElement('span');
-      el.className = 'hp-count';
-      el.title = 'Тут серія зарахується';
-      el.style.cssText =
-        'position:absolute;width:3px;border-radius:2px;background:#ff86c4;box-shadow:0 0 0 1px rgba(0,0,0,.45);pointer-events:none;z-index:3;' +
-        (ashdi
-          ? 'bottom:-4px;height:12px;transform:translateX(-50%)' // доріжка Ashdi — 4 px біля низу блоку нульової висоти
-          : `top:50%;transform:translate(-50%,-50%);height:${moon ? '12px' : 'calc(100% + 6px)'};min-height:8px`);
+    const items = [
+      ...segs.filter(([, s, e]) => e > s && s < d).map(([k, s, e]) => ({ k, s, e })),
+      ...(at != null && at < d ? [{ k: 'count', s: at, e: at }] : []),
+    ];
+    if (!(d > 0) || !items.length) return remove();
+    if (!bar?.isConnected) bar = ashdi ? ashdiBar() : document.querySelector<HTMLElement>(moon ? '.plyr__progress' : '.fenix-progress-bar');
+    if (!bar || getComputedStyle(bar).position === 'static') return remove(); // некуди прив'язати — не чіпаємо розкладку плеєра
+    if (els.length !== items.length || els.some((e, i) => e.dataset.k !== items[i]!.k)) {
+      remove();
+      els = items.map(({ k }) => {
+        const e =
+          k === 'count'
+            ? make(
+                'width:3px;background:#ff86c4;box-shadow:0 0 0 1px rgba(0,0,0,.45);z-index:3;' +
+                  (ashdi ? 'bottom:-4px;height:12px;transform:translateX(-50%)' : `top:50%;transform:translate(-50%,-50%);height:${moon ? '12px' : 'calc(100% + 6px)'};min-height:8px`),
+                'Тут серія зарахується',
+              )
+            : make(`${track};background:rgba(255,134,196,.55);z-index:2`, k === 'op' ? 'Опенінг (AniSkip)' : 'Ендинг (AniSkip)');
+        e.dataset.k = k;
+        return e;
+      });
     }
-    if (el.parentElement !== bar) {
-      if (getComputedStyle(bar).position === 'static') return remove(); // некуди прив'язати — не чіпаємо розкладку плеєра
-      bar.append(el);
-    }
-    const left = `${((at / d) * 100).toFixed(3)}%`;
-    if (el.style.left !== left) el.style.left = left;
+    items.forEach(({ s, e }, i) => {
+      const el = els[i]!;
+      if (el.parentElement !== bar) bar!.append(el);
+      const left = `${((s / d) * 100).toFixed(3)}%`;
+      if (el.style.left !== left) el.style.left = left;
+      if (e > s) {
+        const w = `${(((Math.min(e, d) - s) / d) * 100).toFixed(3)}%`;
+        if (el.style.width !== w) el.style.width = w;
+      }
+    });
   };
   window.addEventListener('message', (e) => {
     if (e.source !== window.parent || e.origin !== PARENT) return;
-    const d = e.data as { type?: unknown; count?: unknown; ed?: unknown } | null;
+    const d = e.data as { type?: unknown; count?: unknown; segs?: unknown } | null;
     if (!d || d.type !== AMBIENT_REQ || !('count' in d)) return;
     at = typeof d.count === 'number' && d.count > 0 ? d.count : null;
-    ed = d.ed === true;
+    segs = Array.isArray(d.segs)
+      ? d.segs.filter((x): x is [string, number, number] => Array.isArray(x) && (x[0] === 'op' || x[0] === 'ed') && typeof x[1] === 'number' && typeof x[2] === 'number')
+      : [];
     place();
     // Плеєр перемальовує смужку (зміна серії/озвучки, тривалість з'являється не одразу) — раз на секунду перевіряємо.
-    if (at == null) {
+    if (at == null && !segs.length) {
       clearInterval(timer);
       timer = 0;
     } else if (!timer) timer = window.setInterval(place, 1000);
