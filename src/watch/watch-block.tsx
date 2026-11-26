@@ -87,6 +87,9 @@ function EpisodeMenu({
   teamHas,
   onPick,
   onOpen,
+  canUnwatch,
+  onMark,
+  onUnwatch,
 }: {
   ep: number;
   count: number;
@@ -95,8 +98,13 @@ function EpisodeMenu({
   teamHas: (n: number) => boolean;
   onPick: (n: number) => void;
   onOpen?: (open: boolean) => void;
+  canUnwatch?: (n: number) => boolean;
+  onMark?: (n: number) => void;
+  onUnwatch?: (n: number) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Режим «Відмічати» (MK 2026-11-26 15:28): клік по серії — переглянуто / зняти відмітку, меню не закривається.
+  const [marking, setMarking] = useState(false);
   const pages = Math.max(1, Math.ceil(count / EP_PAGE));
   const [page, setPage] = useState(0);
   /** Серія під курсором — її назва в рядку під сіткою (інакше — поточної). */
@@ -109,6 +117,7 @@ function EpisodeMenu({
   useEffect(() => {
     if (open) setPage(Math.min(pages - 1, Math.floor((ep - 1) / EP_PAGE)));
     setHover(0);
+    setMarking(false);
   }, [open]);
   useEffect(() => {
     if (!open || !wrap.current) return;
@@ -151,37 +160,66 @@ function EpisodeMenu({
       </button>
       {open && (
         <div className="hp-popover hp-watch__eppop" role="dialog" aria-label="Серії">
-          {pages > 1 && (
-            <div className="hp-watch__eppage">
-              <Button variant="ghost" size="sm" icon aria-label="Попередні серії" title="Попередні (PgUp)" disabled={page <= 0} onClick={() => setPage(page - 1)}>
-                <IconLeft />
-              </Button>
+          <div className="hp-watch__eppage">
+            {pages > 1 ? (
+              <>
+                <Button variant="ghost" size="sm" icon aria-label="Попередні серії" title="Попередні (PgUp)" disabled={page <= 0} onClick={() => setPage(page - 1)}>
+                  <IconLeft />
+                </Button>
+                <span className="hp-watch__eppagetext">
+                  {from}–{to} <span className="hp-header__count">з {count}</span>
+                </span>
+                <Button variant="ghost" size="sm" icon aria-label="Наступні серії" title="Наступні (PgDn)" disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>
+                  <IconRight />
+                </Button>
+              </>
+            ) : (
               <span className="hp-watch__eppagetext">
-                {from}–{to} <span className="hp-header__count">з {count}</span>
+                Серії <span className="hp-header__count">{count}</span>
               </span>
-              <Button variant="ghost" size="sm" icon aria-label="Наступні серії" title="Наступні (PgDn)" disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>
-                <IconRight />
-              </Button>
-            </div>
-          )}
+            )}
+            {onMark && (
+              <button
+                type="button"
+                className="hp-watch__epmark"
+                aria-pressed={marking}
+                title={marking ? 'Готово — клік по серії знову відкриває її' : 'Клік по серії — позначити переглянутою або зняти відмітку'}
+                onClick={() => setMarking((x) => !x)}
+              >
+                {marking ? <IconEye /> : <IconEyeOff />}
+                {marking ? 'Готово' : 'Відмічати'}
+              </button>
+            )}
+          </div>
           <div className="hp-watch__epgrid" role="list">
             {Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => {
               const n = from + i;
               const s = episodes[n];
               const seen = !!s?.watched;
+              const lock = seen && !canUnwatch?.(n);
               return (
                 <button
                   key={n}
                   type="button"
                   role="listitem"
-                  className={cx('hp-watch__epcell', n === ep && 'hp-watch__epcell--on', seen && 'hp-watch__epcell--seen')}
-                  disabled={!teamHas(n)}
+                  className={cx('hp-watch__epcell', n === ep && 'hp-watch__epcell--on', seen && 'hp-watch__epcell--seen', marking && 'hp-watch__epcell--marking')}
+                  disabled={marking ? lock || !(teamHas(n) || seen) : !teamHas(n)}
                   aria-current={n === ep || undefined}
-                  title={epHint(n, titles?.[n], !teamHas(n) ? 'ще немає в цієї команди' : seen ? 'переглянуто' : s?.pos ? `${Math.round(s.pos * 100)}%` : '')}
+                  aria-pressed={marking ? seen : undefined}
+                  title={
+                    marking
+                      ? lock
+                        ? 'Зарахована в списку Hikka. Щоб зняти — «−» у віджеті Hikka або «Відмічати в Hikka».'
+                        : seen
+                          ? `Зняти відмітку з серії ${n}`
+                          : `Позначити серію ${n} переглянутою`
+                      : epHint(n, titles?.[n], !teamHas(n) ? 'ще немає в цієї команди' : seen ? 'переглянуто' : s?.pos ? `${Math.round(s.pos * 100)}%` : '')
+                  }
                   onPointerEnter={() => setHover(n)}
                   onPointerLeave={() => setHover(0)}
                   onFocus={() => setHover(n)}
                   onClick={() => {
+                    if (marking) return void (seen ? onUnwatch?.(n) : onMark?.(n));
                     setOpen(false);
                     if (n !== ep) onPick(n);
                   }}
@@ -381,6 +419,25 @@ export function WatchBlock(p: WatchBlockProps) {
     toolsT.current = window.setTimeout(() => !toolsHover.current && setTools(false), TOOLS_IDLE);
   };
   useEffect(() => () => clearTimeout(toolsT.current), []);
+  // Миша на наших панелях/кнопках поверх плеєра — для самого плеєра вона «вийшла», і він ховає свою панель
+  // (MK 2026-11-26 15:26). Поки миша на нашому — раз на секунду просимо фрейм {hold}: там імітують рух миші по плеєру.
+  const holdT = useRef(0);
+  const holdPing = () => {
+    const f = frameRef.current?.querySelector('iframe');
+    if (!f?.src) return;
+    try {
+      f.contentWindow?.postMessage({ type: AMBIENT_REQ, hold: 1 }, new URL(f.src).origin);
+    } catch {
+      /* ще about:blank або фрейм прибрано */
+    }
+  };
+  const holdOn = () => {
+    clearInterval(holdT.current);
+    holdPing();
+    holdT.current = window.setInterval(holdPing, 1000);
+  };
+  const holdOff = () => clearInterval(holdT.current);
+  useEffect(() => () => clearInterval(holdT.current), []);
   const [range, setRange] = useState('0');
   // З якої секунди почати після (пере)завантаження iframe.
   const startAt = useRef(init?.t ?? 0);
@@ -632,6 +689,32 @@ export function WatchBlock(p: WatchBlockProps) {
 
   const st = p.episodes[ep];
   const ed = p.edInfo && p.edInfo.ep === ep ? p.edInfo : null;
+  // Пункт списку плеєрів у меню ⚙.
+  const playerItem = (x: WatchPlayer) => (
+    <>
+      <span className="hp-grow hp-ellipsis">{x.label || PLAYER_NAMES[x.kind]}</span>
+      <span className="hp-option__hint">
+        {[x.noAds && 'Без реклами', dupKind(x) && SITE_NAMES[x.site]].filter(Boolean).join(' · ')}
+      </span>
+      <button
+        type="button"
+        className={cx('hp-watch__fav', p.prefs.favPlayer === x.kind && 'hp-watch__fav--on')}
+        aria-label="Улюблений плеєр"
+        aria-pressed={p.prefs.favPlayer === x.kind}
+        title="Улюблений плеєр — обирати першим"
+        onClick={(e) => {
+          e.stopPropagation();
+          p.onPrefs({ favPlayer: p.prefs.favPlayer === x.kind ? undefined : x.kind });
+        }}
+      >
+        <IconHeart />
+      </button>
+    </>
+  );
+  const pickPlayer = (x: WatchPlayer) => {
+    startAt.current = p.resumeAt?.() ?? 0;
+    setPlayerId(x.id);
+  };
   const frame = (
     <div ref={viewRef} className="hp-watch__view">
     {ambient && !p.renderFrame && (
@@ -715,7 +798,7 @@ export function WatchBlock(p: WatchBlockProps) {
     {(((skipNow || nextNow) && !fenixOwn) || seasonNow) && (
       // Кнопки поверх плеєра — у стилі самого плеєра (MK 2026-11-26 13:03): Moon / Fenix / Ashdi, інакше — Hikka (style.css, .hp-ob).
       // «Наступний сезон» Fenix сам не показує — малюємо й поверх його міток.
-      <div className={`hp-watch__over hp-watch__over--${player.kind}`}>
+      <div className={`hp-watch__over hp-watch__over--${player.kind}`} onPointerEnter={holdOn} onPointerLeave={holdOff}>
         {skipNow && !fenixOwn && (
           <button type="button" className="hp-ob" title="Клавіша S у плеєрі" onClick={() => doSkip(skipNow.kind, skipNow.seg.e)}>
             <IconFwd />
@@ -775,23 +858,36 @@ export function WatchBlock(p: WatchBlockProps) {
     )}
     {/*
       Ліворуч угорі поверх плеєра (MK 2026-11-26 13:33): «◀ Серія N ▶» і озвучка зі списком команд — щоб у повному екрані
-      можна було гортати серії й міняти озвучку. Повний вибір (команда, плеєр, Dawn) і сітка серій — на своїх місцях.
+      можна було гортати серії й міняти озвучку. Плеєр — у меню ⚙ (MK 2026-11-26 15:34); рядка над плеєром і Dawn більше немає.
     */}
     <div
       className={cx('hp-watch__tools', 'hp-watch__tools--left', `hp-watch__tools--${player.kind}`, (tools || teamOpen || epOpen) && 'hp-watch__tools--on')}
       onPointerEnter={() => {
         toolsHover.current = true;
         wakeTools(true);
+        holdOn();
       }}
       onPointerLeave={() => {
         toolsHover.current = false;
         wakeTools(true);
+        holdOff();
       }}
     >
       <Button variant="ghost" size="sm" icon className="hp-watch__tool" aria-label="Попередня серія" title="Попередня серія" disabled={ep <= 1} onClick={() => goEp(ep - 1)}>
         <IconLeft />
       </Button>
-      <EpisodeMenu ep={ep} count={count} episodes={p.episodes} titles={p.epTitles} teamHas={teamHas} onPick={goEp} onOpen={setEpOpen} />
+      <EpisodeMenu
+        ep={ep}
+        count={count}
+        episodes={p.episodes}
+        titles={p.epTitles}
+        teamHas={teamHas}
+        onPick={goEp}
+        onOpen={setEpOpen}
+        canUnwatch={p.canUnwatch}
+        onMark={p.onMark}
+        onUnwatch={p.onUnwatch}
+      />
       <Button
         variant="ghost"
         size="sm"
@@ -837,10 +933,12 @@ export function WatchBlock(p: WatchBlockProps) {
       onPointerEnter={() => {
         toolsHover.current = true;
         wakeTools(true);
+        holdOn();
       }}
       onPointerLeave={() => {
         toolsHover.current = false;
         wakeTools(true);
+        holdOff();
       }}
     >
         <div className="hp-select" ref={menuWrap}>
@@ -849,6 +947,24 @@ export function WatchBlock(p: WatchBlockProps) {
           </Button>
           {menu && (
             <div className="hp-popover hp-popover--end hp-watch__menu">
+              {/* Вибір плеєра — тут (MK 2026-11-26 15:34: «выбор плеера перенести в меню плеера»); завжди, навіть з одним (15:36). */}
+              {players.length > 0 && (
+                <div className="hp-watch__menuplayers" role="listbox" aria-label="Плеєр">
+                  <span className="hp-setrow__label">Плеєр</span>
+                  {players.map((x) => (
+                    <div
+                      key={x.id}
+                      role="option"
+                      aria-selected={x.id === player.id}
+                      className="hp-option hp-watch__opt"
+                      onClick={() => x.id !== player.id && pickPlayer(x)}
+                    >
+                      <Check on={x.id === player.id} />
+                      {playerItem(x)}
+                    </div>
+                  ))}
+                </div>
+              )}
               <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної; вручну — клавіша N у плеєрі" checked={p.prefs.autoNext} onChange={(v) => p.onPrefs({ autoNext: v })} />
               <SwitchRow label="Відлік на ендингу" hint={`Кнопка «Наступна серія» — і через ${NEXT_COUNTDOWN} с перехід сам`} checked={!!p.prefs.nextCountdown} onChange={(v) => p.onPrefs({ nextCountdown: v })} />
               <SwitchRow label="Відмічати в Hikka" hint="Серія зараховується, коли дійшли до ендингу" checked={p.prefs.hikkaSync} onChange={(v) => p.onPrefs({ hikkaSync: v })} />
@@ -938,63 +1054,6 @@ export function WatchBlock(p: WatchBlockProps) {
   const to = ranges > 1 ? Math.min(count, from + RANGE - 1) : count;
   const h = p.hikka;
 
-  const bar = (
-    <div className="hp-watch__bar">
-      <Picker
-        className="hp-watch__team"
-        label="Команда"
-        items={p.teams}
-        value={team}
-        keyOf={(t) => t.id}
-        trigger={<TeamLine t={team} />}
-        item={(t) => <TeamLine t={t} full />}
-        onPick={(t) => {
-          startAt.current = 0;
-          setTeamId(t.id);
-          setPlayerId(undefined);
-        }}
-      />
-      <Picker
-        className="hp-watch__player"
-        label="Плеєр"
-        items={players}
-        value={player}
-        keyOf={(x) => x.id}
-        trigger={<span className="hp-ellipsis">{PLAYER_NAMES[player.kind]}</span>}
-        item={(x) => (
-          <>
-            <span className="hp-grow hp-ellipsis">{x.label || PLAYER_NAMES[x.kind]}</span>
-            <span className="hp-option__hint">
-              {[x.noAds && 'Без реклами', dupKind(x) && SITE_NAMES[x.site]].filter(Boolean).join(' · ')}
-            </span>
-            <button
-              type="button"
-              className={cx('hp-watch__fav', p.prefs.favPlayer === x.kind && 'hp-watch__fav--on')}
-              aria-label="Улюблений плеєр"
-              aria-pressed={p.prefs.favPlayer === x.kind}
-              title="Улюблений плеєр — обирати першим"
-              onClick={(e) => {
-                e.stopPropagation();
-                p.onPrefs({ favPlayer: p.prefs.favPlayer === x.kind ? undefined : x.kind });
-              }}
-            >
-              <IconHeart />
-            </button>
-          </>
-        )}
-        onPick={(x) => {
-          startAt.current = p.resumeAt?.() ?? 0;
-          setPlayerId(x.id);
-        }}
-      />
-      {team.dawn && (
-        <a className={btn('outline', 'lg', false, 'hp-watch__dawn')} href={team.dawn(ep)} target="_blank" rel="noreferrer noopener" title="Dawn не вбудовується — відкриється ця серія на Mikai">
-          Dawn
-          <IconExternal />
-        </a>
-      )}
-    </div>
-  );
   const rest = (
     <>
 
@@ -1120,7 +1179,6 @@ export function WatchBlock(p: WatchBlockProps) {
         {anitube}
       </Header>
       <div className="hp-card">
-        {bar}
         {frame}
         {mk && (mk.m.op || mk.m.ed) && (
           <LiveMarksBar key={ep} store={posStore} ep={ep} info={mk} onSeek={(sec) => seekRef.current?.(sec)} />

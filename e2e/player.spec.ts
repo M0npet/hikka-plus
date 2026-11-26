@@ -53,7 +53,13 @@ test('блок «Перегляд»: Mikai public API + назви серій', 
   });
   expect(order).toBe('content-description');
 
-  await expect(watch().getByText(TEAM).first()).toBeVisible({ timeout: 20_000 });
+  // Озвучка — у лівій панелі поверх плеєра (рядка над плеєром немає; панель видно при русі миші).
+  await expect(watch().locator('.hp-watch__tools--left').getByText(TEAM)).toHaveCount(1, { timeout: 20_000 });
+  await expect(watch().locator('.hp-watch__bar')).toHaveCount(0);
+  // Плеєр — у меню ⚙, видно завжди (навіть коли плеєр один).
+  await watch().locator('[aria-label="Налаштування плеєра"]').dispatchEvent('click');
+  await expect(watch().locator('.hp-watch__menuplayers [role=option][aria-selected=true]')).toContainText('Fenix');
+  await page.keyboard.press('Escape');
   await fenixFrame(1);
   expect(hits.get(`GET api.mikai.me/public/v1/anime/hikka:${SLUG}/player`)).toBeGreaterThan(0);
 
@@ -71,6 +77,38 @@ test('«Наступна серія» з назвою на порозі зара
   await next.click();
   await fenixFrame(2);
   await expect(watch().locator('.hp-watch__eptitle')).toHaveText(EP_TITLES[2], { timeout: 10_000 });
+});
+
+test('меню серій над плеєром: «Відмічати» знімає й ставить відмітку', async () => {
+  await fenixFrame(2);
+  // Панель з'являється від руху миші в плеєрі (фрейм шле {active}).
+  const box = (await watch().locator('.hp-watch__frame').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.move(box.x + box.width / 2 + 20, box.y + box.height / 2 + 10);
+  const left = watch().locator('.hp-watch__tools--left');
+  await expect(left).toHaveClass(/hp-watch__tools--on/, { timeout: 10_000 });
+  // Миша на нашій панелі — плеєр отримує рух миші ({hold}), щоб не ховати свою панель (MK 2026-11-26 15:26).
+  const f = await fenixFrame(2);
+  await f.evaluate(() => {
+    const w = window as unknown as { __moves: number };
+    w.__moves = 0;
+    document.addEventListener('mousemove', (e) => void (!e.isTrusted && w.__moves++), true);
+  });
+  const lb = (await left.boundingBox())!;
+  await page.mouse.move(lb.x + 10, lb.y + lb.height / 2);
+  await expect.poll(() => f.evaluate(() => (window as unknown as { __moves: number }).__moves), { timeout: 5_000 }).toBeGreaterThan(1);
+  await left.locator('.hp-watch__tool--ep').click();
+  const menu = watch().locator('.hp-watch__eppop');
+  await menu.locator('.hp-watch__epmark').click();
+  const cell1 = menu.locator('.hp-watch__epcell').first();
+  // Серію 1 зарахувало на попередньому кроці (поріг) — знімаємо, потім ставимо знову; меню не закривається.
+  await expect(cell1).toHaveAttribute('aria-pressed', 'true');
+  await cell1.click();
+  await expect(cell1).toHaveAttribute('aria-pressed', 'false');
+  await cell1.click();
+  await expect(cell1).toHaveAttribute('aria-pressed', 'true');
+  await expect(menu).toBeVisible();
+  await page.keyboard.press('Escape');
 });
 
 test('«Наступний сезон» на останній серії → SPA-перехід', async () => {

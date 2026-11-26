@@ -48,6 +48,7 @@ export default defineContentScript({
     countMark();
     hotkeys();
     activity();
+    holdControls();
     // Плеєр міг уже стартувати з 16× зі сховища (слід сканера 0.5.22) — перші 15 с повертаємо 1×.
     const t0 = Date.now();
     const fix = window.setInterval(() => {
@@ -164,7 +165,7 @@ function ambient() {
   window.addEventListener('message', (e) => {
     if (e.source !== window.parent || e.origin !== PARENT) return;
     const d = e.data as { type?: unknown; on?: unknown; seek?: unknown } | null;
-    if (!d || d.type !== AMBIENT_REQ || 'count' in d) return; // {count} — для countMark, не вмикач підсвітки
+    if (!d || d.type !== AMBIENT_REQ || 'count' in d || 'hold' in d) return; // {count} — для countMark, {hold} — для holdControls
     if (typeof d.seek === 'number') {
       const v = pick();
       if (v && Number.isFinite(d.seek) && d.seek >= 0) v.currentTime = Math.min(d.seek, (v.duration || Infinity) - 0.5);
@@ -229,7 +230,8 @@ function fenixMarks() {
   // Повтор відповіді на кожен ready-запит hikka.io (обробник там міг перестворитися).
   window.addEventListener('message', (e) => {
     if (e.source !== window.parent || e.origin !== PARENT) return;
-    if ((e.data as { type?: unknown } | null)?.type !== AMBIENT_REQ) return;
+    const d = e.data as { type?: unknown; hold?: unknown } | null;
+    if (d?.type !== AMBIENT_REQ || d.hold) return;
     last = '';
     later();
   });
@@ -339,6 +341,29 @@ function activity() {
   document.documentElement.addEventListener('mouseleave', () => {
     last = 0;
     window.parent.postMessage({ type: AMBIENT_MSG, active: 0 }, PARENT);
+  });
+}
+
+/**
+ * Панель плеєра не ховати, поки миша на НАШИХ кнопках поверх плеєра (MK 2026-11-26 15:26: «когда наводишься на наш
+ * интерфейс, интерфейс плеера прячется»). Для плеєра миша тоді «вийшла» з фрейму. hikka.io раз на секунду шле {hold} —
+ * імітуємо рух миші по центру плеєра (pointermove + mousemove, спливають до контейнера): Plyr (Moon) показує панель на
+ * mousemove контейнера, Fenix і PlayerJS (Ashdi) — так само на русі миші. Лише подія, стан плеєра не чіпаємо.
+ */
+function holdControls() {
+  window.addEventListener('message', (e) => {
+    if (e.source !== window.parent || e.origin !== PARENT) return;
+    const d = e.data as { type?: unknown; hold?: unknown } | null;
+    if (d?.type !== AMBIENT_REQ || !d.hold) return;
+    const x = innerWidth / 2;
+    const y = innerHeight / 2;
+    const el = document.elementFromPoint(x, y) ?? document.querySelector('video') ?? document.body;
+    if (!el) return;
+    const init = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, view: window };
+    el.dispatchEvent(new PointerEvent('pointerover', init));
+    el.dispatchEvent(new MouseEvent('mouseover', init));
+    el.dispatchEvent(new PointerEvent('pointermove', init));
+    el.dispatchEvent(new MouseEvent('mousemove', init));
   });
 }
 

@@ -1552,18 +1552,6 @@ select {
 
 /* ---------- Блок «Перегляд» (плеєр аніме) ---------- */
 
-.hp-watch__bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.hp-watch__team {
-  flex: 1 1 260px;
-}
-.hp-watch__player {
-  flex: 0 1 180px;
-}
 .hp-watch__trig {
   display: flex;
   align-items: center;
@@ -1573,10 +1561,6 @@ select {
 .hp-watch__pop {
   min-width: max(100%, 260px);
   max-width: min(420px, 92vw);
-}
-.hp-watch__player .hp-watch__pop {
-  left: auto;
-  right: 0;
 }
 .hp-watch__opt {
   min-height: 40px;
@@ -1633,9 +1617,6 @@ select {
 }
 .hp-watch__fav--on svg {
   fill: currentColor;
-}
-.hp-watch__dawn {
-  flex: none;
 }
 .hp-watch__menu {
   display: flex;
@@ -1708,7 +1689,6 @@ select {
   opacity: var(--hp-glow, 0.5);
 }
 /* Решта картки — над підсвіткою (інакше світіння лягає на вибір команди/плеєра й серії). */
-.hp-watch__bar,
 .hp-watch__nav,
 .hp-watch__epsHead,
 .hp-watch__grid {
@@ -2147,14 +2127,75 @@ select {
   .hp-watch__tools--left {
     max-width: calc(100% - 24px);
   }
-  .hp-watch__tools--left .hp-watch__toolsep,
-  .hp-watch__tools--left .hp-watch__toolteam {
-    display: none;
+  .hp-watch__tools--left .hp-watch__tool--team {
+    max-width: 120px;
   }
 }
 .hp-watch__tools .hp-watch__menu {
   max-height: min(70vh, 520px);
   overflow-y: auto;
+}
+/* Вибір плеєра в меню ⚙ (MK 2026-11-26 15:34). */
+.hp-watch__menuplayers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: -4px -8px 0;
+}
+.hp-watch__menuplayers > .hp-setrow__label {
+  padding: 0 8px 4px;
+}
+/* Меню над плеєром (серії, озвучка, плеєр, налаштування) — напівпрозоре скло (MK 2026-11-26 15:28). */
+.hp-watch__tools .hp-popover {
+  border-color: var(--hp-ob-border);
+  background: rgb(12 12 16 / 0.72);
+  backdrop-filter: blur(16px) saturate(1.4);
+}
+.hp-watch__tools .hp-watch__epcell:not(.hp-watch__epcell--on) {
+  background: rgb(255 255 255 / 0.08);
+}
+.hp-watch__tools .hp-watch__epcell--seen:not(.hp-watch__epcell--on) {
+  background: rgb(255 255 255 / 0.03);
+}
+/* «Відмічати» в меню серій: клік по серії — переглянуто / зняти відмітку. */
+.hp-watch__epmark {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0 8px;
+  border-radius: var(--radius, 8px);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hp-muted-fg);
+  cursor: pointer;
+}
+.hp-watch__epmark .hp-icon,
+.hp-watch__epmark svg {
+  width: 14px;
+  height: 14px;
+}
+.hp-watch__epmark:hover {
+  background: rgb(255 255 255 / 0.08);
+  color: var(--hp-fg, inherit);
+}
+.hp-watch__epmark[aria-pressed='true'] {
+  background: var(--hp-primary);
+  color: var(--hp-primary-fg);
+}
+.hp-watch__epmark:focus-visible {
+  outline: 2px solid var(--hp-primary-fg);
+  outline-offset: 1px;
+}
+.hp-watch__epcell--marking {
+  outline: 1px dashed rgb(255 255 255 / 0.25);
+  outline-offset: -1px;
+}
+.hp-watch__epcell--marking.hp-watch__epcell--seen {
+  outline-style: solid;
 }
 @media (prefers-reduced-motion: reduce) {
   .hp-watch__tools {
@@ -2493,21 +2534,8 @@ select {
 }
 
 @media (max-width: 560px) {
-  .hp-watch__bar {
-    flex-wrap: wrap;
-  }
-  .hp-watch__team {
-    flex-basis: 100%;
-  }
-  .hp-watch__player {
-    flex: 1;
-  }
   .hp-watch__grid {
     grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
-  }
-  .hp-watch__player .hp-watch__pop {
-    left: 0;
-    right: auto;
   }
   span.hp-watch__hikka {
     display: none;
