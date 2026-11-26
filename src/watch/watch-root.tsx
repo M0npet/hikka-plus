@@ -458,9 +458,9 @@ function WatchRoot({ slug }: { slug: string }) {
         ? { kind: 'connect', onClick: () => void startHikkaLogin(true) }
         : hikka.status === 'error'
           ? { kind: 'error', message: hikka.message }
-          : (hikka.status === 'scope' || hikka.status === 'off') && prefs.hikkaSync
-            ? { kind: 'error', message: 'Ця збірка без клієнта Hikka — серії в Hikka не відмічаються (немає .env.local під час збірки)' }
-            : null;
+          : // Збірка без клієнта Hikka (локальна, без .env.local): входу немає — рядок не показуємо
+            // (MK 2026-11-26 22:05: «Hikka: помилка» під плеєром лише лякала); вікно налаштувань пояснює це саме.
+            null;
 
   return (
     <WatchBlock
