@@ -6,5 +6,7 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true
-  }
+  },
+  // e2e/ — тести Playwright під Node (типи й компіляція — його власні), у збірку розширення не входять.
+  "exclude": ["node_modules", ".output", "e2e"]
 }

@@ -13,7 +13,8 @@
     "zip:firefox": "wxt zip -b firefox",
     "build-for-amo": "wxt build -b firefox",
     "compile": "tsc --noEmit",
-    "postinstall": "wxt prepare"
+    "postinstall": "wxt prepare",
+    "e2e": "wxt build && playwright test -c e2e"
   },
   "dependencies": {
     "dompurify": "^3.5.0",
@@ -22,6 +23,7 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@wxt-dev/module-react": "^1.2.2",
