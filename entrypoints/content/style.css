@@ -2114,7 +2114,8 @@ select {
 /* Меню над плеєром (серії, озвучка, плеєр, налаштування) — напівпрозоре скло (MK 2026-11-26 15:28). */
 .hp-watch__tools .hp-popover {
   border-color: var(--hp-ob-border);
-  background: rgb(12 12 16 / 0.72);
+  /* Прозорість — повзунок «Прозорість меню» (MK 16:59): --hp-menu-a на .hp-watch__view. */
+  background: rgb(12 12 16 / var(--hp-menu-a, 0.7));
   backdrop-filter: blur(16px) saturate(1.4);
 }
 .hp-watch__tools .hp-watch__epcell:not(.hp-watch__epcell--on) {

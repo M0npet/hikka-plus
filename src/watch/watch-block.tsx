@@ -11,8 +11,8 @@ import { useLightsOff } from './lights-off';
 import { attachPlayer } from './adapters';
 import { useWideLayout } from './wide-layout';
 import { AMBIENT_MSG, AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
-import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_WIDE_ANIM, NEXT_COUNTDOWN, type WatchPrefs, type WatchSize } from './watch-store';
-import { AmbientFields } from './ambient-fields';
+import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_MENU_LEVEL, DEFAULT_WIDE_ANIM, NEXT_COUNTDOWN, type WatchPrefs, type WatchSize } from './watch-store';
+import { AmbientFields, MenuOpacityField } from './ambient-fields';
 import type { LightsMsg } from '../lights/types';
 import type { MarkSrc, Seg } from './skip-marks';
 import type { UaLicense } from './providers';
@@ -775,6 +775,7 @@ export function WatchBlock(p: WatchBlockProps) {
       onPointerOver={(e) => (e.target as Element).tagName !== 'IFRAME' && holdOn(true)}
       onPointerMove={(e) => (e.target as Element).tagName !== 'IFRAME' && holdOn(false)}
       onPointerLeave={holdOff}
+      style={{ '--hp-menu-a': String((p.prefs.menuLevel ?? DEFAULT_MENU_LEVEL) / 100) } as CSSProperties}
     >
     {ambient && !p.renderFrame && (
       <canvas
@@ -1031,6 +1032,7 @@ export function WatchBlock(p: WatchBlockProps) {
                   <SwitchRow label="Пропускати ендинг сам" checked={!!p.prefs.skipEd} onChange={(v) => p.onPrefs({ skipEd: v })} />
                 </>
               )}
+              <MenuOpacityField prefs={p.prefs} onPrefs={p.onPrefs} />
               <SwitchRow label="Підсвітка" hint="Кольори з відео навколо плеєра" checked={ambient} onChange={(v) => p.onPrefs({ ambient: v })} />
               {ambient && (
                 <AmbientFields prefs={p.prefs} onPrefs={p.onPrefs} />

@@ -12,7 +12,7 @@ import { MangaFields, NovelFields } from '../features/reader/settings-panel';
 import { autoSyncItem } from '../features/hikka-sync';
 import { DEFAULT_WIDE_ANIM, NEXT_COUNTDOWN, useWatchPrefs } from '../watch/watch-store';
 import { useCardsPrefs } from '../cards/prefs';
-import { AmbientFields } from '../watch/ambient-fields';
+import { AmbientFields, MenuOpacityField } from '../watch/ambient-fields';
 import { DubFields, DubPopupNews } from '../watch/dub-settings';
 import { DeviceLights } from '../lights/settings';
 import { LINK_SOURCES } from '../sources/links';
@@ -431,6 +431,7 @@ function PlayerFields({ mode }: { mode: SettingsMode }) {
             <SwitchRow label="Пропускати ендинг сам" hint="Серія все одно зараховується" checked={!!w.skipEd} onChange={(skipEd) => setW({ skipEd })} />
           </>
         )}
+        <MenuOpacityField prefs={w} onPrefs={setW} />
         <SwitchRow
           label="Підсвітка"
           hint="Кольори з відео навколо плеєра, як Ambient mode на YouTube"

@@ -1,5 +1,5 @@
 import { Slider } from '../ui/kit';
-import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, type WatchPrefs } from './watch-store';
+import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_MENU_LEVEL, type WatchPrefs } from './watch-store';
 
 /**
  * Повзунки підсвітки — спільні для шестерні блоку «Перегляд» і вкладки «Плеєр» у вікні налаштувань.
@@ -12,6 +12,21 @@ export function AmbientFields({ prefs, onPrefs }: { prefs: WatchPrefs; onPrefs: 
       bright={prefs.ambientBright ?? DEFAULT_AMBIENT_BRIGHT}
       onLevel={(ambientLevel) => onPrefs({ ambientLevel })}
       onBright={(ambientBright) => onPrefs({ ambientBright })}
+    />
+  );
+}
+
+/** Прозорість меню над плеєром (MK 2026-11-26 16:59) — у шестерні блоку «Перегляд» і на вкладці «Плеєр». */
+export function MenuOpacityField({ prefs, onPrefs }: { prefs: WatchPrefs; onPrefs: (p: Partial<WatchPrefs>) => void }) {
+  return (
+    <Slider
+      label="Прозорість меню"
+      value={100 - (prefs.menuLevel ?? DEFAULT_MENU_LEVEL)}
+      min={0}
+      max={90}
+      step={5}
+      format={(v) => `${v}%`}
+      onChange={(t) => onPrefs({ menuLevel: 100 - t })}
     />
   );
 }

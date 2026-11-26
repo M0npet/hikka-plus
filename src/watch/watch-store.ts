@@ -49,6 +49,8 @@ export type WatchPrefs = {
   skipEd?: boolean;
   /** Кнопка «Наступна серія» на ендингу — з відліком NEXT_COUNTDOWN с і переходом самому (за замовчуванням — ні, лише кнопка). */
   nextCountdown?: boolean;
+  /** Непрозорість фону меню над плеєром (⚙, серії, озвучка, плеєр), 10–100 % (у налаштуваннях — «Прозорість» = 100 − це). undefined — DEFAULT_MENU_LEVEL (MK 16:59). */
+  menuLevel?: number;
 };
 
 /** Скільки секунд перегляду ендингу до самостійного переходу на наступну серію (WatchPrefs.nextCountdown). */
@@ -58,6 +60,7 @@ export type WatchSize = 'grid' | 'window' | 'screen';
 
 export const DEFAULT_AMBIENT_LEVEL = 20;
 export const DEFAULT_AMBIENT_BRIGHT = 100;
+export const DEFAULT_MENU_LEVEL = 70;
 export const DEFAULT_WIDE_ANIM = 320;
 const DEFAULT_WATCH_PREFS: WatchPrefs = { enabled: true, autoNext: true, hikkaSync: true };
 

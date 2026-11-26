@@ -65,6 +65,19 @@ test('блок «Перегляд»: Mikai public API + назви серій', 
 
   // Назва поточної серії під «Серія 1 з 2».
   await expect(watch().locator('.hp-watch__eptitle')).toHaveText(EP_TITLES[1], { timeout: 15_000 });
+
+  // ⚙ → «Прозорість меню» (MK 2026-11-26 16:59): за замовчуванням 30 %, повзунок міняє фон меню.
+  await watch().getByRole('button', { name: 'Налаштування плеєра' }).click();
+  const menu = watch().locator('.hp-watch__tools .hp-watch__menu');
+  const bg = () => menu.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(await bg()).toMatch(/0\.7\)$/);
+  const slider = menu.getByRole('slider', { name: 'Прозорість меню' });
+  await slider.focus();
+  await slider.press('End'); // 90 % прозорості → непрозорість 0.1
+  await expect.poll(bg).toMatch(/0\.1\)$/);
+  await watch().getByRole('button', { name: 'Налаштування плеєра' }).click();
+  await page.evaluate(() => (document.querySelector('hikka-plus-watch')?.shadowRoot?.activeElement as HTMLElement | null)?.blur());
+  await page.mouse.move(0, 0); // миша на нашій панелі тримає її видимою — прибираємо з плеєра
 });
 
 test('«Наступна серія» з назвою на порозі зарахування', async () => {
