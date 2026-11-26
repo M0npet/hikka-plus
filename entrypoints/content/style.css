@@ -1666,7 +1666,20 @@ select {
   pointer-events: none;
   opacity: 0;
   filter: blur(40px) saturate(1.6) brightness(var(--hp-glow-b, 1));
+  /* М'який овал замість прямокутника (MK 2026-11-26 17:19: «сзади видно квадрат»): до краю шару — у нуль. */
+  -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 72%, transparent 100%);
   transition: opacity 0.6s ease;
+}
+/* Поки світить підсвітка, фон і рамка картки блоку зникають — інакше її прямокутник проступає крізь світіння. */
+.hp-watch .hp-card {
+  transition:
+    background-color 0.6s ease,
+    border-color 0.6s ease;
+}
+.hp-watch .hp-card:has(.hp-watch__glow.is-on) {
+  background-color: transparent;
+  border-color: transparent;
 }
 .hp-watch__glow.is-on {
   /* Непрозорість — повзунок «Прозорість підсвітки» (WatchPrefs.ambientLevel); яскравість — --hp-glow-b («Яскравість підсвітки»). */
