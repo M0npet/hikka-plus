@@ -55,5 +55,7 @@ export const NAV_EVENT = 'hikka-plus:nav';
  * content script, detail — `preferences.title_language` (`title_ua` / `title_en` / `title_ja` / `title_original`).
  */
 export const TITLE_LANG_EVENT = 'hikka-plus:title-lang';
-/** Content script → сторінка: «повідом мову назв». */
+/** Content script → сторінка: «повідом мову назв» (і заодно ім'я, ME_EVENT). */
 export const TITLE_LANG_REQ = 'hikka-plus:title-lang-req';
+/** Ім'я того, хто зайшов на Hikka (кеш `profile`) → content script, detail — username. Для «Далі з Дивлюсь» (src/watch/up-next.ts). */
+export const ME_EVENT = 'hikka-plus:me';

@@ -13,7 +13,9 @@ import { flushWatchPush, getWatchSaved, pullWatchSaved, updateWatchSaved, useWat
 import { noteDubSeen } from './dub-alerts';
 import { epTitleText, getEpisodeTitles, type EpTitles } from './episode-titles';
 import { getSequel, sequelTitle, type Sequel } from './sequel';
-import { pickTitle, titleLangItem } from '../core/title-lang';
+import { hikkaMeItem, pickTitle, titleLangItem } from '../core/title-lang';
+import { getUpNext, type UpNext } from './up-next';
+import { getEpisodeTypes, type EpKinds } from './fillers';
 import { useTitleLang } from '../ui/use-title-lang';
 import { HIKKA_LIST_EVENT, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '../core/bridge';
 import { navigate } from '../cards/popup';
@@ -29,6 +31,7 @@ type HikkaAnime = {
   mal_id: number | null;
   episodes_total: number | null;
   episodes_released: number | null;
+  status?: string | null;
   external: { url: string; type: string }[] | null;
 };
 
@@ -96,16 +99,40 @@ function WatchRoot({ slug }: { slug: string }) {
   }, [epRaw, lang]);
 
   // Наступний сезон (Hikka franchise → sequel) — кнопка поверх плеєра на останній серії.
-  const [seqRaw, setSeqRaw] = useState<Sequel | null>(null);
+  const [seqRaw, setSeqRaw] = useState<Sequel | null | undefined>(undefined);
   useEffect(() => {
     let off = false;
-    setSeqRaw(null);
+    setSeqRaw(undefined);
     void getSequel(slug).then((s) => !off && setSeqRaw(s));
     return () => {
       off = true;
     };
   }, [slug]);
-  const sequel = useMemo(() => (seqRaw ? { slug: seqRaw.slug, title: sequelTitle(seqRaw, lang), soon: seqRaw.soon } : null), [seqRaw, lang]);
+  // Немає наступного сезону — «Далі з Дивлюсь» (up-next.ts): список питаємо лише на останній серії (atLast), не на кожному тайтлі.
+  const [atLast, setAtLast] = useState(false);
+  const [upRaw, setUpRaw] = useState<UpNext | null>(null);
+  useEffect(() => setAtLast(false), [slug]);
+  useEffect(() => {
+    setUpRaw(null);
+    if (!atLast || seqRaw !== null || prefs.upNext === false) return;
+    let off = false;
+    void hikkaMeItem
+      .getValue()
+      .then((me) => getUpNext(me, slug))
+      .then((u) => !off && setUpRaw(u));
+    return () => {
+      off = true;
+    };
+  }, [atLast, seqRaw, prefs.upNext, slug]);
+  const sequel = useMemo(
+    () =>
+      seqRaw
+        ? { slug: seqRaw.slug, title: sequelTitle(seqRaw, lang), soon: seqRaw.soon }
+        : upRaw
+          ? { slug: upRaw.slug, title: pickTitle({ ua: upRaw.title[0], en: upRaw.title[1], ja: upRaw.title[2] }, lang) || upRaw.slug, soon: false, list: upRaw.ep }
+          : null,
+    [seqRaw, upRaw, lang],
+  );
   // SPA-перехід Hikka через міст — без перезавантаження; є серії — одразу до плеєра нового сезону.
   const onSequel = useCallback((to: string) => navigate(`/anime/${to}`, !sequel?.soon), [sequel]);
 
@@ -223,6 +250,21 @@ function WatchRoot({ slug }: { slug: string }) {
   });
   const anime = load.status === 'ready' ? load.anime : null;
   const total = anime?.episodes_total || anime?.episodes_released || null;
+  const totalRef = useRef(total);
+  totalRef.current = total;
+  // Типи серій (fillers.ts: AnimeFillerList, інакше публічний API Mikai): лише для довгих тайтлів (≥ 24 серій) — у коротких їх не буває,
+  // а зайвий запит на кожен відкритий тайтл не потрібен.
+  const [epKinds, setEpKinds] = useState<EpKinds>({});
+  const ongoing = anime?.status === 'ongoing';
+  useEffect(() => {
+    setEpKinds({});
+    if (prefs.fillers === false || !(total && total >= 24)) return;
+    let off = false;
+    void getEpisodeTypes(slug, [anime?.title_en, anime?.title_ja], total, ongoing).then((k) => !off && setEpKinds(k));
+    return () => {
+      off = true;
+    };
+  }, [slug, ongoing, total, prefs.fillers, anime?.title_en, anime?.title_ja]);
 
   // Лічильник Hikka: найбільша серія, зарахована в цьому заході. Не вдалося (мережа, Hikka ще вантажилась, токен) —
   // пробуємо знову на наступному onTime/при зміні стану Hikka, а не губимо (MK 2026-11-26: «серии не отмечаются»).
@@ -295,6 +337,7 @@ function WatchRoot({ slug }: { slug: string }) {
       L.ep = ep;
       L.t = t;
       L.d = d;
+      if (totalRef.current && ep >= totalRef.current) setAtLast(true);
       // Мітки: плеєр → AniSkip (з перевіркою); поріг — початок ED, інакше приблизно (fallbackSec).
       if (anime?.mal_id && !L.aniskip.has(ep)) {
         L.aniskip.set(ep, undefined);
@@ -411,6 +454,7 @@ function WatchRoot({ slug }: { slug: string }) {
       teams={load.status === 'ready' ? load.teams : []}
       episodes={episodes}
       epTitles={epTitles}
+      epKinds={epKinds}
       sequel={sequel}
       onSequel={onSequel}
       total={total ?? undefined}

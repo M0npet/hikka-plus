@@ -95,24 +95,15 @@ export default defineContentScript({
     syncPage();
     mounter.start();
     const onNav = () => {
-      syncPage();
-      mounter.schedule();
-    };
-    // Раз на пів секунди лише звіряємо адресу; блоки перевіряємо, коли вона змінилась (решту ловить MutationObserver
-    // у Mounter) — інакше кожна вкладка hikka.io будила б перевірку блоків двічі на секунду завжди.
-    const onTick = () => {
       if (syncPage()) mounter.schedule();
     };
-    ctx.addEventListener(window, 'wxt:locationchange', () => {
-      // Адреса ще стара — перевіряємо після того, як навігація завершиться.
-      setTimeout(onNav, 0);
-      setTimeout(onNav, 150);
-    });
+    // Перехід у SPA Hikka завжди міняє DOM — адресу звіряємо на мутаціях (рядкове порівняння, дешево), «назад/вперед» — popstate.
+    // Без таймера 500 мс і без wxt:locationchange (він сам опитує адресу щосекунди) — аудит 2026-11-26 17:45: три
+    // способи робили одне й те саме, вкладка hikka.io прокидалась тричі на секунду без потреби.
     ctx.addEventListener(window, 'popstate', onNav);
-    const pathObs = new MutationObserver(() => void syncPage());
+    const pathObs = new MutationObserver(onNav);
     pathObs.observe(document.body, { childList: true, subtree: true });
     ctx.onInvalidated(() => pathObs.disconnect());
-    ctx.setInterval(onTick, 500);
 
     // Джерела ввімкнули/вимкнули чи переставили у вікні налаштувань — перезавантажити блок тайтлу
     // (якщо читалка відкрита, зміни підхопляться при наступному переході).

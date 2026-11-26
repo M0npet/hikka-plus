@@ -3,7 +3,7 @@
  *
  * Звідки мітки (за пріоритетом):
  *  1) player  — мітки самого плеєра (Moon get_skip_segments; Fenix — зі смужки прокрутки через скрипт у фреймі);
- *  2) aniskip — краудсорс під чужий реліз: лише з перевіркою тривалості (±30 с), ED рахуємо від кінця.
+ *  2) aniskip — краудсорс під чужий реліз: лише з перевіркою тривалості (OP ±90 с, ED ±60 с), ED рахуємо від кінця.
  * Свій пошук за кадрами (відбитки, сканер, «Тут опенінг») прибрано в 0.6.0 — грузив процесор (MK 22:37: «потом разберемся»).
  */
 
@@ -39,7 +39,7 @@ type AniSkip = {
   results?: { skipType: string; interval: { startTime: number; endTime: number }; episodeLength: number }[];
 };
 
-/** AniSkip під тривалість у плеєрі (±30 с): OP — від початку, ED — від кінця (фандаб буває довшим/коротшим). */
+/** AniSkip під тривалість у плеєрі (OP ±90 с, ED ±60 с): OP — від початку, ED — від кінця (фандаб буває довшим/коротшим). */
 export function segsFromAniskip(a: AniSkip | null, duration: number): { op?: Seg; ed?: Seg } {
   const out: { op?: Seg; ed?: Seg } = {};
   if (!a?.found || !(duration > 0)) return out;
@@ -47,9 +47,12 @@ export function segsFromAniskip(a: AniSkip | null, duration: number): { op?: Seg
     const len = r.episodeLength;
     const s = r.interval?.startTime;
     const e = r.interval?.endTime;
-    if (!(len > 0) || !(s >= 0) || !(e > s) || Math.abs(len - duration) > 30) continue;
-    if ((r.skipType === 'op' || r.skipType === 'mixed-op') && !out.op && e < len * 0.5) out.op = { s, e };
-    if ((r.skipType === 'ed' || r.skipType === 'mixed-ed') && !out.ed && len - s <= len * 0.2)
+    if (!(len > 0) || !(s >= 0) || !(e > s)) continue;
+    const diff = Math.abs(len - duration);
+    // Допуск ширший, ніж був (±30 с; MK 2026-11-26 17:34 «не все тайтлы находит»): наші релізи часто довші/коротші за
+    // японський TV-реліз (заставка команди, анонс). OP рахуємо від початку — ±90 с; ED від кінця — ±60 с.
+    if ((r.skipType === 'op' || r.skipType === 'mixed-op') && !out.op && diff <= 90 && e < Math.min(len, duration) * 0.5) out.op = { s, e };
+    if ((r.skipType === 'ed' || r.skipType === 'mixed-ed') && !out.ed && diff <= 60 && len - s <= len * 0.2)
       out.ed = { s: Math.max(0, duration - (len - s)), e: Math.min(duration, duration - (len - e)) };
   }
   return out;

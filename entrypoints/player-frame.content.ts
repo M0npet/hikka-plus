@@ -46,6 +46,7 @@ export default defineContentScript({
     idleCursor();
     if (location.hostname === 'fenixplay.xyz') fenixMarks();
     countMark();
+    uiEdge();
     hotkeys();
     activity();
     holdControls();
@@ -419,8 +420,9 @@ function countMark() {
     for (const e of els) e.remove();
     els = [];
   };
-  // Висота й положення доріжки: Ashdi — 4 px біля низу блоку нульової висоти; Moon — 5 px по центру; Fenix — уся смужка.
-  const track = ashdi ? 'bottom:-4px;height:4px' : moon ? 'top:50%;height:5px;transform:translateY(-50%)' : 'top:0;bottom:0';
+  // Висота й положення доріжки: Ashdi — 4 px НАД низом блоку нульової висоти (його доріжка bottom:0, перевірено 2026-11-26
+  // 17:35 — було -4px, відрізки висіли під смужкою, MK: «на ашди криво»); Moon — 5 px по центру; Fenix — уся смужка.
+  const track = ashdi ? 'bottom:0;height:4px' : moon ? 'top:50%;height:5px;transform:translateY(-50%)' : 'top:0;bottom:0';
   const make = (css: string, title: string) => {
     const e = document.createElement('span');
     e.className = 'hp-count';
@@ -477,6 +479,55 @@ function countMark() {
       clearInterval(timer);
       timer = 0;
     } else if (!timer) timer = window.setInterval(place, 1000);
+  });
+}
+
+/**
+ * Де панель самого плеєра (смужка прокрутки + кнопки) — щоб наші «Пропустити»/«Наступна серія» стояли над нею, коли її
+ * видно, і опускалися, коли плеєр її сховав (MK 2026-11-26 17:32). Міряємо лише поки hikka.io просить ({ui: true} разом
+ * із {count}) — тобто поки наші кнопки на екрані; раз на 250 мс, шлемо {ui: px від низу кадру} лише при зміні.
+ * Moon (Plyr) — .plyr__controls / .plyr__progress; Ashdi — смужка ashdiBar(). Fenix — ні: його свої кнопки на сталому місці.
+ */
+function uiEdge() {
+  const moon = location.hostname.startsWith('moonanime.');
+  const ashdi = location.hostname === 'ashdi.vip';
+  if (!moon && !ashdi) return;
+  let timer = 0;
+  let last = -1;
+  // Схована = сама чи хтось із предків display:none / visibility:hidden / майже прозорий (Plyr і PlayerJS ховають прозорістю).
+  const shown = (el: Element) => {
+    for (let e: Element | null = el; e && e !== document.documentElement; e = e.parentElement) {
+      const st = getComputedStyle(e);
+      if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) < 0.2) return false;
+    }
+    return true;
+  };
+  const measure = () => {
+    if (document.hidden) return; // вкладка у фоні — нікому не видно
+    let top = Infinity;
+    const els = moon ? document.querySelectorAll('.plyr__controls, .plyr__progress') : [ashdiBar()];
+    for (const e of els) {
+      if (!e || !shown(e)) continue;
+      const r = e.getBoundingClientRect();
+      // Ashdi: блок смужки нульової висоти, доріжка 4 px над його низом, повзунок ~12 px — беремо із запасом.
+      const t = ashdi ? r.bottom - 12 : r.height > 0 ? r.top : Infinity;
+      if (t < top) top = t;
+    }
+    const px = Number.isFinite(top) && top < innerHeight ? Math.round((innerHeight - top) / 2) * 2 : 0;
+    if (px === last) return;
+    last = px;
+    window.parent.postMessage({ type: AMBIENT_MSG, ui: px }, PARENT);
+  };
+  window.addEventListener('message', (e) => {
+    if (e.source !== window.parent || e.origin !== PARENT) return;
+    const d = e.data as { type?: unknown; count?: unknown; ui?: unknown } | null;
+    if (!d || d.type !== AMBIENT_REQ || !('count' in d)) return;
+    clearInterval(timer);
+    timer = 0;
+    if (!d.ui) return;
+    last = -1; // hikka.io міг перестворити обробник — кажемо знову
+    measure();
+    timer = window.setInterval(measure, 250);
   });
 }
 

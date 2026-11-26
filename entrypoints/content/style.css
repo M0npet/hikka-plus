@@ -1866,7 +1866,12 @@ select {
 }
 .hp-watch__view:fullscreen > .hp-watch__over {
   right: 32px;
-  bottom: 96px;
+  bottom: var(--hp-over-b, 96px);
+}
+/* Над панеллю самого плеєра, коли її видно, і нижче, коли плеєр її сховав (MK 2026-11-26 17:32) — --hp-over-b міряє фрейм. */
+.hp-watch__over {
+  bottom: var(--hp-over-b, 72px);
+  transition: bottom 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 /*
  * Панель кнопок блоку поверх плеєра, справа вгорі (MK 2026-11-26 13:22: у шапці «Перегляд» стояли незручно).
@@ -2490,8 +2495,58 @@ select {
   }
 }
 
+/* Типи серій з Mikai (src/watch/fillers.ts, MK 2026-11-26 17:53 «как на Микае»): кольорова риска під номером і легенда.
+   Кольори як у Mikai: канон аніме — смарагдовий, змішаний — фіолетовий, філер — бурштиновий; канон за манґою — без позначки. */
+.hp-watch__eptype {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  width: 18px;
+  height: 3px;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.hp-watch__eplegend .hp-watch__eptype {
+  position: static;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  transform: none;
+  vertical-align: 1px;
+}
+.hp-watch__eptype--a {
+  background: #10b981;
+}
+.hp-watch__eptype--x {
+  background: #8b5cf6;
+}
+.hp-watch__eptype--f {
+  background: #f59e0b;
+}
+.hp-watch__eplegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted-foreground, #a1a1aa);
+}
+.hp-watch__eplegend > span {
+  cursor: help;
+}
+
 /* Сенсорні екрани: більші цілі дотику, без залежності від hover. */
 @media (pointer: coarse) {
+  /* Панелі й кнопки поверх плеєра (MK 2026-11-26 17:39): 32 px — замало для пальця, 40 px — як у самих плеєрів на телефоні. */
+  .hp-watch__tools .hp-watch__tool {
+    width: 40px;
+    height: 40px;
+  }
+  .hp-ob {
+    min-height: 44px;
+  }
   .hp-watch__opt {
     min-height: 44px;
   }

@@ -22,6 +22,9 @@ export const API_HOSTS = [
   'https://api.mikai.me',
   'https://animeon.club',
   'https://api.aniskip.com',
+  // Типи серій (філер / змішаний / канон аніме) — src/watch/fillers.ts; сайт переадресовує www → без www.
+  'https://www.animefillerlist.com',
+  'https://animefillerlist.com',
   // Джерела-посилання (лише пошук тайтлу, без читання).
   'https://mangra.app',
   'https://faust-web.com',

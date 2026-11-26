@@ -49,6 +49,10 @@ export type WatchPrefs = {
   skipEd?: boolean;
   /** Кнопка «Наступна серія» на ендингу — з відліком NEXT_COUNTDOWN с і переходом самому (за замовчуванням — ні, лише кнопка). */
   nextCountdown?: boolean;
+  /** «Далі з Дивлюсь» на останній серії без наступного сезону (src/watch/up-next.ts). undefined — увімкнено (MK 2026-11-26 17:44: «сделай отключаемым»). */
+  upNext?: boolean;
+  /** Типи серій (канон аніме / змішаний / філер) у сітці серій — з Mikai (src/watch/fillers.ts). undefined — увімкнено. */
+  fillers?: boolean;
   /** Непрозорість фону меню над плеєром (⚙, серії, озвучка, плеєр), 10–100 % (у налаштуваннях — «Прозорість» = 100 − це). undefined — DEFAULT_MENU_LEVEL (MK 16:59). */
   menuLevel?: number;
 };

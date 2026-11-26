@@ -419,6 +419,8 @@ function PlayerFields({ mode }: { mode: SettingsMode }) {
         />
         <SwitchRow label="Автоперехід" hint="Наступна серія після кінця поточної; вручну — клавіша N у плеєрі" checked={w.autoNext} onChange={(autoNext) => setW({ autoNext })} />
         <SwitchRow label="Відлік на ендингу" hint={`Кнопка «Наступна серія» — і через ${NEXT_COUNTDOWN} с перехід сам`} checked={!!w.nextCountdown} onChange={(nextCountdown) => setW({ nextCountdown })} />
+        <SwitchRow label="Типи серій" hint="Філер, змішаний, канон аніме — позначка в сітці серій, як на Mikai (довгі тайтли)" checked={w.fillers !== false} onChange={(fillers) => setW({ fillers })} />
+        <SwitchRow label="Далі з «Дивлюсь»" hint="На останній серії без наступного сезону — інший тайтл з вашого списку на Hikka (потрібен вхід на hikka.io)" checked={w.upNext !== false} onChange={(upNext) => setW({ upNext })} />
         <SwitchRow
           label="Мітки опенінгу й ендингу"
           hint="Смужка під плеєром і кнопка «Пропустити» — мітки з плеєра, інакше приблизні з AniSkip"

@@ -54,13 +54,19 @@ const FRAME_HOSTS: Record<string, Exclude<PlayerKind, 'custom'>> = {
   'fenixplay.xyz': 'fenix',
 };
 
-/** Перевірити адресу плеєра: https і відомий хост; для Moon — увімкнути postMessage-API (?api=1). */
+/** Перевірити адресу плеєра: https і відомий хост; для Moon — увімкнути postMessage-API (?api=1) і вимкнути його автопропуск. */
 export function safeFrameSrc(raw: string | null | undefined, kind: PlayerKind): string | null {
   if (!raw) return null;
   try {
     const u = new URL(raw);
     if (u.protocol !== 'https:' || FRAME_HOSTS[u.host] !== kind) return null;
-    if (kind === 'moon') u.searchParams.set('api', '1');
+    if (kind === 'moon') {
+      u.searchParams.set('api', '1');
+      // Moon сам пропускає опенінги (типово «opening: true», ma-skip.js resolveAutoskip, перевірено 2026-11-26) — тоді
+      // вимикач «Пропускати опенінг сам» у нас нічого не вирішував. autoskip=none (параметр сильніший за збережене в Moon):
+      // автопропуск лише наш, за нашими налаштуваннями; кнопку «Пропустити» Moon показує сам (див. moonOwn у watch-block).
+      u.searchParams.set('autoskip', 'none');
+    }
     return u.toString();
   } catch {
     return null;
@@ -70,8 +76,9 @@ export function safeFrameSrc(raw: string | null | undefined, kind: PlayerKind): 
 /**
  * Підсвітка навколо плеєра (entrypoints/player-frame.content.ts ↔ PlayerFrame):
  * AMBIENT_MSG — з фрейму: {ready} | {w, h, rgb: рядок, по символу на байт RGB} | {off} (кадр недоступний) | {bar} (Moon)
- *   | {marks: {op?: {s, e}, ed?: {s, e}}} (Fenix: мітки з його смужки прокрутки, сек) | {hotkey: 'skip' | 'next'} (S / N у плеєрі);
- * AMBIENT_REQ — з hikka.io у фрейм: {on: boolean} | {seek: сек} | {count: сек | null, ed} (риска порогу зарахування)
+ *   | {marks: {op?: {s, e}, ed?: {s, e}}} (Fenix: мітки з його смужки прокрутки, сек) | {hotkey: 'skip' | 'next'} (S / N у плеєрі)
+ *   | {ui: px} (верх панелі плеєра від низу кадру, 0 — схована; лише на прохання {count, ui: true});
+ * AMBIENT_REQ — з hikka.io у фрейм: {on: boolean} | {seek: сек} | {count: сек | null, segs, ui} (риска порогу зарахування, відрізки AniSkip, міряти панель)
  *   | {hold: 1} (миша на наших кнопках поверх плеєра — не ховати панель плеєра).
  */
 export const AMBIENT_MSG = 'hikka-plus:ambient';
