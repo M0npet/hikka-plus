@@ -82,9 +82,14 @@ test('блок «Перегляд»: Mikai public API + назви серій', 
 
 test('«Наступна серія» з назвою на порозі зарахування', async () => {
   const f = await fenixFrame(1);
-  // 1440 с, міток немає → поріг 10 % (≤ 2:30) = 1296 с.
-  await f.evaluate(() => (window as unknown as { __tick: (t: number) => void }).__tick(1300));
+  // 1440 с, міток немає → серію зараховуємо з 10 % (≤ 2:30) = 1296 с, а кнопка — лише в останню хвилину (1380 с):
+  // без міток поріг приблизний і може припасти на сюжет.
+  const tick = (t: number) => f.evaluate((t) => (window as unknown as { __tick: (t: number) => void }).__tick(t), t);
   const next = watch().locator('.hp-ob--primary');
+  await tick(1300);
+  await page.waitForTimeout(600);
+  await expect(next).toHaveCount(0);
+  await tick(1385);
   await expect(next).toContainText('Наступна серія', { timeout: 10_000 });
   // Відео йде, миша не рухається — панелі ховаються.
   await expect(watch().locator('.hp-watch__tools--left')).not.toHaveClass(/hp-watch__tools--on/, { timeout: 5_000 });
@@ -149,7 +154,7 @@ test('меню серій над плеєром: «Відмічати» знім
 
 test('«Наступний сезон» на останній серії → SPA-перехід', async () => {
   const f = await fenixFrame(2);
-  await f.evaluate(() => (window as unknown as { __tick: (t: number) => void }).__tick(1300));
+  await f.evaluate(() => (window as unknown as { __tick: (t: number) => void }).__tick(1385));
   const season = watch().locator('.hp-ob--primary');
   await expect(season).toContainText('Наступний сезон', { timeout: 10_000 });
   await expect(season.locator('.hp-ob__sub')).toHaveText('Фрірен 2');

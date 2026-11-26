@@ -83,3 +83,11 @@ export function safeFrameSrc(raw: string | null | undefined, kind: PlayerKind): 
  */
 export const AMBIENT_MSG = 'hikka-plus:ambient';
 export const AMBIENT_REQ = 'hikka-plus:ambient-req';
+
+/**
+ * Поріг серії: at — з якої секунди зараховуємо; own — це мітка ендингу самого плеєра;
+ * next — з якої секунди показувати «Наступна серія» / «Наступний сезон»; auto — чи можна перемикати самим (відлік).
+ * Без міток ендингу поріг приблизний (10 % до кінця) і може припасти на сюжет: кнопка — лише в останню хвилину,
+ * без автопереходу (MK 2026-11-26 21:20: «кнопка появилась, хотя аниме шло»).
+ */
+export type EdInfo = { ep: number; at: number; own: boolean; next: number; auto: boolean };

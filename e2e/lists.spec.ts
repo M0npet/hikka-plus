@@ -71,8 +71,8 @@ test('«Далі з «Дивлюсь»» на останній серії без
   expect(hits.get(`POST api.hikka.io/watch/${USER}/list`)).toBeUndefined();
   await watch().locator('.hp-watch__grid .hp-watch__ep').nth(LONG_EPS - 1).click();
   const f = await fenixFrame(LONG_EPS);
-  // 1440 с без міток → поріг 1296 с.
-  await f.evaluate(() => (window as unknown as { __tick: (t: number) => void }).__tick(1300));
+  // 1440 с без міток → зараховано з 1296 с, кнопка — в останню хвилину (1380 с).
+  await f.evaluate(() => (window as unknown as { __tick: (t: number) => void }).__tick(1385));
   const btn = watch().locator('.hp-ob--primary');
   await expect(btn).toContainText('Далі з «Дивлюсь»', { timeout: 10_000 });
   expect(hits.get(`GET api.hikka.io/related/anime/${LONG}/franchise`)).toBeGreaterThan(0);

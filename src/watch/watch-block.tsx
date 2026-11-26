@@ -3,13 +3,13 @@
  * Команда → плеєр → iframe самого плеєра; озвучка, серія і плеєр — на панелі поверх відео (Dawn прибрано, MK 15:28).
  * «Ширше» — увесь блок на ширину сітки сторінки (wide-layout.ts); блок не переїжджає в DOM, iframe не перезавантажується.
  */
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { cloneElement, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { Button, Check, ChipTabs, Header, SwitchRow, btn } from '../ui/kit';
 import { IconExpand, IconExternal, IconEye, IconEyeOff, IconHeart, IconLeft, IconRight, IconSettings, IconShrink, IconTv, IconBulb, IconClose, IconFwd, IconSkipFwd, IconMoveH, IconMoveV, IconMoveBack, IconScan } from '../ui/icons';
 import { useLightsOff } from './lights-off';
 import { useWideLayout } from './wide-layout';
 import { EP_KIND_INFO, type EpKinds } from './fillers';
-import { AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
+import { AMBIENT_REQ, PLAYER_NAMES, SITE_NAMES, teamEpisodes, type EdInfo, type EpisodeState, type WatchPlayer, type WatchTeam } from './types';
 import { DEFAULT_AMBIENT_BRIGHT, DEFAULT_AMBIENT_LEVEL, DEFAULT_MENU_LEVEL, DEFAULT_WIDE_ANIM, NEXT_COUNTDOWN, type WatchPrefs, type WatchSize } from './watch-store';
 import { AmbientFields, MenuOpacityField } from './ambient-fields';
 import type { Seg } from './skip-marks';
@@ -46,7 +46,7 @@ type WatchBlockProps = {
   /** Українська ліцензія з Mikai: де дивитися легально (кнопка в шапці; без серій — замість «не знайшли»). */
   license?: UaLicense;
   /** Поріг зарахування поточної серії: at — секунда, ed — це початок ендингу (а не приблизний поріг без міток). */
-  edInfo?: { ep: number; at: number; own: boolean } | null;
+  edInfo?: EdInfo | null;
   prefs: WatchPrefs;
   onPrefs: (p: Partial<WatchPrefs>) => void;
   /** Куди переносити плеєр у режимі «Ширше» (host над колонками сторінки). */
@@ -322,7 +322,7 @@ export function WatchBlock(p: WatchBlockProps) {
   const nextT0 = useRef(new Map<number, number>());
   const nextOff = useRef(new Set<number>());
   const nextFired = useRef(new Set<number>());
-  const edRef = useRef<{ ep: number; at: number; own: boolean } | null>(null);
+  const edRef = useRef<EdInfo | null>(null);
   edRef.current = p.edInfo ?? null;
   const mkRef = useRef<MarksInfo | null>(null);
   const seekRef = useRef<((sec: number) => void) | null>(null);
@@ -591,108 +591,8 @@ export function WatchBlock(p: WatchBlockProps) {
     startAt.current = p.resumeAt?.() ?? 0;
     setPlayerId(x.id);
   };
-  const frame = (
-    <div
-      ref={viewRef}
-      className="hp-watch__view"
-      onPointerOver={(e) => (e.target as Element).tagName !== 'IFRAME' && holdOn(true)}
-      onPointerMove={(e) => (e.target as Element).tagName !== 'IFRAME' && holdOn(false)}
-      onPointerLeave={holdOff}
-      style={{ '--hp-menu-a': String((p.prefs.menuLevel ?? DEFAULT_MENU_LEVEL) / 100) } as CSSProperties}
-    >
-    {ambient && !p.renderFrame && (
-      <canvas
-        ref={setGlowEl}
-        className="hp-watch__glow"
-        aria-hidden="true"
-        style={
-          {
-            '--hp-glow': String((p.prefs.ambientLevel ?? DEFAULT_AMBIENT_LEVEL) / 100),
-            '--hp-glow-b': String((p.prefs.ambientBright ?? DEFAULT_AMBIENT_BRIGHT) / 100),
-          } as CSSProperties
-        }
-      />
-    )}
-    <div ref={frameRef} className={`hp-watch__frame hp-watch__frame--${player.kind}`}>
-      {p.renderFrame ? (
-        p.renderFrame(player, ep)
-      ) : (
-        <PlayerFrame
-          key={`${player.id}:${frameEp}`}
-          player={player}
-          ep={frameEp}
-          startAt={startAt}
-          onTime={(t, d) => {
-            // Почали дивитися — більше не перескакуємо самі на «першу непереглянуту» (інакше при заліку серії
-            // на початку ендингу блок перемикав на наступну посеред ендингу).
-            if (t > 3) picked.current = true;
-            moved(t);
-            p.onTime?.(ep, t, d);
-            const tt = Math.floor(t);
-            posStore.set({ ep, t: tt, d });
-            const next = skipAt(mkRef.current, tt);
-            setSkip((x) =>
-              x?.ep === ep && x.kind === next?.kind && x.seg.s === next.seg.s && x.seg.e === next.seg.e ? x : next ? { ...next, ep } : null,
-            );
-            // «Наступна серія»: від порогу зарахування; перемотали назад нижче порогу — відлік спочатку.
-            const thr = edRef.current;
-            let nx: { ep: number; left: number | null } | null = null;
-            if (thr && thr.ep === ep && tt >= thr.at && canNextRef.current(ep) && !nextOff.current.has(ep)) {
-              let left: number | null = null;
-              if (p.prefs.nextCountdown) {
-                const t0 = nextT0.current.get(ep) ?? tt;
-                nextT0.current.set(ep, t0);
-                left = Math.max(0, NEXT_COUNTDOWN - (tt - t0));
-                if (left === 0 && !nextFired.current.has(ep)) {
-                  nextFired.current.add(ep);
-                  setTimeout(() => goEpRef.current(ep + 1));
-                }
-              }
-              nx = { ep, left };
-            } else if (thr && thr.ep === ep && tt < thr.at) {
-              nextT0.current.delete(ep);
-              nextFired.current.delete(ep);
-            }
-            setNext((x) => (x?.ep === nx?.ep && x?.left === nx?.left ? x : nx));
-            setSeason(thr && thr.ep === ep && tt >= thr.at && seasonRef.current(ep) ? ep : 0);
-          }}
-          onSegs={(m) => p.onSegs?.(ep, m)}
-          seekRef={seekRef}
-          onHotkey={(key) => hotkeyRef.current(key)}
-          onActive={(on) => {
-            if (on) holdOff(); // справжній рух у самому плеєрі — він уже сам бачить мишу
-            else holdIfOurs();
-            wakeTools(on);
-          }}
-          watchUi={overOn && player.kind !== 'fenix'}
-          onUi={(px) => {
-            // Кадр може бути нижче/вище за низ блоку (Moon «Під кадром») — рахуємо від низу блоку.
-            const f = frameRef.current?.querySelector('iframe');
-            const v = viewRef.current;
-            const off = f && v ? Math.round(v.getBoundingClientRect().bottom - f.getBoundingClientRect().bottom) : 0;
-            const b = px > 0 ? px + off + 12 : Math.max(off, 0) + 16;
-            setUiB((x) => (x === b ? x : b));
-          }}
-          countAt={frameEp === ep && ed && !ed.own ? ed.at : null}
-          barSegs={frameEp === ep && mk ? (['op', 'ed'] as const).flatMap((k) => (mk.m[k] && mk.m[k]!.src !== 'player' ? [[k, Math.round(mk.m[k]!.s), Math.round(mk.m[k]!.e)] as BarSeg] : [])) : []}
-          onEnded={() => {
-            const cur = ep;
-            p.onEnded?.(cur);
-            if (!p.prefs.autoNext || cur >= count || !teamHas(cur + 1)) return;
-            if (player.kind !== 'fenix' || !has(cur + 1)) return goEp(cur + 1);
-            // Fenix може й сам перейти на наступну (episode_change) — тоді не перезавантажуємо.
-            const at = Date.now();
-            setTimeout(() => {
-              if (selfSwitch.current < at) goEpRef.current(cur + 1);
-            }, 3000);
-          }}
-          onEpisode={playerEp}
-          glow={ambient ? glowEl : null}
-          devices={!!p.prefs.devices}
-        />
-      )}
-    </div>
-    {overOn && (
+  // Кнопки поверх плеєра з анімацією появи й зникання: поки ховаються — малюємо останній вигляд (useLeave).
+  const overDiv: ReactElement<{ className: string }> | null = overOn ? (
       // Кнопки поверх плеєра — у стилі самого плеєра (MK 2026-11-26 13:03): Moon / Fenix / Ashdi, інакше — Hikka (style.css, .hp-ob).
       // «Наступний сезон» Fenix сам не показує — малюємо й поверх його міток.
       <div
@@ -757,7 +657,111 @@ export function WatchBlock(p: WatchBlockProps) {
           </span>
         )}
       </div>
+  ) : null;
+  const [overView, overOut] = useLeave(overDiv, 220);
+
+  const frame = (
+    <div
+      ref={viewRef}
+      className="hp-watch__view"
+      onPointerOver={(e) => (e.target as Element).tagName !== 'IFRAME' && holdOn(true)}
+      onPointerMove={(e) => (e.target as Element).tagName !== 'IFRAME' && holdOn(false)}
+      onPointerLeave={holdOff}
+      style={{ '--hp-menu-a': String((p.prefs.menuLevel ?? DEFAULT_MENU_LEVEL) / 100) } as CSSProperties}
+    >
+    {ambient && !p.renderFrame && (
+      <canvas
+        ref={setGlowEl}
+        className="hp-watch__glow"
+        aria-hidden="true"
+        style={
+          {
+            '--hp-glow': String((p.prefs.ambientLevel ?? DEFAULT_AMBIENT_LEVEL) / 100),
+            '--hp-glow-b': String((p.prefs.ambientBright ?? DEFAULT_AMBIENT_BRIGHT) / 100),
+          } as CSSProperties
+        }
+      />
     )}
+    <div ref={frameRef} className={`hp-watch__frame hp-watch__frame--${player.kind}`}>
+      {p.renderFrame ? (
+        p.renderFrame(player, ep)
+      ) : (
+        <PlayerFrame
+          key={`${player.id}:${frameEp}`}
+          player={player}
+          ep={frameEp}
+          startAt={startAt}
+          onTime={(t, d) => {
+            // Почали дивитися — більше не перескакуємо самі на «першу непереглянуту» (інакше при заліку серії
+            // на початку ендингу блок перемикав на наступну посеред ендингу).
+            if (t > 3) picked.current = true;
+            moved(t);
+            p.onTime?.(ep, t, d);
+            const tt = Math.floor(t);
+            posStore.set({ ep, t: tt, d });
+            const next = skipAt(mkRef.current, tt);
+            setSkip((x) =>
+              x?.ep === ep && x.kind === next?.kind && x.seg.s === next.seg.s && x.seg.e === next.seg.e ? x : next ? { ...next, ep } : null,
+            );
+            // «Наступна серія»: від порогу зарахування; перемотали назад нижче порогу — відлік спочатку.
+            const thr = edRef.current;
+            let nx: { ep: number; left: number | null } | null = null;
+            if (thr && thr.ep === ep && tt >= thr.next && canNextRef.current(ep) && !nextOff.current.has(ep)) {
+              let left: number | null = null;
+              if (p.prefs.nextCountdown && thr.auto) {
+                const t0 = nextT0.current.get(ep) ?? tt;
+                nextT0.current.set(ep, t0);
+                left = Math.max(0, NEXT_COUNTDOWN - (tt - t0));
+                if (left === 0 && !nextFired.current.has(ep)) {
+                  nextFired.current.add(ep);
+                  setTimeout(() => goEpRef.current(ep + 1));
+                }
+              }
+              nx = { ep, left };
+            } else if (thr && thr.ep === ep && tt < thr.next) {
+              nextT0.current.delete(ep);
+              nextFired.current.delete(ep);
+            }
+            setNext((x) => (x?.ep === nx?.ep && x?.left === nx?.left ? x : nx));
+            setSeason(thr && thr.ep === ep && tt >= thr.next && seasonRef.current(ep) ? ep : 0);
+          }}
+          onSegs={(m) => p.onSegs?.(ep, m)}
+          seekRef={seekRef}
+          onHotkey={(key) => hotkeyRef.current(key)}
+          onActive={(on) => {
+            if (on) holdOff(); // справжній рух у самому плеєрі — він уже сам бачить мишу
+            else holdIfOurs();
+            wakeTools(on);
+          }}
+          watchUi={overOn && player.kind !== 'fenix'}
+          onUi={(px) => {
+            // Кадр може бути нижче/вище за низ блоку (Moon «Під кадром») — рахуємо від низу блоку.
+            const f = frameRef.current?.querySelector('iframe');
+            const v = viewRef.current;
+            const off = f && v ? Math.round(v.getBoundingClientRect().bottom - f.getBoundingClientRect().bottom) : 0;
+            const b = px > 0 ? px + off + 12 : Math.max(off, 0) + 16;
+            setUiB((x) => (x === b ? x : b));
+          }}
+          countAt={frameEp === ep && ed && !ed.own ? ed.at : null}
+          barSegs={frameEp === ep && mk ? (['op', 'ed'] as const).flatMap((k) => (mk.m[k] && mk.m[k]!.src !== 'player' ? [[k, Math.round(mk.m[k]!.s), Math.round(mk.m[k]!.e)] as BarSeg] : [])) : []}
+          onEnded={() => {
+            const cur = ep;
+            p.onEnded?.(cur);
+            if (!p.prefs.autoNext || cur >= count || !teamHas(cur + 1)) return;
+            if (player.kind !== 'fenix' || !has(cur + 1)) return goEp(cur + 1);
+            // Fenix може й сам перейти на наступну (episode_change) — тоді не перезавантажуємо.
+            const at = Date.now();
+            setTimeout(() => {
+              if (selfSwitch.current < at) goEpRef.current(cur + 1);
+            }, 3000);
+          }}
+          onEpisode={playerEp}
+          glow={ambient ? glowEl : null}
+          devices={!!p.prefs.devices}
+        />
+      )}
+    </div>
+    {overView && overOut ? cloneElement(overView, { className: `${overView.props.className} hp-watch__over--out` }) : overView}
     {/*
       Ліворуч угорі поверх плеєра (MK 2026-11-26 13:33): «◀ Серія N ▶» і озвучка зі списком команд — щоб у повному екрані
       можна було гортати серії й міняти озвучку, і плеєр (MK 2026-11-26 15:41); рядка над плеєром і Dawn більше немає.
@@ -1104,6 +1108,23 @@ export function WatchBlock(p: WatchBlockProps) {
       {body}
     </section>
   );
+}
+
+/** Значення, що зникає, ще ms мілісекунд лишається на екрані (анімація зникання); друге — «зараз ховається». */
+function useLeave<T>(v: T | null, ms: number): [T | null, boolean] {
+  const keep = useRef<T | null>(null);
+  const [, tick] = useState(0);
+  if (v != null) keep.current = v;
+  const on = v != null;
+  useEffect(() => {
+    if (on || keep.current == null) return;
+    const t = window.setTimeout(() => {
+      keep.current = null;
+      tick((x) => x + 1);
+    }, ms);
+    return () => clearTimeout(t);
+  }, [on, ms]);
+  return [v ?? keep.current, !on && keep.current != null];
 }
 
 /* ---------- Позиція й «Пропустити» ---------- */

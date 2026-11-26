@@ -95,9 +95,10 @@ export function EpisodeMenu({
         title={titles?.[ep] ? `Серія ${ep}: ${titles[ep]}` : 'Вибрати серію'}
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="hp-watch__toolword">Серія </span>
+        {/* Пробіли — нерозривні: у кнопці-flex звичайний пробіл на межі шматків тексту зникає («Серія11/ 16»). */}
+        <span className="hp-watch__toolword">Серія{' '}</span>
         {ep}
-        <span className="hp-watch__toolof"> / {count}</span>
+        <span className="hp-watch__toolof">{' '}/ {count}</span>
       </button>
       {open && (
         <div className="hp-popover hp-watch__eppop" role="dialog" aria-label="Серії">

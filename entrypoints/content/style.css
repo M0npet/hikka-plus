@@ -1955,12 +1955,61 @@ select {
   /* Без зсуву при появі (MK 2026-11-26 15:55, відео): панель їхала на 4 px, край виходив з-під миші → миша в плеєрі →
      {active} → панель на місці під мишею → … курсор блимав стрілка/рука. Межі панелі не рухаються — лише прозорість. */
   pointer-events: none;
-  transition: opacity 0.25s ease;
+  /* Зникає м'яко й не одразу (MK 2026-11-26 21:11: «моментально пропадает»), з'являється швидко. */
+  transition: opacity 0.45s ease 0.1s;
 }
 .hp-watch__tools--on,
 .hp-watch__tools:focus-within {
   opacity: 1;
   pointer-events: auto;
+  transition: opacity 0.2s ease-out;
+}
+/* Вміст панелі трохи «розгортається» (межі самої панелі нерухомі — див. вище, курсор не блимає). */
+.hp-watch__tools > * {
+  transform: scale(0.94);
+  transition: transform 0.45s ease 0.1s;
+}
+.hp-watch__tools--on > *,
+.hp-watch__tools:focus-within > * {
+  transform: none;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* Меню з панелей — з'являються з легким масштабом від кнопки. */
+.hp-watch__tools .hp-popover {
+  transform-origin: top;
+  animation: hp-pop-in 0.16s ease-out;
+}
+.hp-watch__tools .hp-popover--end {
+  transform-origin: top right;
+}
+@keyframes hp-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+}
+/* Кнопки «Пропустити» / «Наступна серія» / «Наступний сезон»: виїжджають знизу й так само ховаються (useLeave у watch-block.tsx).
+   backwards/forwards, а не both: після появи transform знову вільний для підйому при наведенні (.hp-ob:hover). */
+.hp-watch__over > * {
+  animation: hp-ob-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+.hp-watch__over--out {
+  pointer-events: none;
+}
+.hp-watch__over--out > * {
+  animation: hp-ob-out 0.22s ease-in forwards;
+}
+@keyframes hp-ob-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+}
+@keyframes hp-ob-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
 }
 .hp-watch__view:fullscreen > .hp-watch__tools {
   top: 24px;
@@ -2265,8 +2314,14 @@ select {
   outline-style: solid;
 }
 @media (prefers-reduced-motion: reduce) {
-  .hp-watch__tools {
+  .hp-watch__tools,
+  .hp-watch__tools > * {
     transition: none;
+    transform: none;
+  }
+  .hp-watch__tools .hp-popover,
+  .hp-watch__over > * {
+    animation: none;
   }
 }
 .hp-ob {

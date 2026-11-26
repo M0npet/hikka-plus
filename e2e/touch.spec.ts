@@ -42,6 +42,11 @@ for (const size of SIZES) {
       const left = watch.locator('.hp-watch__tools--left');
       const right = watch.locator('.hp-watch__tools:not(.hp-watch__tools--left)');
       await expect(left).toHaveClass(/hp-watch__tools--on/, { timeout: 20_000 });
+      // Панелі з'являються з анімацією (масштаб вмісту) — міряємо після неї.
+      await expect(right).toHaveClass(/hp-watch__tools--on/);
+      await expect
+        .poll(() => watch.locator('.hp-watch__tools > *').evaluateAll((els) => els.every((e) => getComputedStyle(e).transform === 'none')))
+        .toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
       await left.scrollIntoViewIfNeeded();
       const view = (await watch.locator('.hp-watch__view').boundingBox())!;

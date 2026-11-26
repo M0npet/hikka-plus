@@ -184,7 +184,12 @@ const uaTitle = {
 };
 
 /** Що «вийшло» на UAManga — тест нових розділів (chapters.spec.ts) додає розділ посеред тесту. */
-export const mockState = { mangaChapters: MANGA_CHAPTERS };
+/** hikkaWatch — запис тайтлу SLUG у списку Hikka (null — немає, 404 watch:not_found); hikkaPuts — тіла PUT /watch/SLUG. */
+export const mockState = {
+  mangaChapters: MANGA_CHAPTERS,
+  hikkaWatch: null as Record<string, unknown> | null,
+  hikkaPuts: [] as Record<string, unknown>[],
+};
 
 const uaChapters = () => ({
   pages: 1,
@@ -224,6 +229,15 @@ export async function installMock(context: BrowserContext) {
       if (u.pathname === `/anime/${LONG}/episodes`) return json(route, { pagination: { page: 1, pages: 1, total: 0 }, list: [] });
       if (u.pathname === `/related/anime/${LONG}/franchise`) return json(route, { code: 'related:no-franchise' }, 400);
       if (u.pathname === `/watch/${USER}/list` && req.method() === 'POST') return json(route, watching);
+      if (u.pathname === `/watch/${SLUG}`) {
+        if (req.method() === 'PUT') {
+          const body = req.postDataJSON() as Record<string, unknown>;
+          mockState.hikkaPuts.push(body);
+          mockState.hikkaWatch = body;
+          return json(route, body);
+        }
+        return mockState.hikkaWatch ? json(route, mockState.hikkaWatch) : json(route, { code: 'watch:not_found', message: 'Not found' }, 404);
+      }
       if (u.pathname === '/schedule/anime') return json(route, { pagination: { page: 1, pages: 1, total: 0 }, list: [] });
       return json(route, { code: 'mock:not-found' }, 404);
     }

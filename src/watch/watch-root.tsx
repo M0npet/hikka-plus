@@ -21,7 +21,7 @@ import { HIKKA_LIST_EVENT, WATCH_COUNT_EVENT, WATCH_COUNT_REQ } from '../core/br
 import { navigate } from '../cards/popup';
 import { loadHikkaWatch, lowerHikkaEpisodes, markHikkaEpisodes, type HikkaWatchState } from './hikka-watch';
 import { WatchBlock, type HikkaLine } from './watch-block';
-import type { EpisodeState, WatchTeam } from './types';
+import type { EdInfo, EpisodeState, WatchTeam } from './types';
 
 type HikkaAnime = {
   slug: string;
@@ -67,6 +67,8 @@ type Load =
   | { status: 'error'; message: string };
 
 const SAVE_EVERY_MS = 5000;
+/** Без міток ендингу «Наступна серія» — лише за стільки секунд до кінця (поріг зарахування приблизний, може бути ще сюжет). */
+const NEXT_NO_MARKS_SEC = 60;
 
 /** Мітки OP/ED поточної серії для блоку (плеєр → AniSkip). */
 export type MarksInfo = { ep: number; d: number; m: Marks };
@@ -77,7 +79,7 @@ function WatchRoot({ slug }: { slug: string }) {
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [saved, setSaved] = useState<WatchSaved | null>(null);
   const [hikka, setHikka] = useState<HikkaWatchState>({ status: 'loading' });
-  const [edInfo, setEdInfo] = useState<{ ep: number; at: number; own: boolean } | null>(null);
+  const [edInfo, setEdInfo] = useState<EdInfo | null>(null);
   const [marks, setMarks] = useState<MarksInfo | null>(null);
   // Мова назв — як у користувача Hikka (src/core/title-lang.ts).
   const lang = useTitleLang();
@@ -351,7 +353,13 @@ function WatchRoot({ slug }: { slug: string }) {
       const at = watchedAt(d, edAt, null);
       // own — поріг = початок ендингу з міток самого плеєра (Moon, Fenix): він уже показує його на своїй смужці.
       const own = m.ed?.src === 'player' && at === edAt;
-      setEdInfo((x) => (x && x.ep === ep && Math.abs(x.at - at) < 1 && x.own === own ? x : { ep, at, own }));
+      const mark = edAt != null && at === edAt;
+      const next = mark ? at : Math.max(at, d - NEXT_NO_MARKS_SEC);
+      setEdInfo((x) =>
+        x && x.ep === ep && Math.abs(x.at - at) < 1 && Math.abs(x.next - next) < 1 && x.own === own && x.auto === mark
+          ? x
+          : { ep, at, own, next, auto: mark },
+      );
       // Після «Скасувати» серію не відмічаємо знову, доки позиція не повернеться нижче порогу.
       if (t < at) L.blocked.delete(ep);
       else markWatched(ep);
