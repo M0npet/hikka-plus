@@ -358,11 +358,17 @@ function WatchRoot({ slug }: { slug: string }) {
       const now = Date.now();
       if (now - L.lastSave > SAVE_EVERY_MS) {
         L.lastSave = now;
+        // Перемальовуємо блок (сітка серій), лише коли смужка поступу серії зрушила на 5 % — позицію пишемо кожні 5 с,
+        // а перечитування й новий об'єкт saved щоразу перемальовували весь блок під час перегляду (аудит 2026-11-26).
+        const step = (x: number | undefined) => Math.floor((x ?? 0) * 20);
+        let redraw = false;
         void updateWatchSaved(slug, (s) => {
           const prev = s.eps[ep];
-          const eps = prev?.w ? s.eps : { ...s.eps, [ep]: { pos: Math.min(0.999, t / d), at: now } };
+          const pos = Math.min(0.999, t / d);
+          redraw = !prev?.w && step(prev?.pos) !== step(pos);
+          const eps = prev?.w ? s.eps : { ...s.eps, [ep]: { pos, at: now } };
           return { ...s, eps, ep, t };
-        }).then(() => getWatchSaved(slug).then(setSaved));
+        }).then(() => (redraw ? getWatchSaved(slug).then(setSaved) : undefined));
       }
     },
     [slug, anime?.mal_id, markWatched, refreshMarks],
