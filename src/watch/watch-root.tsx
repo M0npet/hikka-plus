@@ -221,7 +221,7 @@ export function WatchRoot({ slug }: { slug: string }) {
       L.ep = ep;
       L.t = t;
       L.d = d;
-      // Мітки: плеєр → AniSkip (з перевіркою); поріг — початок ED, інакше за 90 с до кінця.
+      // Мітки: плеєр → AniSkip (з перевіркою); поріг — початок ED, інакше приблизно (fallbackSec).
       if (anime?.mal_id && !L.aniskip.has(ep)) {
         L.aniskip.set(ep, undefined);
         void aniskipRaw(anime.mal_id, ep).then((a) => {

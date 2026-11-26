@@ -15,6 +15,11 @@
  * left/width у % від тривалості; вже з урахуванням вибраної озвучки). Читаємо їх звідти й шлемо {marks} — без запитів,
  * лише MutationObserver на смужці (MK 2026-11-25: «у Fenix правильные таймкоды»).
  *
+ * Поріг зарахування серії (MK 2026-11-26): hikka.io шле {count: сек, ed} — малюємо свою риску на смужці прокрутки
+ * Moon (Plyr, .plyr__progress), Ashdi і Fenix (.fenix-progress-bar; якщо поріг — початок ендингу з міток, не малюємо: у Fenix
+ * своя мітка ендингу). Лише додаємо свій елемент hp-count (pointer-events: none), решту плеєра не чіпаємо.
+ * Ashdi (PlayerJS): класів немає, смужку шукаємо за будовою (`ashdiBar`, перевірено 2026-11-26 на ashdi.vip/vod/104218).
+ *
  * Навантаження (0.6.0, MK 22:37): кадр — 5 разів на секунду (було 10) і без willReadFrequently — інакше браузер
  * тримає canvas у пам'яті процесора й щоразу копіює з відеокарти весь кадр 1080p; так масштабує відеокарта,
  * а читаємо лише 32×18. Плеєр поза екраном — hikka.io просить {on:false}. Відбитки кадрів і сканер міток прибрано.
@@ -40,6 +45,7 @@ export default defineContentScript({
     ambient();
     idleCursor();
     if (location.hostname === 'fenixplay.xyz') fenixMarks();
+    countMark();
     // Плеєр міг уже стартувати з 16× зі сховища (слід сканера 0.5.22) — перші 15 с повертаємо 1×.
     const t0 = Date.now();
     const fix = window.setInterval(() => {
@@ -156,7 +162,7 @@ function ambient() {
   window.addEventListener('message', (e) => {
     if (e.source !== window.parent || e.origin !== PARENT) return;
     const d = e.data as { type?: unknown; on?: unknown; seek?: unknown } | null;
-    if (!d || d.type !== AMBIENT_REQ) return;
+    if (!d || d.type !== AMBIENT_REQ || 'count' in d) return; // {count} — для countMark, не вмикач підсвітки
     if (typeof d.seek === 'number') {
       const v = pick();
       if (v && Number.isFinite(d.seek) && d.seek >= 0) v.currentTime = Math.min(d.seek, (v.duration || Infinity) - 0.5);
@@ -272,6 +278,84 @@ function idleCursor() {
     inside = false;
     clearTimeout(timer);
     show();
+  });
+}
+
+/**
+ * Ashdi (PlayerJS, <pjsdiv> без класів і id): доріжка смужки прокрутки — блок з однаковою шириною дітей
+ * (фон 4 px, завантажене, переглянуте), усі `bottom: 0px`, висота ≤ 8 px, ширина ≥ 30 % вікна.
+ */
+function ashdiBar(): HTMLElement | null {
+  for (const e of document.querySelectorAll<HTMLElement>('pjsdiv')) {
+    const kids = [...e.children].filter((c): c is HTMLElement => c instanceof HTMLElement && !c.classList.contains('hp-count'));
+    if (kids.length < 2) continue;
+    const a = kids[0]!;
+    if (a.style.bottom !== '0px' || !(parseFloat(a.style.height) <= 8)) continue;
+    const w = e.getBoundingClientRect().width;
+    if (w < innerWidth * 0.3 || Math.abs(a.getBoundingClientRect().width - w) > 2) continue;
+    if (!kids.every((c) => c.style.bottom === '0px')) continue;
+    return e;
+  }
+  return null;
+}
+
+/** Риска порогу зарахування серії на смужці прокрутки плеєра (Moon, Ashdi, Fenix). */
+function countMark() {
+  const moon = location.hostname.startsWith('moonanime.');
+  const fenix = location.hostname === 'fenixplay.xyz';
+  const ashdi = location.hostname === 'ashdi.vip';
+  if (!moon && !fenix && !ashdi) return;
+  let at: number | null = null;
+  let ed = false;
+  let el: HTMLElement | null = null;
+  let timer = 0;
+  const duration = () => {
+    let d = 0;
+    for (const v of document.querySelectorAll('video')) if (Number.isFinite(v.duration) && v.duration > d) d = v.duration;
+    return d;
+  };
+  const remove = () => {
+    el?.remove();
+    el = null;
+  };
+  const place = () => {
+    const d = duration();
+    if (at == null || !(d > 0) || at >= d || (fenix && ed)) return remove();
+    const bar = ashdi
+      ? el?.isConnected && el.parentElement
+        ? el.parentElement // уже знайшли — не перебираємо <pjsdiv> щосекунди
+        : ashdiBar()
+      : document.querySelector<HTMLElement>(moon ? '.plyr__progress' : '.fenix-progress-bar');
+    if (!bar) return remove();
+    if (!el) {
+      el = document.createElement('span');
+      el.className = 'hp-count';
+      el.title = 'Тут серія зарахується';
+      el.style.cssText =
+        'position:absolute;width:3px;border-radius:2px;background:#ff86c4;box-shadow:0 0 0 1px rgba(0,0,0,.45);pointer-events:none;z-index:3;' +
+        (ashdi
+          ? 'bottom:-4px;height:12px;transform:translateX(-50%)' // доріжка Ashdi — 4 px біля низу блоку нульової висоти
+          : `top:50%;transform:translate(-50%,-50%);height:${moon ? '12px' : 'calc(100% + 6px)'};min-height:8px`);
+    }
+    if (el.parentElement !== bar) {
+      if (getComputedStyle(bar).position === 'static') return remove(); // некуди прив'язати — не чіпаємо розкладку плеєра
+      bar.append(el);
+    }
+    const left = `${((at / d) * 100).toFixed(3)}%`;
+    if (el.style.left !== left) el.style.left = left;
+  };
+  window.addEventListener('message', (e) => {
+    if (e.source !== window.parent || e.origin !== PARENT) return;
+    const d = e.data as { type?: unknown; count?: unknown; ed?: unknown } | null;
+    if (!d || d.type !== AMBIENT_REQ || !('count' in d)) return;
+    at = typeof d.count === 'number' && d.count > 0 ? d.count : null;
+    ed = d.ed === true;
+    place();
+    // Плеєр перемальовує смужку (зміна серії/озвучки, тривалість з'являється не одразу) — раз на секунду перевіряємо.
+    if (at == null) {
+      clearInterval(timer);
+      timer = 0;
+    } else if (!timer) timer = window.setInterval(place, 1000);
   });
 }
 

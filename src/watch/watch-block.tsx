@@ -36,7 +36,7 @@ export type WatchBlockProps = {
   anitube?: string;
   /** Українська ліцензія з Mikai: де дивитися легально (кнопка в шапці; без серій — замість «не знайшли»). */
   license?: UaLicense;
-  /** Поріг зарахування поточної серії: at — секунда, ed — це початок ендингу (а не «за 90 с до кінця»). */
+  /** Поріг зарахування поточної серії: at — секунда, ed — це початок ендингу (а не приблизний поріг без міток). */
   edInfo?: { ep: number; at: number; ed: boolean } | null;
   prefs: WatchPrefs;
   onPrefs: (p: Partial<WatchPrefs>) => void;
@@ -455,6 +455,8 @@ export function WatchBlock(p: WatchBlockProps) {
           }}
           onSegs={(m) => p.onSegs?.(ep, m)}
           seekRef={seekRef}
+          countAt={frameEp === ep && ed && !st?.watched ? ed.at : null}
+          countEd={!!ed?.ed}
           onEnded={() => {
             const cur = ep;
             p.onEnded?.(cur);
@@ -570,11 +572,7 @@ export function WatchBlock(p: WatchBlockProps) {
                   <span title="Зарахована в списку Hikka. Щоб зняти — «−» у віджеті Hikka або «Відмічати в Hikka».">· у Hikka</span>
                 )}
               </>
-            ) : ed?.ed ? (
-              `Зарахується з ${fmt(ed.at)} — ендинг`
-            ) : (
-              'Зарахується за 1:30 до кінця'
-            )}
+            ) : null}
           </span>
         </div>
         <Button variant="secondary" size="md" icon aria-label="Наступна серія" disabled={ep >= count || !teamHas(ep + 1)} onClick={() => goEp(ep + 1)}>
@@ -862,6 +860,10 @@ export function PlayerFrame(p: {
   devices?: boolean;
   /** Сюди кладемо функцію перемотки (кнопки «Пропустити», смужка міток). */
   seekRef?: { current: ((sec: number) => void) | null };
+  /** Секунда, з якої серія зарахується (риска на смужці самого плеєра); null — не показувати (уже переглянуто). */
+  countAt?: number | null;
+  /** countAt — це початок ендингу з міток (Fenix тоді риску не малюємо — у нього своя мітка ендингу). */
+  countEd?: boolean;
 }) {
   const [src, setSrc] = useState<string | null | undefined>(undefined);
   const [err, setErr] = useState(false);
@@ -1009,6 +1011,41 @@ export function PlayerFrame(p: {
       }
     };
   }, [src, p.glow, p.devices]);
+
+  // Поріг зарахування серії — ризикою на смужці прокрутки самого плеєра (MK 2026-11-26: «нах подпись под, сделай
+  // интеграцию в плеер»). Малює скрипт фрейму (entrypoints/player-frame.content.ts, Moon і Fenix); тут лише кажемо секунду.
+  const countSec = p.countAt == null ? null : Math.round(p.countAt);
+  const countEd = !!p.countEd;
+  useEffect(() => {
+    const f = ref.current;
+    if (!src || !f) return;
+    let origin = '';
+    try {
+      origin = new URL(src).origin;
+    } catch {
+      return;
+    }
+    const send = () => {
+      try {
+        void f.contentWindow?.location.href;
+        return; // ще about:blank — плеєр не завантажився
+      } catch {
+        f.contentWindow?.postMessage({ type: AMBIENT_REQ, count: countSec, ed: countEd }, origin);
+      }
+    };
+    const onMsg = (e: MessageEvent) => {
+      if (e.source !== f.contentWindow || e.origin !== origin) return;
+      const d = e.data as { type?: unknown; ready?: unknown } | null;
+      if (d?.type === AMBIENT_MSG && d.ready) send();
+    };
+    window.addEventListener('message', onMsg);
+    f.addEventListener('load', send);
+    send();
+    return () => {
+      window.removeEventListener('message', onMsg);
+      f.removeEventListener('load', send);
+    };
+  }, [src, countSec, countEd]);
 
   useEffect(() => {
     const f = ref.current;
