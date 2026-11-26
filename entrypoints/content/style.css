@@ -1901,16 +1901,14 @@ select {
   color: var(--hp-ob-fg);
   z-index: 3;
   opacity: 0;
-  transform: translateY(-4px);
+  /* Без зсуву при появі (MK 2026-11-26 15:55, відео): панель їхала на 4 px, край виходив з-під миші → миша в плеєрі →
+     {active} → панель на місці під мишею → … курсор блимав стрілка/рука. Межі панелі не рухаються — лише прозорість. */
   pointer-events: none;
-  transition:
-    opacity 0.25s ease,
-    transform 0.25s var(--hp-ob-ease);
+  transition: opacity 0.25s ease;
 }
 .hp-watch__tools--on,
 .hp-watch__tools:focus-within {
   opacity: 1;
-  transform: none;
   pointer-events: auto;
 }
 .hp-watch__view:fullscreen > .hp-watch__tools {
