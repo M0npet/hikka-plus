@@ -107,6 +107,19 @@ test('меню серій над плеєром: «Відмічати» знім
   await page.waitForTimeout(2_200);
   expect(await moves()).toBe(m0);
   await page.mouse.move(lb.x + 10, lb.y + lb.height / 2);
+  // Туди-сюди через край панелі (лінія в 1 px, MK 16:06): повернення з кадру на наш шар браузер подіями не повідомляє,
+  // але фрейм бачить mouseleave → {active: 0} → hikka.io дивиться :hover і одразу шле {hold}.
+  // (Chromium під CDP mouseleave у фреймі не шле — імітуємо його, як у справжньому браузері.)
+  await page.waitForTimeout(150);
+  for (let i = 0; i < 3; i++) {
+    await page.mouse.move(lb.x + 10, lb.y + lb.height + 12);
+    await page.waitForTimeout(350); // фрейм побачив справжній рух → {active: 1} → відпустили
+    const before = await moves();
+    await page.mouse.move(lb.x + 10, lb.y + lb.height - 6);
+    await f.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')));
+    await expect.poll(moves, { timeout: 300, intervals: [50] }).toBeGreaterThan(before);
+    await page.waitForTimeout(150);
+  }
   await left.locator('.hp-watch__tool--ep').click();
   const menu = watch().locator('.hp-watch__eppop');
   await menu.locator('.hp-watch__epmark').click();

@@ -440,9 +440,20 @@ export function WatchBlock(p: WatchBlockProps) {
   // Відпускаємо, коли фрейм каже про СПРАВЖНІЙ рух миші в самому плеєрі ({active: 1}; перехід у iframe hikka.io бачить
   // не завжди, особливо на заокруглених краях) або миша вийшла з блоку.
   const holding = useRef(false);
-  const holdOn = () => {
-    if (holding.current) return;
+  const pingAt = useRef(0);
+  /** Плеєр міг уже побачити mouseleave і сховати панель (MK 16:06: на лінії в 1 px панель Fenix «пропадает сразу») —
+   *  кажемо одразу, а не чекаємо тику: на pointerover (now) не частіше ніж раз на 100 мс, на рух — раз на 300 мс
+   *  (повернення з iframe браузер часто дає лише pointermove, без pointerover). */
+  const holdOn = (now = false) => {
+    if (holding.current) {
+      if (Date.now() - pingAt.current > (now ? 100 : 300)) {
+        pingAt.current = Date.now();
+        holdPing();
+      }
+      return;
+    }
     holding.current = true;
+    pingAt.current = Date.now();
     holdPing();
     holdT.current = window.setInterval(holdPing, 1000);
   };
@@ -451,6 +462,21 @@ export function WatchBlock(p: WatchBlockProps) {
     clearInterval(holdT.current);
   };
   useEffect(() => holdOff, []);
+  // Миша вийшла з кадру ({active: 0}). Повернення з iframe на наш елемент браузер часто не повідомляє жодною подією
+  // (ні pointerover, ні pointermove — перевірено в E2E, MK 16:06 «лінія в 1 px»), а :hover ставить правильно —
+  // дивимося, що під мишею: наш елемент у блоці плеєра → тримаємо одразу; повторно через 60 мс (:hover міг ще не оновитись).
+  const holdIfOurs = () => {
+    const check = () => {
+      const view = viewRef.current;
+      const root = view?.getRootNode() as ShadowRoot | Document | undefined;
+      if (!view || !root) return;
+      const hov = root.querySelectorAll(':hover');
+      const last = hov[hov.length - 1];
+      if (last && last.tagName !== 'IFRAME' && view.contains(last)) holdOn(true);
+    };
+    check();
+    window.setTimeout(check, 60);
+  };
   // Відео ще не пустили або пауза (MK 2026-11-26 15:41: «когда я еще не нажимал на плеер, наше меню тоже должно
   // показываться») — панелі видно весь час, як і панель самого плеєра. «Стоїть» = позиція не мінялася 1,5 с.
   const tick = useRef({ t: -1, at: 0 });
@@ -743,8 +769,8 @@ export function WatchBlock(p: WatchBlockProps) {
     <div
       ref={viewRef}
       className="hp-watch__view"
-      onPointerOver={(e) => (e.target as Element).tagName !== 'IFRAME' && holdOn()}
-      onPointerMove={(e) => (e.target as Element).tagName !== 'IFRAME' && holdOn()}
+      onPointerOver={(e) => (e.target as Element).tagName !== 'IFRAME' && holdOn(true)}
+      onPointerMove={(e) => (e.target as Element).tagName !== 'IFRAME' && holdOn(false)}
       onPointerLeave={holdOff}
     >
     {ambient && !p.renderFrame && (
@@ -808,6 +834,7 @@ export function WatchBlock(p: WatchBlockProps) {
           onHotkey={(key) => hotkeyRef.current(key)}
           onActive={(on) => {
             if (on) holdOff(); // справжній рух у самому плеєрі — він уже сам бачить мишу
+            else holdIfOurs();
             wakeTools(on);
           }}
           countAt={frameEp === ep && ed && !st?.watched ? ed.at : null}
