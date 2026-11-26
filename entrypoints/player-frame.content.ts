@@ -228,11 +228,24 @@ function fenixMarks() {
 }
 
 /**
- * Курсор над плеєром (MK 2026-11-26: «мышка не пропадает»): плеєри (Plyr у Moon тощо) ховають його лише у СВОЄМУ
+ * Курсор над плеєром (MK 2026-11-26: «мышка не пропадает»): плеєри ховають його лише у СВОЄМУ
  * повному екрані, а наш «На весь екран» — це повний екран рамки на hikka.io, плеєр про нього не знає. Тож самі:
  * відео грає і мишу не рухали IDLE_MS — курсор у фреймі ховаємо; рух/клік/клавіша — повертаємо. Лише стиль курсора.
  */
 function idleCursor() {
+  // Moon (Plyr): у самого плеєра курсор ховається разом із панеллю, але лише в його повному екрані
+  // (plyr.css: `.plyr:fullscreen.plyr--hide-controls{cursor:none}`). Беремо його ж стан «панель сховано»
+  // (`plyr--hide-controls`) і поза повним екраном — курсор зникає рівно тоді, коли зникає панель плеєра.
+  if (location.hostname.startsWith('moonanime.')) {
+    const plyr = document.createElement('style');
+    plyr.textContent = '.plyr.plyr--hide-controls, .plyr.plyr--hide-controls * { cursor: none !important; }';
+    (document.head ?? document.documentElement).append(plyr);
+    return;
+  }
+  // Fenix ховає курсор сам і поза повним екраном (`.fenix-root.inactive{cursor:none}`, перевірено 2026-11-26) — не заважаємо.
+  if (location.hostname === 'fenixplay.xyz') return;
+  // Ashdi (PlayerJS): поза повним екраном курсор не ховає (перевірено 2026-11-26: серія грає, мишу не рухали —
+  // cursor лишається default), окремого стану «панель сховано» в CSS немає — тому наш таймер.
   const IDLE_MS = 2500;
   const css = document.createElement('style');
   css.textContent = 'html, html * { cursor: none !important; }';
