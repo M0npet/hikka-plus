@@ -117,7 +117,14 @@ export function WatchRoot({ slug }: { slug: string }) {
   }, [slug]);
 
   // Лічильник у Hikka.
-  const reloadHikka = useCallback(() => void loadHikkaWatch(slug).then(setHikka), [slug]);
+  // Помилка фону (немає відповіді тощо) — показуємо її, а не вічне «завантаження» без рядка Hikka (MK 2026-11-26).
+  const reloadHikka = useCallback(
+    () =>
+      void loadHikkaWatch(slug)
+        .then(setHikka)
+        .catch((e) => setHikka({ status: 'error', message: String((e as Error)?.message ?? e) })),
+    [slug],
+  );
   useEffect(() => {
     reloadHikka();
     const u1 = tokenItem.watch(reloadHikka);
@@ -146,18 +153,56 @@ export function WatchRoot({ slug }: { slug: string }) {
   const anime = load.status === 'ready' ? load.anime : null;
   const total = anime?.episodes_total || anime?.episodes_released || null;
 
+  // Лічильник Hikka: найбільша серія, зарахована в цьому заході. Не вдалося (мережа, Hikka ще вантажилась, токен) —
+  // пробуємо знову на наступному onTime/при зміні стану Hikka, а не губимо (MK 2026-11-26: «серии не отмечаются»).
+  const hikkaRef = useRef({ ok: false, sync: false, episodes: 0, total: null as number | null, busy: false, failAt: 0 });
+  hikkaRef.current.ok = hikka.status === 'ok';
+  hikkaRef.current.sync = !!prefs.hikkaSync;
+  hikkaRef.current.episodes = hikka.status === 'ok' ? hikka.episodes : 0;
+  hikkaRef.current.total = total;
+  const pushHikka = useCallback(() => {
+    const H = hikkaRef.current;
+    const L = live.current;
+    let n = 0;
+    for (const e of L.marked) if (!L.blocked.has(e) && e > n) n = e;
+    if (H.total && n > H.total) n = H.total;
+    if (!n || H.busy || !H.sync || !H.ok || H.episodes >= n || Date.now() - H.failAt < 30_000) return;
+    H.busy = true;
+    void markHikkaEpisodes(slug, n, H.total)
+      .then((st) => {
+        // Помилка мережі — не міняємо стан Hikka (інакше рядок «помилка» і більше жодної спроби), а повторимо за 30 с.
+        if (st.status === 'error') {
+          H.failAt = Date.now();
+          console.info('[Hikka Plus] серію в Hikka не записано, повторимо:', st.message);
+        } else setHikka(st);
+      })
+      .catch((e) => {
+        H.failAt = Date.now();
+        console.info('[Hikka Plus] серію в Hikka не записано, повторимо:', e);
+      })
+      .finally(() => {
+        H.busy = false;
+      });
+  }, [slug]);
+  useEffect(() => {
+    if (hikka.status === 'ok') pushHikka();
+  }, [hikka, prefs.hikkaSync, pushHikka]);
+
   const markWatched = useCallback(
     (ep: number) => {
       const L = live.current;
-      if (L.marked.has(ep) || L.blocked.has(ep)) return;
-      L.marked.add(ep);
-      void updateWatchSaved(slug, (s) => ({ ...s, eps: { ...s.eps, [ep]: { pos: 1, w: 1, at: Date.now() } } })).then(() =>
-        getWatchSaved(slug).then(setSaved),
-      );
-      if (prefs.hikkaSync && hikka.status === 'ok') void markHikkaEpisodes(slug, ep, total).then(setHikka);
+      if (L.blocked.has(ep)) return;
+      if (!L.marked.has(ep)) {
+        L.marked.add(ep);
+        void updateWatchSaved(slug, (s) => ({ ...s, eps: { ...s.eps, [ep]: { pos: 1, w: 1, at: Date.now() } } })).then(() =>
+          getWatchSaved(slug).then(setSaved),
+        );
+      }
+      pushHikka();
     },
-    [slug, prefs.hikkaSync, hikka.status, total],
+    [slug, pushHikka],
   );
+
 
   /** Злити мітки поточної серії й оновити блок і поріг зарахування. Повертає початок ED (або null). */
   const refreshMarks = useCallback((ep: number, d: number): Marks => {
@@ -277,7 +322,9 @@ export function WatchRoot({ slug }: { slug: string }) {
         ? { kind: 'connect', onClick: () => void startHikkaLogin(true) }
         : hikka.status === 'error'
           ? { kind: 'error', message: hikka.message }
-          : null;
+          : (hikka.status === 'scope' || hikka.status === 'off') && prefs.hikkaSync
+            ? { kind: 'error', message: 'Ця збірка без клієнта Hikka — серії в Hikka не відмічаються (немає .env.local під час збірки)' }
+            : null;
 
   return (
     <WatchBlock

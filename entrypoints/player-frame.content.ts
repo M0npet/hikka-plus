@@ -38,6 +38,7 @@ export default defineContentScript({
     if (window.name !== FRAME_NAME) return;
     fixPlyrSpeed();
     ambient();
+    idleCursor();
     if (location.hostname === 'fenixplay.xyz') fenixMarks();
     // Плеєр міг уже стартувати з 16× зі сховища (слід сканера 0.5.22) — перші 15 с повертаємо 1×.
     const t0 = Date.now();
@@ -223,6 +224,41 @@ function fenixMarks() {
     if ((e.data as { type?: unknown } | null)?.type !== AMBIENT_REQ) return;
     last = '';
     later();
+  });
+}
+
+/**
+ * Курсор над плеєром (MK 2026-11-26: «мышка не пропадает»): плеєри (Plyr у Moon тощо) ховають його лише у СВОЄМУ
+ * повному екрані, а наш «На весь екран» — це повний екран рамки на hikka.io, плеєр про нього не знає. Тож самі:
+ * відео грає і мишу не рухали IDLE_MS — курсор у фреймі ховаємо; рух/клік/клавіша — повертаємо. Лише стиль курсора.
+ */
+function idleCursor() {
+  const IDLE_MS = 2500;
+  const css = document.createElement('style');
+  css.textContent = 'html, html * { cursor: none !important; }';
+  let timer = 0;
+  let inside = false;
+  const playing = () => [...document.querySelectorAll('video')].some((v) => !v.paused && !v.ended && v.readyState > 2);
+  const show = () => css.remove();
+  const arm = () => {
+    clearTimeout(timer);
+    timer = window.setTimeout(function check() {
+      if (!inside) return;
+      // На паузі курсор не ховаємо, але й не здаємося: перевіримо знову (відео могли пустити клавішею).
+      if (playing()) (document.head ?? document.documentElement).append(css);
+      else timer = window.setTimeout(check, IDLE_MS);
+    }, IDLE_MS);
+  };
+  const wake = () => {
+    inside = true;
+    show();
+    arm();
+  };
+  for (const ev of ['pointermove', 'pointerdown', 'wheel', 'keydown'] as const) document.addEventListener(ev, wake, { passive: true, capture: true });
+  document.documentElement.addEventListener('mouseleave', () => {
+    inside = false;
+    clearTimeout(timer);
+    show();
   });
 }
 
