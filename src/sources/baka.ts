@@ -76,12 +76,18 @@ async function volumeRows(acc: Element): Promise<Chapter[]> {
   return parseRows(acc, volume);
 }
 
-/** «Том 12 · Розділи 526–529» → том і перший розділ. */
-function volumeHead(acc: Element): { vol: number; from: number } | null {
+/**
+ * «Том 12 · Розділи 526–529» → том, перший і останній розділ («Розділ 7» — from = to).
+ * Довгі тайтли без томів Бака ділить на групи по 100: «Розділи 2101–2190» → vol = null.
+ */
+function volumeHead(acc: Element): { vol: number | null; from: number; to: number } | null {
   const t = acc.querySelector('.accordion-header h3')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
-  const m = t.match(/^Том\s+(\d+(?:[.,]\d+)?)\s*·\s*Розділи?\s+(\d+(?:[.,]\d+)?)/i);
-  return m ? { vol: num(m[1]!), from: num(m[2]!) } : null;
+  const m = t.match(/^(?:Том\s+(\d+(?:[.,]\d+)?)\s*·\s*)?Розділи?\s+(\d+(?:[.,]\d+)?)(?:\s*[–—-]\s*(\d+(?:[.,]\d+)?))?/i);
+  return m ? { vol: m[1] ? num(m[1]) : null, from: num(m[2]!), to: num(m[3] ?? m[2]!) } : null;
 }
+
+type Head = { vol: number | null; from: number; to: number };
+const overlaps = (hs: Head[]) => hs.some((a, i) => hs.some((b, j) => i < j && a.from <= b.to && b.from <= a.to));
 
 export const baka: ReadSource = {
   id: 'baka',
@@ -150,13 +156,25 @@ export const baka: ReadSource = {
   async getLatest(id) {
     const doc = await titlePage(id);
     const accs = [...doc.querySelectorAll('.accordion')];
-    const heads = accs.map(volumeHead);
+    const all = accs.map(volumeHead);
+    // Без томів, лише групи по 100 («Розділи 2101–2190 | 2001–2100 | …»): номери наскрізні, найновіші — у групі
+    // з найбільшим номером. 1–2 запити замість 1 + кількість груп (у «Моя вампірська система» — 22).
+    if (all.length && all.every((h) => h && h.vol === null)) {
+      const hs = all as Head[];
+      if (!overlaps(hs)) return volumeRows(accs[hs.reduce((b, h, i) => (h.from > hs[b]!.from ? i : b), 0)]!);
+      return renumberByVolume(await this.getChapters(id));
+    }
+    // Далі — томи; група без тому серед томів — незрозуміло, як рахує сайт, тож як «не розібрано».
+    const heads = all.map((h) => (h && h.vol !== null ? (h as Head & { vol: number }) : null));
     let last = -1;
     heads.forEach((h, i) => {
       if (h && (last < 0 || h.vol > heads[last]!.vol)) last = i;
     });
     const top = heads[last];
     const restarts = !top || heads.some((h, i) => !h || (i !== last && h.from >= top.from));
+    // Нумерація в томах починається заново — номер рахує renumberByVolume по всіх томах. Зсув без них не порахувати:
+    // попередні томи на сторінці згорнуті (лише data-chapter-section-url, без лічильника), а номери бувають з повторами
+    // («Готування просто неба», том 1 — розділ 5 двічі). Перевірено на живій Баці 2026-11-27.
     if (restarts) return renumberByVolume(await this.getChapters(id));
     return volumeRows(accs[last]!);
   },
