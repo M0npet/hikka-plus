@@ -5,7 +5,7 @@
  */
 import { browser } from '#imports';
 import { isRateLimit } from '../core/net';
-import { hookNotes, notesApi, updateBadge } from '../core/notify';
+import { hookNotes, notesApi } from '../core/notify';
 import { applyReleased, latestChapters, summarize } from '../cards/released';
 import { baka } from '../sources/baka';
 import { dgManga } from '../sources/dgmanga';
@@ -17,6 +17,10 @@ import { CHAP_CHECK_MIN, chapCheckItem, chapsItem, getChapPrefs, pruneChaps, upd
 
 /** Лише ті, що content script записує (getLatest або ONE_REQUEST у chapter-alerts.ts), — не весь registry: фон менший. */
 const SOURCES = new Map([zenko, uaManga, honeyManga, baka, dgManga, mangaInUa].map((x) => [x.id, x]));
+
+/** Джерела, що розбирають HTML (DOMParser): у фоні Chrome MV3 його немає — там їх не питаємо, щоб не писати «Не всі сайти відповіли». */
+const NEEDS_DOM = new Set([baka.id]);
+const hasDom = typeof DOMParser !== 'undefined';
 
 const ALARM = 'hp-chaps';
 const GAP_MS = 1500;
@@ -84,7 +88,7 @@ async function run(force: boolean): Promise<ChapCheckResult> {
   let error: string | undefined;
   for (const [i, [key, t]] of Object.entries(tracked).entries()) {
     const src = SOURCES.get(t.s);
-    if (!src) continue;
+    if (!src || (!hasDom && NEEDS_DOM.has(src.id))) continue;
     if (i) await sleep(GAP_MS);
     try {
       const sum = summarize(await latestChapters(src, t.id), t.t);
@@ -108,7 +112,7 @@ async function run(force: boolean): Promise<ChapCheckResult> {
     return pruneChaps(m, now);
   });
   await applyReleased(sums);
-  await updateBadge();
+  // Число на іконці перерахує watchBadge (src/core/notify.ts), якщо список змінився.
   if (prefs.notify) await notify(fresh);
   return { ok: !error, found: fresh.length, error };
 }

@@ -3,7 +3,7 @@
  * Будильник CHECK_EVERY_MIN (дозвіл alarms); між тайтлами пауза GAP_MS — Mikai дозволяє 300 запитів/хв, ми робимо ≤ MAX_TRACK раз на 3 год.
  */
 import { browser } from '#imports';
-import { hookNotes, notesApi, updateBadge } from '../core/notify';
+import { hookNotes, notesApi } from '../core/notify';
 import {
   CHECK_EVERY_MIN,
   dubCheckItem,
@@ -120,7 +120,7 @@ async function run(force: boolean): Promise<DubCheckResult> {
     }
     return pruneDubs(m, now);
   });
-  await updateBadge();
+  // Число на іконці перерахує watchBadge (src/core/notify.ts), якщо список змінився.
   if (prefs.notify) await notify(fresh);
   return { ok: !error, found: fresh.length, error };
 }

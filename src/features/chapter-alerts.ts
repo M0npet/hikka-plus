@@ -60,7 +60,12 @@ export const chapUrl = (key: string) => {
 
 let queue: Promise<unknown> = Promise.resolve();
 export function updateChaps(fn: (m: ChapMap) => ChapMap): Promise<void> {
-  const next = queue.then(async () => chapsItem.setValue(fn({ ...(await chapsItem.getValue()) })));
+  const next = queue.then(async () => {
+    const cur = await chapsItem.getValue();
+    const nx = fn(structuredClone(cur));
+    // Без змін — без запису (як updateDubs): фонова перевірка без нових розділів не будить слухачів і значок.
+    if (JSON.stringify(nx) !== JSON.stringify(cur)) await chapsItem.setValue(nx);
+  });
   queue = next.catch(() => {});
   return next;
 }

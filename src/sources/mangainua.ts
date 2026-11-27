@@ -175,6 +175,7 @@ export const mangaInUa: ReadSource = {
     return sortCh(out);
   },
 
+  latestIsFull: true,
   /** Для фонової перевірки: той самий список і та сама нумерація, що й у блоці «Розділи» (renumberByVolume). */
   async getLatest(id) {
     return renumberByVolume(await this.getChapters(id));

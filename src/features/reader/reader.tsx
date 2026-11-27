@@ -33,13 +33,37 @@ const SAVE_DELAY = 600;
 function pagesRatio(pages: ArrayLike<HTMLElement>, viewTop: number): number {
   const n = pages.length;
   if (!n) return 0;
-  let cur = -1;
-  for (let i = 0; i < n; i++) if (pages[i]!.getBoundingClientRect().top <= viewTop) cur = i;
+  const cur = lastAbove(pages, viewTop);
   if (cur < 0) return 0;
   const r = pages[cur]!.getBoundingClientRect();
   const frac = r.height > 0 ? Math.max(0, Math.min(1, (viewTop - r.top) / r.height)) : 0;
   return Math.min(1, (cur + frac) / n);
 }
+/**
+ * Індекс останньої сторінки, верх якої ≤ y (−1 — жодної). Сторінки стрічки йдуть згори вниз (верх не спадає),
+ * тож двійковий пошук: на кожну подію прокрутки ~log₂ n замірів замість n (100 сторінок — 7 замість 100; аудит 2026-11-27).
+ */
+function lastAbove(pages: ArrayLike<HTMLElement>, y: number): number {
+  let lo = 0;
+  let hi = pages.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const m = (lo + hi) >> 1;
+    if (pages[m]!.getBoundingClientRect().top <= y) {
+      ans = m;
+      lo = m + 1;
+    } else hi = m - 1;
+  }
+  return ans;
+}
+/** Номер сторінки (data-page) під лінією y — та, чий верх останнім пройшов y. */
+const pageAt = (pages: ArrayLike<HTMLElement>, y: number) => {
+  const i = lastAbove(pages, y);
+  return i < 0 ? 0 : Number(pages[i]!.dataset.page);
+};
+/** Частка для смужки й відсотків: показуємо цілі відсотки, тож стан змінюється раз на 1 % — читалка не перемальовується щокадру. */
+const roundPos = (r: number) => Math.round(r * 100) / 100;
+
 /** За скільки екранів до кінця стрічки підвантажувати наступний розділ. */
 const PRELOAD_SCREENS = 3;
 const MAX_ZOOM = 3;
@@ -349,15 +373,6 @@ export function Reader() {
     if (!el || paged || load.status !== 'ready') return;
     const top = el.scrollTop;
     const max = Math.max(1, el.scrollHeight - el.clientHeight);
-    const viewTop = el.getBoundingClientRect().top;
-    const atEnd = max - top < 40;
-    const ratio = isNovel
-      ? Math.min(1, top / max)
-      : atEnd
-        ? 1
-        : pagesRatio(el.querySelectorAll<HTMLElement>('[data-page]'), viewTop);
-    setPos(ratio);
-
     // Стрибок від відновлення позиції — не прокрутка користувача: панелі лишаються.
     const own = programmaticTop.current != null && Math.abs(top - programmaticTop.current) < 2;
     programmaticTop.current = null;
@@ -367,14 +382,18 @@ export function Reader() {
     }
     lastTop.current = top;
 
+    // Стрічка з кількох розділів рахує частку сама — за сторінками поточного розділу.
     if (feed) return onFeedScroll(el, top, own);
 
+    const viewTop = el.getBoundingClientRect().top;
+    const atEnd = max - top < 40;
+    const imgs = isNovel ? null : el.querySelectorAll<HTMLElement>('[data-page]');
+    const ratio = !imgs ? Math.min(1, top / max) : atEnd ? 1 : pagesRatio(imgs, viewTop);
+    setPos(roundPos(ratio));
+
     let pg: { page: number; pages: number } | undefined;
-    if (!isNovel) {
-      const imgs = el.querySelectorAll<HTMLElement>('[data-page]');
-      const mid = el.getBoundingClientRect().top + el.clientHeight / 2;
-      let cur = 0;
-      for (const img of imgs) if (img.getBoundingClientRect().top <= mid) cur = Number(img.dataset.page);
+    if (imgs) {
+      const cur = pageAt(imgs, viewTop + el.clientHeight / 2);
       pg = { page: cur, pages: imgs.length };
       setStripPage(cur);
       if (settings.manga.pageNumbers) setPageInfo(`${cur + 1} / ${imgs.length}`);
@@ -393,9 +412,8 @@ export function Reader() {
   const onFeedScroll = (el: HTMLDivElement, top: number, own: boolean) => {
     const box = el.getBoundingClientRect();
     const mid = box.top + el.clientHeight / 2;
-    const sections = [...el.querySelectorAll<HTMLElement>('[data-seg]')];
-    let cur = sections[0];
-    for (const sec of sections) if (sec.getBoundingClientRect().top <= mid) cur = sec;
+    const sections = el.querySelectorAll<HTMLElement>('[data-seg]');
+    const cur = sections[Math.max(0, lastAbove(sections, mid))];
     if (!cur) return;
     const id = cur.dataset.seg;
     const seg = segs.find((x) => x.chapter.id === id);
@@ -404,10 +422,9 @@ export function Reader() {
     const pages = cur.querySelectorAll<HTMLElement>('[data-page]');
     const segEnd = r.bottom - (box.top + el.clientHeight) < 40;
     const ratio = segEnd ? 1 : pagesRatio(pages, box.top);
-    setPos(ratio);
+    setPos(roundPos(ratio));
 
-    let pgNo = 0;
-    for (const p of pages) if (p.getBoundingClientRect().top <= mid) pgNo = Number(p.dataset.page);
+    const pgNo = pageAt(pages, mid);
     const pg = { page: pgNo, pages: pages.length };
     setStripPage(pgNo);
     if (settings.manga.pageNumbers) setPageInfo(`${pgNo + 1} / ${pages.length}`);

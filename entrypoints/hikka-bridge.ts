@@ -110,6 +110,14 @@ export default defineUnlistedScript(() => {
     !!a && typeof a === 'object' && ((a as Book).data_type === 'manga' || (a as Book).data_type === 'novel') && typeof (a as Book).slug === 'string';
   const int = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : -1);
 
+  /** Запити, з яких collectCards бере дані (+ profile — ім'я того, хто зайшов). */
+  const CARD_QUERY = /anime|manga|novel|read|watch|schedule|franchise|collection|recommend|search/i;
+  const cardQuery = (q: QueryLike) => {
+    const k = q.queryKey[0] as { _id?: unknown } | undefined;
+    const id = k && typeof k === 'object' ? String(k._id ?? '') : '';
+    return id === 'profile' || CARD_QUERY.test(id);
+  };
+
   /** Знімок того, що кеш Hikka знає про аніме на сторінці: випущені серії й запис у списку того, хто зайшов. */
   function collectCards(): CardRow[] {
     const all = client?.getQueryCache().getAll?.() ?? [];
@@ -178,7 +186,7 @@ export default defineUnlistedScript(() => {
         continue;
       }
       // Лише кеш зі списками тайтлів (не коментарі, не статистика): усе, де трапляються об'єкти аніме, манґи, ранобе.
-      if (!/anime|manga|novel|read|watch|schedule|franchise|collection|recommend|search/i.test(id)) continue;
+      if (!CARD_QUERY.test(id)) continue;
       // Свій список (userWatchList / список читання) — за ім'ям того, хто зайшов; чужий — лише дані тайтлів.
       const own = !!me && k.path?.username === me && /watch|read/i.test(id);
       walk(q.state.data, own, 0);
@@ -215,7 +223,8 @@ export default defineUnlistedScript(() => {
     scanLang();
     unsub = client.getQueryCache().subscribe((ev) => {
       if (ev.type !== 'updated' || ev.action?.type !== 'success') return;
-      sendCards();
+      // Коментарі, статистика, персонажі тощо плашкам не потрібні — не перебираємо весь кеш і не робимо JSON на кожен такий запит.
+      if (cardQuery(ev.query)) sendCards();
       reportLang(ev.query);
       reportWatch(ev.query);
       reportRead(ev.query);

@@ -14,6 +14,7 @@ import {
   activeTeam,
   bindManually,
   continueTarget,
+  lastChapterNo,
   overallStatus,
   rejectNear,
   setActiveSource,
@@ -174,7 +175,11 @@ function SourceSwitcher({
     const st = s.sources[id];
     return !!st && st.status !== 'not-found' && st.status !== 'searching';
   };
-  const size = (id: string) => new Set(s.sources[id]?.chapters.map((c) => chapterKey(c.number))).size;
+  const size = (id: string) => {
+    const st = s.sources[id];
+    // Неповне джерело (лише найновіші розділи) — за номером останнього.
+    return st?.partial ? lastChapterNo(st.chapters) : new Set(st?.chapters.map((c) => chapterKey(c.number))).size;
+  };
   // Звичайний режим: у ряду лише джерела, де тайтл знайшовся (більше розділів — лівіше),
   // решта — у плашці «Ще N». Поки нічого не знайдено або йде ручний пошук — усі плашки.
   const found = all
@@ -232,7 +237,9 @@ function SourceSwitcher({
                 ? 'немає'
                 : st.status === 'error'
                   ? 'помилка'
-                  : `${new Set(st.chapters.map((c) => chapterKey(c.number))).size}`;
+                  : st.partial
+                    ? `~${lastChapterNo(st.chapters)}`
+                    : `${new Set(st.chapters.map((c) => chapterKey(c.number))).size}`;
         return {
           value: src.id,
           label: src.name,
@@ -270,7 +277,13 @@ function continueElsewhere(s: TitleState): { no: number; first: Elsewhere; items
   if (visibleChapters(s).some(next)) return null;
   const items = sourcesFor(s.page.kind).flatMap((src) => {
     const st = s.sources[src.id];
-    if (src.id === s.activeId || st?.status !== 'ready' || !st.chapters.some(next)) return [];
+    if (src.id === s.activeId || st?.status !== 'ready') return [];
+    // Неповне джерело: є лише найновіші розділи — дивимось на номер останнього.
+    if (st.partial) {
+      const last = lastChapterNo(st.chapters);
+      return last > max ? [{ src, left: last - max }] : [];
+    }
+    if (!st.chapters.some(next)) return [];
     const left = new Set(st.chapters.map(numOf).filter((n) => n > max)).size;
     return [{ src, left }];
   });

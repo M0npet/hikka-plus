@@ -60,6 +60,8 @@ export interface ReadSource {
    * тільки номер останнього. Є в джерел, що віддають розділи сторінками; інакше береться getChapters.
    */
   getLatest?(titleId: string): Promise<Chapter[]>;
+  /** getLatest віддає весь список (manga.in.ua — один запит на все): неактивному джерелу не треба довантажувати повний. */
+  latestIsFull?: boolean;
   getContent(chapter: Chapter): Promise<ChapterContent>;
 }
 

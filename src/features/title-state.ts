@@ -48,6 +48,11 @@ interface SourceState {
   error?: string;
   /** Не знайдено, але є схожий тайтл — підказка «Схоже» (прив'язка лише по кліку). */
   near?: RemoteTitle;
+  /**
+   * Лише найновіші розділи (getLatest, один запит) — для числа на плашці джерела. Повний список вантажимо, коли
+   * джерело стає активним або його відкриває читалка (MK 2026-11-27: «тільки активне + рахунок дешево»).
+   */
+  partial?: boolean;
 }
 
 export interface TitleState {
@@ -235,7 +240,7 @@ const setSource = (token: number, id: string, p: Partial<SourceState>) =>
   }));
 
 async function loadChapters(token: number, source: ReadSource, remote: RemoteTitle, manual: boolean) {
-  setSource(token, source.id, { status: 'loading', remote, manual, chapters: [], error: undefined, near: undefined });
+  setSource(token, source.id, { status: 'loading', remote, manual, chapters: [], error: undefined, near: undefined, partial: undefined });
   try {
     const chapters = renumberByVolume(await source.getChapters(remote.id));
     setSource(token, source.id, { status: 'ready', chapters });
@@ -243,6 +248,42 @@ async function loadChapters(token: number, source: ReadSource, remote: RemoteTit
     setSource(token, source.id, { status: 'error', error: `Не вдалося завантажити розділи: ${String(e)}` });
   }
 }
+
+/** Повний список дорогий (сторінками, по томах), а найновіші — один запит: UAManga, Honey Manga, Бака. */
+const cheapLatest = (src: ReadSource) => !!src.getLatest && !src.latestIsFull;
+
+/** Неактивне джерело: лише найновіші розділи — число на плашці й «Продовжити на …» без повного списку. */
+async function loadLatest(token: number, source: ReadSource, remote: RemoteTitle, manual: boolean) {
+  setSource(token, source.id, { status: 'loading', remote, manual, chapters: [], error: undefined, near: undefined, partial: undefined });
+  try {
+    const chapters = await source.getLatest!(remote.id);
+    setSource(token, source.id, { status: 'ready', chapters, partial: true });
+  } catch (e) {
+    setSource(token, source.id, {
+      status: 'error',
+      error: isRateLimit(e) ? RATE_LIMIT_TEXT : `Не вдалося завантажити розділи: ${String(e)}`,
+    });
+  }
+}
+
+/** Повний список джерела, якщо поки є лише найновіші (активне джерело, читалка з #read=…). */
+export function loadFullChapters(sourceId: string) {
+  const s = titleStore.get();
+  const st = s?.sources[sourceId];
+  const source = getSource(sourceId);
+  if (!st?.partial || st.status !== 'ready' || !st.remote || !source) return;
+  void loadChapters(loadToken, source, st.remote, !!st.manual);
+}
+// Стало активним (вибір користувача, автопідбір пріоритетнішого не знайшов) — довантажити повний список.
+titleStore.subscribe(() => {
+  const s = titleStore.get();
+  const id = s?.activeId;
+  // Після поточного оповіщення: інакше новий стан посеред обходу підписників.
+  if (id && s.sources[id]?.partial) queueMicrotask(() => loadFullChapters(id));
+});
+
+/** Найбільший номер розділу (ціла частина) — число на плашці неповного джерела. */
+export const lastChapterNo = (list: Chapter[]) => summarize(list, '').n;
 
 /** Якщо користувач не обирав джерело — активним стає найпріоритетніше знайдене. */
 function pickActive(token: number) {
@@ -327,12 +368,17 @@ export async function loadTitle(page: TitlePage) {
   patch(token, (s) => ({ ...s, hikka }));
 
   const writes: Promise<unknown>[] = [];
+  // Яке джерело, найімовірніше, стане активним: обране раніше, інакше найпріоритетніше з прив'язкою.
+  // Решті з дешевим getLatest — лише найновіші розділи; помилилися — повний список довантажить підписник вище.
+  const likely = on(binding.active) ? binding.active : (sourcesFor(kind).find((x) => binding.links[x.id])?.id ?? null);
+  const load = (source: ReadSource, remote: RemoteTitle, manual: boolean) =>
+    (source.id !== likely && cheapLatest(source) ? loadLatest : loadChapters)(token, source, remote, manual);
   await Promise.all(
     sourcesFor(kind).map(async (source) => {
       const link = binding.links[source.id];
       if (link) {
         pickActive(token);
-        return loadChapters(token, source, linkToRemote(link, kind), link.manual);
+        return load(source, linkToRemote(link, kind), link.manual);
       }
       // «Не знайдено» записане старішим автопідбором (до «Схоже» / запасних запитів) — шукаємо знову.
       if (link === null && binding.nearV === MATCH_VERSION && Date.now() - (binding.misses[source.id] ?? 0) < MISS_TTL) {
@@ -375,7 +421,7 @@ export async function loadTitle(page: TitlePage) {
         return;
       }
       pickActive(token);
-      await loadChapters(token, source, remote, false);
+      await load(source, remote, false);
       pickActive(token);
     }),
   );

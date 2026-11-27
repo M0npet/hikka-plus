@@ -1,4 +1,4 @@
-import { readerStore, titleStore, type ReaderRequest } from './title-state';
+import { loadFullChapters, readerStore, titleStore, type ReaderRequest } from './title-state';
 
 /**
  * Відкритий розділ пишемо в адресу: hikka.io/novel/<slug>#read=<джерело>:<id розділу>.
@@ -52,6 +52,11 @@ function tryOpenPending() {
   if (!pending || !s) return;
   const src = s.sources[pending.sourceId];
   if (!src || src.status === 'searching' || src.status === 'loading') return;
+  // Посилання на розділ неактивного джерела, у якого поки лише найновіші розділи, — спершу повний список.
+  if (src.partial && !src.chapters.some((c) => c.id === pending!.chapterId)) {
+    const id = pending.sourceId;
+    return void queueMicrotask(() => loadFullChapters(id));
+  }
   if (src.status === 'ready' && src.chapters.some((c) => c.id === pending!.chapterId)) {
     readerStore.set(pending);
   }
