@@ -101,7 +101,7 @@ export default defineContentScript({
     // Без таймера 500 мс і без wxt:locationchange (він сам опитує адресу щосекунди) — аудит 2026-11-26 17:45: три
     // способи робили одне й те саме, вкладка hikka.io прокидалась тричі на секунду без потреби.
     ctx.addEventListener(window, 'popstate', onNav);
-    ctx.onInvalidated(onBodyMutations(onNav));
+    ctx.onInvalidated(onBodyMutations(onNav, { text: true }));
 
     // Джерела ввімкнули/вимкнули чи переставили у вікні налаштувань — перезавантажити блок тайтлу
     // (якщо читалка відкрита, зміни підхопляться при наступному переході).

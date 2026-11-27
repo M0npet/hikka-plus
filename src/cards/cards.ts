@@ -506,14 +506,17 @@ export function initCards(ctx: ContentScriptContext) {
 
   // Свої вставки (<hikka-plus-badges>/<hikka-plus-cover>) не будять перебір знову — інакше кожна вставка постера
   // запускала ще один прохід по всіх картках (MK 2026-11-25 03:34: «обнова с постерами грузит проц»).
+  // Лише текстові вузли (таймери, «N хв тому», лічильники) теж не будять: картка з'являється елементом, а дані плашок
+  // беруться з мосту, не з тексту. Замір 2026-11-27 (160 карток, тикер 1/с): +1,7 мс/с на повний перебір щосекунди.
   const ours = (n: Node) =>
-    n.nodeType === 1 && [TAG, COVER_TAG, POP_TAG, TRACKER_TAG].some((t) => (n as Element).tagName === t.toUpperCase());
+    n.nodeType !== 1 || [TAG, COVER_TAG, POP_TAG, TRACKER_TAG].some((t) => (n as Element).tagName === t.toUpperCase());
   const off = onBodyMutations((recs) => {
     // Віконце картки з'являється/зникає — свій блок одразу (за 16 мс), не чекаючи 250 мс перебору карток.
     if (prefs.pop) popup.schedule();
     if (prefs.trk) tracker.schedule();
     for (const r of recs) {
-      if (![...r.addedNodes, ...r.removedNodes].every(ours)) return schedule_();
+      for (const n of r.addedNodes) if (!ours(n)) return schedule_();
+      for (const n of r.removedNodes) if (!ours(n)) return schedule_();
     }
   });
   ctx.onInvalidated(() => {

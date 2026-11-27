@@ -50,12 +50,15 @@ export default defineContentScript({
     hotkeys();
     activity();
     holdControls();
-    // Плеєр міг уже стартувати з 16× зі сховища (слід сканера 0.5.22) — перші 15 с повертаємо 1×.
-    const t0 = Date.now();
-    const fix = window.setInterval(() => {
-      for (const v of document.querySelectorAll('video')) if (v.playbackRate > 4) v.playbackRate = 1;
-      if (Date.now() - t0 > 15000) clearInterval(fix);
-    }, 500);
+    // Плеєр міг уже стартувати з 16× зі сховища (слід сканера 0.5.22) — перші 15 с повертаємо 1×. Подія ratechange
+    // (не спливає — ловимо на document у фазі захоплення), без таймера.
+    const fix = (e: Event) => {
+      const v = e.target;
+      if (v instanceof HTMLVideoElement && v.playbackRate > 4) v.playbackRate = 1;
+    };
+    document.addEventListener('ratechange', fix, true);
+    for (const v of document.querySelectorAll('video')) if (v.playbackRate > 4) v.playbackRate = 1;
+    window.setTimeout(() => document.removeEventListener('ratechange', fix, true), 15000);
   },
 });
 
@@ -137,11 +140,23 @@ function ambient() {
       send({ off: true });
     }
   };
+  // Таймер 200 мс — лише поки якесь відео грає (на паузі кадр не змінюється); пауза/перемотка — по подіях відео.
+  const anyPlaying = () => [...document.querySelectorAll('video')].some((v) => !v.paused && !v.ended);
+  const tick = () => {
+    if (on && anyPlaying()) {
+      if (!timer) timer = window.setInterval(sample, 200);
+    } else {
+      clearInterval(timer);
+      timer = 0;
+    }
+  };
+  for (const ev of ['play', 'playing', 'pause', 'ended'] as const) document.addEventListener(ev, tick, true);
+  // Перемотали на паузі чи кадр щойно з'явився — один кадр.
+  for (const ev of ['seeked', 'loadeddata'] as const) document.addEventListener(ev, () => on && sample(), true);
   const start = () => {
-    if (timer) return;
     ref = null; // після паузи/повторного запиту hikka.io — перший кадр завжди шлемо
-    timer = window.setInterval(sample, 200);
     sample();
+    tick();
   };
   const stop = () => {
     clearInterval(timer);
@@ -213,10 +228,16 @@ function fenixMarks() {
     if (!t) t = window.setTimeout(() => ((t = 0), read()), 300);
   };
   // Смужка з'являється не одразу — спершу чекаємо її на всьому документі, потім стежимо лише за нею.
+  // Смужка перегляду міняє style на кожному кадрі — будимося лише на зміну складу смужки чи самих міток.
+  const marker = (n: Node) => n instanceof Element && /fenix-marker/.test(n.className);
   const watchBar = (bar: Element) => {
-    new MutationObserver(later).observe(bar, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+    new MutationObserver((recs) => {
+      if (recs.some((r) => r.type === 'childList' || marker(r.target))) later();
+    }).observe(bar, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
     read();
   };
+  // Тривалість з'явилась/змінилась (інша серія, реклама скінчилась) — відсотки міток означають інші секунди.
+  document.addEventListener('durationchange', later, true);
   const bar = document.querySelector('.fenix-progress-bar');
   if (bar) watchBar(bar);
   else {
@@ -270,9 +291,10 @@ function idleCursor() {
       if (!inside) return;
       // На паузі курсор не ховаємо, але й не здаємося: перевіримо знову (відео могли пустити клавішею).
       if (playing()) (document.head ?? document.documentElement).append(css);
-      else timer = window.setTimeout(check, IDLE_MS);
     }, IDLE_MS);
   };
+  // На паузі таймер не крутимо: пустили відео (клавішею, з hikka.io) — відлік знову.
+  document.addEventListener('playing', () => inside && arm(), true);
   const wake = () => {
     inside = true;
     show();
@@ -410,7 +432,6 @@ function countMark() {
   let segs: [string, number, number][] = [];
   let els: HTMLElement[] = [];
   let bar: HTMLElement | null = null;
-  let timer = 0;
   const duration = () => {
     let d = 0;
     for (const v of document.querySelectorAll('video')) if (Number.isFinite(v.duration) && v.duration > d) d = v.duration;
@@ -430,15 +451,20 @@ function countMark() {
     e.style.cssText = 'position:absolute;pointer-events:none;border-radius:2px;' + css;
     return e;
   };
+  /** Чого чекаємо: 'dur' — тривалості (події відео), 'bar' — смужки, куди прив'язати (зміни DOM), '' — усе на місці. */
+  let need: '' | 'dur' | 'bar' = '';
   const place = () => {
+    need = '';
     const d = duration();
     const items = [
       ...segs.filter(([, s, e]) => e > s && s < d).map(([k, s, e]) => ({ k, s, e })),
       ...(at != null && at < d ? [{ k: 'count', s: at, e: at }] : []),
     ];
-    if (!(d > 0) || !items.length) return remove();
+    if (!items.length) return remove();
+    if (!(d > 0)) return ((need = 'dur'), remove());
     if (!bar?.isConnected) bar = ashdi ? ashdiBar() : document.querySelector<HTMLElement>(moon ? '.plyr__progress' : '.fenix-progress-bar');
-    if (!bar || getComputedStyle(bar).position === 'static') return remove(); // некуди прив'язати — не чіпаємо розкладку плеєра
+    // Некуди прив'язати — не чіпаємо розкладку плеєра, чекаємо, поки плеєр домалює смужку.
+    if (!bar || getComputedStyle(bar).position === 'static') return ((need = 'bar'), remove());
     if (els.length !== items.length || els.some((e, i) => e.dataset.k !== items[i]!.k)) {
       remove();
       els = items.map(({ k }) => {
@@ -465,6 +491,23 @@ function countMark() {
       }
     });
   };
+  // Без опитування (MK 2026-11-27: «пусть следят просто за плеером»): ставимо мітки на запит hikka.io і коли плеєр
+  // щось змінив — тривалість (інша серія/озвучка, реклама скінчилась; медіаподії не спливають — ловимо на document
+  // у фазі захоплення) або DOM (перемалював смужку й наші мітки зникли, смужка з'явилась). Зміна DOM — лише дешева
+  // перевірка «смужка на місці, мітки на ній»; пошук смужки — не частіше ніж раз на 300 мс.
+  let active = false;
+  let raf = 0;
+  let slow = 0;
+  const soon = () => {
+    if (!raf) raf = requestAnimationFrame(() => ((raf = 0), place()));
+  };
+  const onMedia = () => active && soon();
+  for (const ev of ['durationchange', 'loadedmetadata', 'emptied'] as const) document.addEventListener(ev, onMedia, true);
+  const mo = new MutationObserver(() => {
+    if (need === 'dur') return;
+    if (need === '' && bar?.isConnected && els.every((e) => e.parentElement === bar)) return;
+    if (!slow) slow = window.setTimeout(() => ((slow = 0), place()), 300);
+  });
   window.addEventListener('message', (e) => {
     if (e.source !== window.parent || e.origin !== PARENT) return;
     const d = e.data as { type?: unknown; count?: unknown; segs?: unknown } | null;
@@ -474,11 +517,15 @@ function countMark() {
       ? d.segs.filter((x): x is [string, number, number] => Array.isArray(x) && (x[0] === 'op' || x[0] === 'ed') && typeof x[1] === 'number' && typeof x[2] === 'number')
       : [];
     place();
-    // Плеєр перемальовує смужку (зміна серії/озвучки, тривалість з'являється не одразу) — раз на секунду перевіряємо.
-    if (at == null && !segs.length) {
-      clearInterval(timer);
-      timer = 0;
-    } else if (!timer) timer = window.setInterval(place, 1000);
+    const want = at != null || segs.length > 0;
+    if (want === active) return;
+    active = want;
+    if (active) mo.observe(document.documentElement, { childList: true, subtree: true });
+    else {
+      mo.disconnect();
+      clearTimeout(slow);
+      slow = 0;
+    }
   });
 }
 
@@ -492,8 +539,9 @@ function uiEdge() {
   const moon = location.hostname.startsWith('moonanime.');
   const ashdi = location.hostname === 'ashdi.vip';
   if (!moon && !ashdi) return;
-  let timer = 0;
+  let on = false;
   let last = -1;
+  let raf = 0;
   // Схована = сама чи хтось із предків display:none / visibility:hidden / майже прозорий (Plyr і PlayerJS ховають прозорістю).
   const shown = (el: Element) => {
     for (let e: Element | null = el; e && e !== document.documentElement; e = e.parentElement) {
@@ -503,9 +551,10 @@ function uiEdge() {
     return true;
   };
   const measure = () => {
+    raf = 0;
     if (document.hidden) return; // вкладка у фоні — нікому не видно
     let top = Infinity;
-    const els = moon ? document.querySelectorAll('.plyr__controls, .plyr__progress') : [ashdiBar()];
+    const els = moon ? document.querySelectorAll('.plyr__controls, .plyr__progress') : [anchorEl()];
     for (const e of els) {
       if (!e || !shown(e)) continue;
       const r = e.getBoundingClientRect();
@@ -518,16 +567,66 @@ function uiEdge() {
     last = px;
     window.parent.postMessage({ type: AMBIENT_MSG, ui: px }, PARENT);
   };
+  // Без опитування (MK 2026-11-27): міряємо, лише коли плеєр показав/сховав панель. Plyr і PlayerJS ховають її класом
+  // чи style на самій панелі або її предку (прозорість, часто з CSS-переходом — тоді ще й transitionend), плюс розмір
+  // кадру (повний екран). Зміни всередині панелі (смужка перегляду, час — на кожному кадрі) не будять.
+  // Панель, від якої міряємо. Не знайшли (Ashdi під час реклами) — шукаємо знову не частіше ніж раз на 300 мс:
+  // ashdiBar() перебирає всі pjsdiv із замірами.
+  let anchor: Element | null = null;
+  let lookedAt = 0;
+  const anchorEl = () => {
+    if (anchor?.isConnected) return anchor;
+    const now = performance.now();
+    if (now - lookedAt < 300) return null;
+    lookedAt = now;
+    return (anchor = moon ? document.querySelector('.plyr__controls') : ashdiBar());
+  };
+  const soon = () => {
+    if (on && !raf) raf = requestAnimationFrame(measure);
+  };
+  const touches = (t: EventTarget | null) => {
+    const a = anchorEl();
+    return !a || (t instanceof Node && t.contains(a));
+  };
+  // Plyr (Moon) ~11 разів на секунду ставить .plyr той самий class (перевірено 2026-11-27) — такі записи без змін пропускаємо.
+  const real = (r: MutationRecord) => r.oldValue !== (r.target as Element).getAttribute(r.attributeName!);
+  const mo = new MutationObserver((recs) => {
+    if (recs.some((r) => real(r) && touches(r.target))) soon();
+  });
+  const onEnd = (e: Event) => touches(e.target) && soon();
+  // Панель з'являється плавно (Moon: 0,4 с, transitionend — через ~0,56 с, перевірено 2026-11-27): ще один замір через
+  // 150 мс після початку переходу, коли її вже видно, — наші кнопки піднімаються разом із нею, а не з запізненням.
+  let runT = 0;
+  const onRun = (e: Event) => {
+    if (runT || !touches(e.target)) return;
+    runT = window.setTimeout(() => ((runT = 0), soon()), 150);
+  };
   window.addEventListener('message', (e) => {
     if (e.source !== window.parent || e.origin !== PARENT) return;
     const d = e.data as { type?: unknown; count?: unknown; ui?: unknown } | null;
     if (!d || d.type !== AMBIENT_REQ || !('count' in d)) return;
-    clearInterval(timer);
-    timer = 0;
-    if (!d.ui) return;
-    last = -1; // hikka.io міг перестворити обробник — кажемо знову
-    measure();
-    timer = window.setInterval(measure, 250);
+    const want = !!d.ui;
+    if (want) {
+      last = -1; // hikka.io міг перестворити обробник — кажемо знову
+      measure();
+    }
+    if (want === on) return;
+    on = want;
+    if (on) {
+      mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'], attributeOldValue: true, subtree: true });
+      for (const ev of ['transitionend', 'transitioncancel', 'animationend'] as const) document.addEventListener(ev, onEnd, true);
+      document.addEventListener('transitionrun', onRun, true);
+      window.addEventListener('resize', soon);
+    } else {
+      mo.disconnect();
+      for (const ev of ['transitionend', 'transitioncancel', 'animationend'] as const) document.removeEventListener(ev, onEnd, true);
+      document.removeEventListener('transitionrun', onRun, true);
+      clearTimeout(runT);
+      runT = 0;
+      window.removeEventListener('resize', soon);
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+    }
   });
 }
 
