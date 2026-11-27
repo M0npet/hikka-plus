@@ -64,7 +64,9 @@ async function dropTokenWithoutConsent() {
 }
 
 export default defineBackground(() => {
-  void dropOldFingerprints();
+  // Лише при встановленні/оновленні: get(null) читає ВСЕ сховище (обкладинки, прогрес, розклад), а фон у Chrome MV3
+  // засинає за ~30 с і прокидається на кожне повідомлення — раніше це читання було на кожному пробудженні (2026-11-27).
+  browser.runtime.onInstalled.addListener(() => void dropOldFingerprints());
   void dropTokenWithoutConsent();
   browser.permissions.onRemoved.addListener(() => void dropTokenWithoutConsent());
   watchLightsConf();

@@ -526,9 +526,14 @@ export function initCards(ctx: ContentScriptContext) {
   // Міст з'являється не одразу; «через X» оновлюємо раз на хвилину, розклад — коли застаріє.
   ask();
   ctx.setTimeout(ask, 1500);
-  ctx.setInterval(() => {
-    if (!prefs.on && !prefs.pop && !prefs.trk) return;
+  // Вкладка у фоні — не оновлюємо (нікому не видно); повернулися — одразу, якщо минула хвилина.
+  let tickAt = Date.now();
+  const tick = () => {
+    if (document.hidden || (!prefs.on && !prefs.pop && !prefs.trk)) return;
+    tickAt = Date.now();
     refreshSchedule();
     schedule_();
-  }, 60_000);
+  };
+  ctx.setInterval(tick, 60_000);
+  ctx.addEventListener(document, 'visibilitychange', () => !document.hidden && Date.now() - tickAt >= 60_000 && tick());
 }

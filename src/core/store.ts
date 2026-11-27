@@ -248,23 +248,45 @@ export async function getBindingSynced(kind: ReadKind, slug: string): Promise<Bi
   return getBinding(kind, slug);
 }
 
-/** Записи йдуть по черзі: кілька джерел шукаються паралельно й не мають перетирати одне одного. */
+/** Правки, що чекають запису: ключ прив'язки → черга змін (+ чи з синхронізації). */
+const bindPending = new Map<string, { fns: ((b: Binding) => Binding)[]; fromSync: boolean; done: Promise<unknown> }>();
+
+/**
+ * Записи йдуть по черзі: кілька джерел шукаються паралельно й не мають перетирати одне одного. Правки одного тайтлу,
+ * що накопичились, поки йшов попередній запис, застосовуємо разом — одне читання й один запис (перший захід на манґу:
+ * автопідбір по 5–6 джерелах давав 5–6 записів, 2026-11-27). Нічого не змінилось — не пишемо.
+ */
 export function patchBinding(
   kind: ReadKind,
   slug: string,
   fn: (b: Binding) => Binding,
-  opts?: { fromSync?: boolean },
+  opts?: { fromSync?: boolean; /** Почекати перед записом (мс), щоб приклеїти правки інших джерел (автопідбір). */ delay?: number },
 ) {
+  const key = bindKey(kind, slug);
+  const fromSync = !!opts?.fromSync;
+  const wait = bindPending.get(key);
+  // Синхронізація й локальні правки не змішуються: у них різне правило для часу вибору (u).
+  if (wait && wait.fromSync === fromSync) {
+    wait.fns.push(fn);
+    return wait.done;
+  }
+  const job = { fns: [fn], fromSync, done: Promise.resolve() as Promise<unknown> };
+  bindPending.set(key, job);
+  const delay = opts?.delay ?? 0;
   bindQueue = bindQueue
+    .then(() => delay > 0 && new Promise((r) => setTimeout(r, delay)))
     .then(async () => {
+      if (bindPending.get(key) === job) bindPending.delete(key);
       const prev = await getBinding(kind, slug);
-      let next = fn(prev);
-      const changed = !opts?.fromSync && choiceDigest(prev) !== choiceDigest(next);
+      let next = job.fns.reduce((b, f) => f(b), prev);
+      const changed = !fromSync && choiceDigest(prev) !== choiceDigest(next);
       if (changed) next = { ...next, u: Date.now() };
-      await storage.setItem(bindKey(kind, slug), next);
+      if (JSON.stringify(next) === JSON.stringify(prev)) return;
+      await storage.setItem(key, next);
       if (changed) pushBind(kind, slug, async () => toPushRecord(await getBinding(kind, slug)));
     })
     .catch(() => {});
+  job.done = bindQueue;
   return bindQueue;
 }
 

@@ -326,6 +326,7 @@ export async function loadTitle(page: TitlePage) {
   }
   patch(token, (s) => ({ ...s, hikka }));
 
+  const writes: Promise<unknown>[] = [];
   await Promise.all(
     sourcesFor(kind).map(async (source) => {
       const link = binding.links[source.id];
@@ -357,7 +358,8 @@ export async function loadTitle(page: TitlePage) {
       let near = remote ? null : takeNearMiss(source, hikka);
       if (near && near.id === binding.nearNo?.[source.id]) near = null;
       if (token !== loadToken) return;
-      await patchBinding(kind, slug, (b) => ({
+      // Не чекаємо: запис відкладено на 300 мс, щоб склеїти з іншими джерелами, а розділи вантажимо одразу.
+      writes.push(patchBinding(kind, slug, (b) => ({
         ...b,
         links: {
           ...b.links,
@@ -366,7 +368,7 @@ export async function loadTitle(page: TitlePage) {
         misses: { ...b.misses, [source.id]: remote ? 0 : Date.now() },
         near: withNear(b.near, source.id, near),
         nearV: MATCH_VERSION,
-      }));
+      }), { delay: 300 }));
       if (!remote) {
         setSource(token, source.id, { status: 'not-found', chapters: [], near: near ?? undefined });
         pickActive(token);
@@ -377,7 +379,8 @@ export async function loadTitle(page: TitlePage) {
       pickActive(token);
     }),
   );
-  // Прив'язки відомі — український постер з джерела (src/cards/covers.ts).
+  // Прив'язки відомі (і записані) — український постер з джерела (src/cards/covers.ts).
+  await Promise.all(writes);
   if (token === loadToken) void noteCover(kind, slug, false, titleNames(hikka)).catch(() => {});
 }
 

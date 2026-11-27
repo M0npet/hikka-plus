@@ -38,6 +38,8 @@ export function attachPlayer(frame: HTMLIFrameElement, kind: PlayerKind, ev: Pla
   })();
   let duration = 0;
   let reqId = 0;
+  let ashdiPoll: ReturnType<typeof setInterval> | 0 = 0;
+  let lastTimeAt = 0;
   const post = (msg: unknown) => frame.contentWindow?.postMessage(msg, origin || '*');
   const moon = (command: string, data?: Record<string, unknown>) => post({ ns: 'ma', v: 2, id: `hp${++reqId}`, command, ...data });
   const segs = (data: unknown) => {
@@ -82,7 +84,17 @@ export function attachPlayer(frame: HTMLIFrameElement, kind: PlayerKind, ev: Pla
       if (evn.startsWith('vast')) return;
       const v = num(o.answer ?? o.data ?? o.time);
       if (evn === 'duration' && v > 0) duration = v;
-      else if (evn === 'time' && v >= 0) time(v);
+      else if (evn === 'time' && v >= 0) {
+        time(v);
+        // Два «time» ближче ніж за 1 с — PlayerJS шле час сам (~4 рази/с під час відтворення, перевірено 2026-11-27
+        // на ashdi.vip/vod/104218): наше опитування раз на 2 с більше не потрібне.
+        const now = Date.now();
+        if (ashdiPoll && now - lastTimeAt < 1000) {
+          clearInterval(ashdiPoll);
+          ashdiPoll = 0;
+        }
+        lastTimeAt = now;
+      }
       else if (evn === 'end' || evn === 'ended') ev.onEnded();
       else if (evn === 'inited' || evn === 'start' || evn === 'play') post({ api: 'duration' });
     } else if (kind === 'moon') {
@@ -122,9 +134,10 @@ export function attachPlayer(frame: HTMLIFrameElement, kind: PlayerKind, ev: Pla
   };
   window.addEventListener('message', onMsg);
 
-  // Ashdi не завжди сам шле час — питаємо раз на 2 с. Moon міг надіслати bridge_ready до підписки — повторюємо.
+  // Ashdi не завжди сам шле час — питаємо раз на 2 с, доки не побачимо, що шле сам (див. вище). Moon міг надіслати
+  // bridge_ready до підписки — повторюємо.
   const timers: ReturnType<typeof setInterval>[] = [];
-  if (kind === 'ashdi') timers.push(setInterval(() => post({ api: 'time' }), 2000));
+  if (kind === 'ashdi') ashdiPoll = setInterval(() => post({ api: 'time' }), 2000);
   if (kind === 'moon') {
     const once = setTimeout(() => {
       moon('subscribe');
@@ -144,6 +157,7 @@ export function attachPlayer(frame: HTMLIFrameElement, kind: PlayerKind, ev: Pla
     },
     detach: () => {
       window.removeEventListener('message', onMsg);
+      clearInterval(ashdiPoll);
       timers.forEach((t) => {
         clearInterval(t);
         clearTimeout(t);
