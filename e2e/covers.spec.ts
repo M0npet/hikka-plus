@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { SLUG, installMock } from './mock';
 const EXT = fileURLToPath(new URL('../.output/chrome-mv3', import.meta.url));
 test('«UA» на постері тайтлу: меню з пунктами, «Оригінал Hikka» перемикає', async () => {
-  const c = await chromium.launchPersistentContext('', { executablePath: process.env.HP_CHROME, headless: true, viewport: { width: 1400, height: 900 }, args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`] });
+  const c = await chromium.launchPersistentContext('', { executablePath: process.env.HP_CHROME || undefined, channel: process.env.HP_CHROME ? undefined : 'chromium', headless: true, viewport: { width: 1400, height: 900 }, args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`] });
   await installMock(c);
   await c.route('https://hikka.io/poster.jpg', (r) => r.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="14"><rect width="10" height="14" fill="#336"/></svg>' }));
   const sw = c.serviceWorkers()[0] ?? (await c.waitForEvent('serviceworker'));
