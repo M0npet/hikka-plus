@@ -55,8 +55,9 @@ img.on ~ .ua, .ua.off { opacity: 1; }
 .ua:active { transform: scale(0.95); }
 .ua:focus-visible { outline: 2px solid var(--ring, #fff); outline-offset: 2px; }
 .ua.off { background: rgb(0 0 0 / 0.6); color: rgb(255 255 255 / 0.9); border-color: rgb(255 255 255 / 0.18); }
-.big { height: 30px; padding: 0 10px 0 8px; font-size: 13px; right: 10px; bottom: 10px; }
-.big svg { width: 16px; height: 16px; }
+/* Лише кнопка: меню на сторінці тайтлу теж має клас big — без .ua воно сплющувалось до 30 px і пункти зникали (MK 2026-11-27). */
+.ua.big { height: 30px; padding: 0 10px 0 8px; font-size: 13px; right: 10px; bottom: 10px; }
+.ua.big svg { width: 16px; height: 16px; }
 .menu {
   pointer-events: auto; position: absolute; right: 8px; bottom: 38px; z-index: 4; box-sizing: border-box;
   min-width: 150px; max-width: calc(100% - 16px); max-height: calc(100% - 50px); overflow: auto;
