@@ -6,16 +6,17 @@
 import { browser } from '#imports';
 import { isRateLimit } from '../core/net';
 import { hookNotes, notesApi, updateBadge } from '../core/notify';
-import { latestChapters, summarize } from '../cards/released';
+import { applyReleased, latestChapters, summarize } from '../cards/released';
 import { baka } from '../sources/baka';
 import { dgManga } from '../sources/dgmanga';
 import { honeyManga } from '../sources/honeymanga';
+import { mangaInUa } from '../sources/mangainua';
 import { uaManga } from '../sources/uamanga';
 import { zenko } from '../sources/zenko';
 import { CHAP_CHECK_MIN, chapCheckItem, chapsItem, getChapPrefs, pruneChaps, updateChaps, type ChapCheckResult } from './chapter-alerts';
 
 /** Лише ті, що content script записує (getLatest або ONE_REQUEST у chapter-alerts.ts), — не весь registry: фон менший. */
-const SOURCES = new Map([zenko, uaManga, honeyManga, baka, dgManga].map((x) => [x.id, x]));
+const SOURCES = new Map([zenko, uaManga, honeyManga, baka, dgManga, mangaInUa].map((x) => [x.id, x]));
 
 const ALARM = 'hp-chaps';
 const GAP_MS = 1500;
@@ -78,13 +79,17 @@ async function run(force: boolean): Promise<ChapCheckResult> {
 
   const tracked = pruneChaps(await chapsItem.getValue(), now);
   const grown = new Map<string, number>();
+  /** Те саме число — і для плашки «N нових розділів» на картках (local:hp:released). */
+  const sums: Parameters<typeof applyReleased>[0] = [];
   let error: string | undefined;
   for (const [i, [key, t]] of Object.entries(tracked).entries()) {
     const src = SOURCES.get(t.s);
     if (!src) continue;
     if (i) await sleep(GAP_MS);
     try {
-      const max = summarize(await latestChapters(src, t.id), t.t).n;
+      const sum = summarize(await latestChapters(src, t.id), t.t);
+      const max = sum.n;
+      if (max) sums.push({ key, s: t.s, id: t.id, t: t.t, ...sum });
       if (max > t.n) grown.set(key, max);
     } catch (e) {
       // 429 — net.ts ставить паузу на хост: решта тайтлів того ж сайту в цьому проході не смикає його (одразу 429).
@@ -102,6 +107,7 @@ async function run(force: boolean): Promise<ChapCheckResult> {
     }
     return pruneChaps(m, now);
   });
+  await applyReleased(sums);
   await updateBadge();
   if (prefs.notify) await notify(fresh);
   return { ok: !error, found: fresh.length, error };

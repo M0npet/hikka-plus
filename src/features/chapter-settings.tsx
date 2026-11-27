@@ -130,7 +130,7 @@ export function ChapFields({ mode }: { mode: 'popup' | 'page' }) {
     <>
       <SwitchRow
         label="Нові розділи"
-        hint={`Раз на ${CHAP_CHECK_MIN / 60} год перевіряє тайтли, які ви читали в читалці (до ${MAX_CHAP_TRACK}): чи вийшов новий розділ на обраному джерелі. Zenko, UAManga, Honey Manga, Бака, DGManga`}
+        hint={`Раз на ${CHAP_CHECK_MIN / 60} год перевіряє тайтли, які ви читали в читалці (до ${MAX_CHAP_TRACK}): чи вийшов новий розділ на обраному джерелі. Zenko, Manga.in.ua, UAManga, Honey Manga, Бака, DGManga`}
         checked={p.on}
         onChange={(on) => setP({ on })}
       />

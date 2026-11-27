@@ -1,6 +1,7 @@
 /*
  * E2E «Нові розділи» (бэклог h, MK 2026-11-26): тайтл, який читали в нашій читалці, потрапляє в список; фон перевіряє
- * джерело напряму (UAManga JSON API з e2e/mock.ts, net.ts setDirectFetch) → число на іконці; відкрили тайтл — побачено.
+ * джерело напряму (UAManga JSON API з e2e/mock.ts, net.ts setDirectFetch) → число на іконці й плашка на картках (hp:released);
+ * відкрили тайтл — побачено.
  */
 import { chromium, expect, test, type BrowserContext, type Page, type Worker } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
@@ -34,6 +35,8 @@ test.afterAll(async () => {
 
 type Track = { n: number; seen: number; s: string; sn: string; id: string; name: string };
 const track = () => sw.evaluate(async (k) => ((await chrome.storage.local.get('hp:chaps'))['hp:chaps'] as Record<string, Track> | undefined)?.[k] ?? null, KEY);
+const released = () =>
+  sw.evaluate(async (k) => ((await chrome.storage.local.get('hp:released'))['hp:released'] as Record<string, { n: number; s: string; at: number }> | undefined)?.[k] ?? null, KEY);
 const badge = () => sw.evaluate(() => chrome.action.getBadgeText({}));
 
 test('без читання — не стежимо; прочитали розділ — тайтл у списку', async () => {
@@ -54,6 +57,8 @@ test('без читання — не стежимо; прочитали розд
 test('фон: новий розділ → число на іконці й рядок у вікні по іконці', async () => {
   mockState.mangaChapters = MANGA_CHAPTERS + 1;
   const before = hits.get(`GET uamanga.com/api/titles/${UA_SLUG}/chapters`) ?? 0;
+  const rel0 = await released();
+  expect(rel0).toMatchObject({ n: MANGA_CHAPTERS, s: 'uamanga' });
   const id = new URL(sw.url()).host;
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${id}/popup.html`);
@@ -62,6 +67,10 @@ test('фон: новий розділ → число на іконці й ряд
   expect(r).toMatchObject({ ok: true, found: 1 });
   expect(hits.get(`GET uamanga.com/api/titles/${UA_SLUG}/chapters`)).toBe(before + 1); // один запит (getLatest)
   expect(await track()).toMatchObject({ n: MANGA_CHAPTERS + 1, seen: MANGA_CHAPTERS });
+  // Плашка «N нових розділів» на картках — тим самим результатом, без окремого запиту (карта §7 п.4).
+  const rel = await released();
+  expect(rel).toMatchObject({ n: MANGA_CHAPTERS + 1, s: 'uamanga' });
+  expect(rel!.at).toBeGreaterThan(rel0!.at);
   await expect.poll(badge).toBe('1');
   await popup.reload();
   const news = popup.locator('.hp-dub-news', { hasText: 'Нові розділи' });

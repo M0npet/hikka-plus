@@ -2,10 +2,13 @@
 // (rosset-nocpes/hikka-features, MIT) і переписана на DOMParser.
 // 0.6.1 (2026-11-25): сайт перейшов на новий шаблон MangaNew — розділи JSON-ом (POST mod=mgchapters, news_id),
 // сторінки розділу — прямо в HTML (main.rd-pages figure.rp img), пошук — article.card. Старий спосіб лишився запасним.
+// 2026-11-27: news_id — число на початку адреси тайтлу (= data-chapters на сторінці, перевірено на живому сайті), тож розділи —
+// одним POST без завантаження сторінки (getChapters і getLatest — для фонової перевірки «Нові розділи»). Без DOMParser
+// у цьому шляху: у фоні Chrome MV3 його немає.
 import { titleNames } from '../core/hikka';
 import { getDoc, getText, rethrowRateLimit } from '../core/net';
 import { bestSimilarity, exactly, settleMatch } from './match';
-import type { Chapter, ReadSource, RemoteTitle } from './types';
+import { renumberByVolume, type Chapter, type ReadSource, type RemoteTitle } from './types';
 
 const SITE = 'https://manga.in.ua';
 const EP_CHAPTERS = 'engine/ajax/controller.php?mod=load_chapters';
@@ -28,8 +31,19 @@ function hashKey(html: string, endpoint: string): string {
   return html.includes('dle_user_hash') ? 'dle_user_hash' : 'user_hash';
 }
 
-/** Назви команд у JSON сайту приходять з HTML-сутностями («Mulningsvél &amp; ЗУШ»). */
-const unescape = (s: string) => new DOMParser().parseFromString(s, 'text/html').documentElement.textContent ?? s;
+/** Назви команд у JSON сайту приходять з HTML-сутностями («Mulningsvél &amp; ЗУШ»). Без DOMParser — працює й у фоні. */
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', laquo: '«', raquo: '»', ndash: '–', mdash: '—', hellip: '…' };
+export const unescape = (s: string) =>
+  s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
+    if (e[0] !== '#') return ENTITIES[e.toLowerCase()] ?? m;
+    const code = e[1] === 'x' || e[1] === 'X' ? Number.parseInt(e.slice(2), 16) : Number.parseInt(e.slice(1), 10);
+    return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : m;
+  });
+
+const num = (s: string | null | undefined) => Number.parseFloat(String(s ?? '0').replace(',', '.')) || 0;
+const sortCh = (list: Chapter[]) => list.sort((a, b) => num(a.volume) - num(b.volume) || num(a.number) - num(b.number));
+/** news_id з адреси тайтлу (`…/125515-nazva.html`). */
+const newsIdOf = (id: string) => /\/(\d+)-[^/]*$/.exec(abs(id))?.[1] ?? '';
 
 type JsonChapter = { alt?: boolean; date?: number; id?: number | string; link?: string; name?: string; num?: string | number; team?: string; tom?: string | number };
 
@@ -39,7 +53,8 @@ async function chaptersJson(newsId: string): Promise<Chapter[] | null> {
   let res: { chapters?: JsonChapter[] };
   try {
     res = JSON.parse(await getText(`${SITE}/${EP_JSON}`, { form: new URLSearchParams({ news_id: newsId }) })) as { chapters?: JsonChapter[] };
-  } catch {
+  } catch (e) {
+    rethrowRateLimit(e); // 429 — не добиваємо сайт ще й запитом сторінки
     return null;
   }
   if (!Array.isArray(res.chapters)) return null;
@@ -117,15 +132,17 @@ export const mangaInUa: ReadSource = {
   },
 
   async getChapters(id) {
+    // Одним запитом — без сторінки тайтлу.
+    const urlId = newsIdOf(id);
+    const fast = await chaptersJson(urlId);
+    if (fast) return sortCh(fast);
     const html = await getText(abs(id));
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    const n = (s: string | null) => Number.parseFloat((s ?? '0').replace(',', '.')) || 0;
-    const sortCh = (list: Chapter[]) => list.sort((a, b) => n(a.volume) - n(b.volume) || n(a.number) - n(b.number));
     const box = doc.querySelector<HTMLElement>('div#linkstocomics');
     if (!box) {
       // Новий шаблон: id тайтлу — section#chapters[data-chapters] або число на початку адреси.
-      const newsId = doc.querySelector<HTMLElement>('[data-chapters]')?.dataset.chapters || /\/(\d+)-[^/]*$/.exec(abs(id))?.[1] || '';
-      const list = await chaptersJson(newsId);
+      const newsId = doc.querySelector<HTMLElement>('[data-chapters]')?.dataset.chapters || newsIdOf(id);
+      const list = newsId === urlId ? null : await chaptersJson(newsId); // той самий news_id уже питали
       if (!list) throw new Error('manga.in.ua: не вдалося отримати список розділів');
       return sortCh(list);
     }
@@ -156,6 +173,11 @@ export const mangaInUa: ReadSource = {
       });
     }
     return sortCh(out);
+  },
+
+  /** Для фонової перевірки: той самий список і та сама нумерація, що й у блоці «Розділи» (renumberByVolume). */
+  async getLatest(id) {
+    return renumberByVolume(await this.getChapters(id));
   },
 
   async getContent(chapter) {

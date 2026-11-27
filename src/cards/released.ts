@@ -4,6 +4,7 @@
  *  - Запам'ятовуємо, коли користувач відкриває тайтл: активне джерело + обрана команда → найбільший номер розділу (`noteReleased`).
  *  - Оновлюємо лише те, що видно на сторінці зі статусом «Читаю» (`refreshReleased`, з content script): не частіше ніж раз на 3 год
  *    на тайтл, до 8 тайтлів за раз, одна вкладка за раз. Без прив'язки — нічого не знаємо, плашки немає.
+ *  - Фонова перевірка «Нові розділи» (chapter-check.ts) оновлює ті самі записи своїм результатом (`applyReleased`) — без нових запитів.
  * Запити — ті самі, що й при відкритті тайтлу (через background, `credentials: 'omit'`); нових хостів немає.
  */
 import { storage } from '#imports';
@@ -53,16 +54,15 @@ export function summarize(list: Chapter[], team: string): { n: number; d?: numbe
 export const latestChapters = async (src: ReadSource, id: string) => (src.getLatest ? await src.getLatest(id) : renumberByVolume(await src.getChapters(id)));
 
 let queue: Promise<unknown> = Promise.resolve();
-function patch(fn: (m: ReleasedMap) => ReleasedMap) {
+/** fn повертає null — нічого не змінилось, не пишемо. */
+function patch(fn: (m: ReleasedMap) => ReleasedMap | null) {
   queue = queue.then(async () => {
-    let m = fn({ ...(await releasedItem.getValue()) });
+    const m = fn({ ...(await releasedItem.getValue()) });
+    if (!m) return;
     const keys = Object.keys(m);
-    if (keys.length > MAX) {
-      // Найдавніше перевірені — геть.
-      const keep = keys.sort((a, b) => m[b]!.at - m[a]!.at).slice(0, MAX);
-      m = Object.fromEntries(keep.map((k) => [k, m[k]!]));
-    }
-    await releasedItem.setValue(m);
+    // Найдавніше перевірені — геть.
+    const keep = keys.length > MAX ? keys.sort((a, b) => m[b]!.at - m[a]!.at).slice(0, MAX) : null;
+    await releasedItem.setValue(keep ? Object.fromEntries(keep.map((k) => [k, m[k]!])) : m);
   }).catch(() => {});
   return queue;
 }
@@ -75,9 +75,28 @@ export function noteReleased(kind: ReadKind, slug: string, source: string, remot
   const key = bookKey(kind, slug);
   return patch((m) => {
     const p = m[key];
-    if (p && p.s === source && p.id === remoteId && p.t === team && p.n === sum.n && p.d === sum.d && Date.now() - p.at < 60_000) return m;
+    if (p && p.s === source && p.id === remoteId && p.t === team && p.n === sum.n && p.d === sum.d && Date.now() - p.at < 60_000) return null;
     m[key] = { s: source, id: remoteId, t: team, ...sum, at: Date.now() };
     return m;
+  });
+}
+
+/**
+ * Фон (src/features/chapter-check.ts) уже отримав розділи тайтлів — оновлюємо й плашку тим самим результатом, без нових запитів.
+ * Лише записи з тим самим джерелом, id і командою; `at` = зараз, тож content script цей тайтл 3 год не перепитує.
+ */
+export function applyReleased(rows: { key: string; s: string; id: string; t: string; n: number; d?: number }[]) {
+  if (!rows.length) return Promise.resolve();
+  const at = Date.now();
+  return patch((m) => {
+    let hit = false;
+    for (const r of rows) {
+      const p = m[r.key];
+      if (!p || !r.n || p.s !== r.s || p.id !== r.id || p.t !== r.t) continue;
+      m[r.key] = { ...p, n: r.n, ...(r.d ? { d: r.d } : {}), at };
+      hit = true;
+    }
+    return hit ? m : null;
   });
 }
 
@@ -111,7 +130,7 @@ export async function refreshReleased(keys: string[]) {
         if (isRateLimit(e)) continue;
         /* сайт не відповів — спробуємо через 3 год, старе число лишаємо */
       }
-      await patch((x) => (x[key] ? { ...x, [key]: next } : x));
+      await patch((x) => (x[key] ? { ...x, [key]: next } : null));
     }
   } finally {
     busy = false;
