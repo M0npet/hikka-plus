@@ -6,14 +6,15 @@
 
 [![Версія](https://img.shields.io/github/v/release/M0npet/hikka-plus?style=flat-square&color=d93b8c&label=%D0%B2%D0%B5%D1%80%D1%81%D1%96%D1%8F)](https://github.com/M0npet/hikka-plus/releases)
 [![Збірка](https://img.shields.io/github/actions/workflow/status/M0npet/hikka-plus/build.yml?branch=main&style=flat-square&label=%D0%B7%D0%B1%D1%96%D1%80%D0%BA%D0%B0)](https://github.com/M0npet/hikka-plus/actions/workflows/build.yml)
-[![Firefox 140+](https://img.shields.io/badge/Firefox-140%2B-FF7139?style=flat-square&logo=firefoxbrowser&logoColor=white)](#-встановлення)
+[![Firefox Add-ons](https://img.shields.io/amo/v/hikka-plus?style=flat-square&logo=firefoxbrowser&logoColor=white&color=FF7139&label=Firefox%20Add-ons)](https://addons.mozilla.org/uk/firefox/addon/hikka-plus/)
+[![Користувачі](https://img.shields.io/amo/users/hikka-plus?style=flat-square&color=FF7139&label=%D0%BA%D0%BE%D1%80%D0%B8%D1%81%D1%82%D1%83%D0%B2%D0%B0%D1%87%D1%96)](https://addons.mozilla.org/uk/firefox/addon/hikka-plus/)
 [![Chrome MV3](https://img.shields.io/badge/Chrome-MV3-4285F4?style=flat-square&logo=googlechrome&logoColor=white)](#-встановлення)
 [![Ліцензія MIT](https://img.shields.io/badge/%D0%BB%D1%96%D1%86%D0%B5%D0%BD%D0%B7%D1%96%D1%8F-MIT-3a3a44?style=flat-square)](LICENSE)
 
 **Неофіційне розширення для [hikka.io](https://hikka.io)** — плеєр аніме з українськими озвучками<br>
 та читалка манґи, манхви й ранобе, вбудовані прямо в сторінку тайтлу й оформлені в стилі сайту.
 
-[Встановлення](#-встановлення) · [Можливості](#-можливості) · [Скріншоти](#-як-це-виглядає) · [Джерела](#-джерела) · [Приватність](PRIVACY.md) · [Повідомити про помилку](https://github.com/M0npet/hikka-plus/issues)
+**[➕ Встановити для Firefox](https://addons.mozilla.org/uk/firefox/addon/hikka-plus/)** · [Встановлення](#-встановлення) · [Можливості](#-можливості) · [Скріншоти](#-як-це-виглядає) · [Джерела](#-джерела) · [Приватність](PRIVACY.md) · [Повідомити про помилку](https://github.com/M0npet/hikka-plus/issues)
 
 </div>
 
@@ -141,7 +142,7 @@
 
 | Браузер | Як встановити |
 |---|---|
-| <img src="https://img.shields.io/badge/-Firefox-FF7139?style=flat-square&logo=firefoxbrowser&logoColor=white" alt="Firefox"> | **addons.mozilla.org** — сторінка зараз на перевірці Mozilla, посилання з'явиться тут. Firefox 140+, Android 142+. |
+| <img src="https://img.shields.io/badge/-Firefox-FF7139?style=flat-square&logo=firefoxbrowser&logoColor=white" alt="Firefox"> | **[Встановити з addons.mozilla.org](https://addons.mozilla.org/uk/firefox/addon/hikka-plus/)** — оновлюється сам. Firefox 140+, Android 142+. |
 | <img src="https://img.shields.io/badge/-Chrome-4285F4?style=flat-square&logo=googlechrome&logoColor=white" alt="Chrome"> | Поки без Chrome Web Store: архів `…-chrome.zip` з [Releases](https://github.com/M0npet/hikka-plus/releases) → розпакувати → `chrome://extensions` → «Режим розробника» → «Завантажити розпаковане». |
 
 Після встановлення відкрийте будь-яке аніме чи манґу на [hikka.io](https://hikka.io) — блоки з'являться самі.
